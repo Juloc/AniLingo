@@ -33,7 +33,7 @@ public sealed class MangaRepository(AppDbContext db)
             ORDER BY
                 CASE WHEN p."UpdatedAt" IS NULL THEN 1 ELSE 0 END,
                 p."UpdatedAt" DESC,
-                COALESCE(s."MetadataTitle", s."Title") COLLATE NOCASE;
+                lower(COALESCE(s."MetadataTitle", s."Title"));
             """,
             command => AddParameter(command, "@profileId", profileId),
             reader => new MangaSeriesItem(
@@ -250,7 +250,7 @@ public sealed class MangaRepository(AppDbContext db)
                 "SourceUpdatedAt"
             FROM "MangaChapters"
             WHERE "SeriesId" = @seriesId
-            ORDER BY "Number", "Title" COLLATE NOCASE;
+            ORDER BY "Number", lower("Title");
             """,
             command => AddParameter(command, "@seriesId", seriesId.ToString()),
             reader => new MangaChapterItem(

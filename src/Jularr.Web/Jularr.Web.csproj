@@ -10,12 +10,17 @@
   <ItemGroup>
     <PackageReference Include="DotNetG2P.MeCab" Version="1.10.0" />
     <PackageReference Include="Fsrs.Sharp" Version="2.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+    <!-- Read-only, used only by the one-time SQLite -> PostgreSQL importer (#570). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.4" />
+    <!-- Pin a patched native SQLite: Microsoft.Data.Sqlite 10.0.4 pulls the vulnerable
+         SQLitePCLRaw 2.1.11 (GHSA-2m69-gcr7-jv3q) transitively. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="SkiaSharp" Version="4.152.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.1" />
   </ItemGroup>

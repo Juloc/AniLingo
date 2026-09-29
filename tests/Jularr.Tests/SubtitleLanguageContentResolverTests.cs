@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Learning.Courses;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -138,7 +137,6 @@ public sealed class SubtitleLanguageContentResolverTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             if (System.IO.Directory.Exists(Directory))
             {
                 System.IO.Directory.Delete(Directory, recursive: true);

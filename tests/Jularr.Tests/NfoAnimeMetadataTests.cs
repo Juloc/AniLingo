@@ -6,7 +6,6 @@ using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Tracking;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -273,7 +272,6 @@ public sealed class NfoAnimeMetadataTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
 
             if (Directory.Exists(TempRoot))
             {

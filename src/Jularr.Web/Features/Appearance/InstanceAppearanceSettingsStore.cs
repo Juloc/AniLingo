@@ -65,17 +65,17 @@ public sealed class InstanceAppearanceSettingsStore(AppDbContext db)
                 """
                 INSERT INTO "InstanceAppearanceSettings" (
                     "Id", "DefaultThemeId", "AllowProfileThemeOverride", "AllowProfileAccentOverride", "UpdatedAt")
-                VALUES (1, $theme, $allowTheme, $allowAccent, $updatedAt)
+                VALUES (1, @theme, @allowTheme, @allowAccent, @updatedAt)
                 ON CONFLICT("Id") DO UPDATE SET
                     "DefaultThemeId" = excluded."DefaultThemeId",
                     "AllowProfileThemeOverride" = excluded."AllowProfileThemeOverride",
                     "AllowProfileAccentOverride" = excluded."AllowProfileAccentOverride",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$theme", normalized.DefaultThemeId);
-            Add(command, "$allowTheme", normalized.AllowProfileThemeOverride ? 1 : 0);
-            Add(command, "$allowAccent", normalized.AllowProfileAccentOverride ? 1 : 0);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@theme", normalized.DefaultThemeId);
+            Add(command, "@allowTheme", normalized.AllowProfileThemeOverride ? 1 : 0);
+            Add(command, "@allowAccent", normalized.AllowProfileAccentOverride ? 1 : 0);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);

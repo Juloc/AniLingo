@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Operations;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -58,7 +57,6 @@ public sealed class OperationCoverageTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -97,7 +95,6 @@ public sealed class OperationCoverageTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

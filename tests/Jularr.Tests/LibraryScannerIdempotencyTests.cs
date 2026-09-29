@@ -5,7 +5,6 @@ using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -133,7 +132,6 @@ public sealed class LibraryScannerIdempotencyTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
 
             if (Directory.Exists(tempRoot))
             {

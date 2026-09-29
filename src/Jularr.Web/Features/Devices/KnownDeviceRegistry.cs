@@ -108,9 +108,10 @@ public sealed class KnownDeviceRegistry(AppDbContext db, PlaybackStreamSessionSt
         {
             await db.Database.ExecuteSqlRawAsync(
                 """
-                INSERT OR IGNORE INTO "KnownDevices"
+                INSERT INTO "KnownDevices"
                     ("Id", "ProfileId", "ClientKind", "Label", "AppVersion", "UserAgent", "FirstSeenUtc", "LastSeenUtc")
                 VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {6})
+                ON CONFLICT DO NOTHING
                 """,
                 [id, profileId, normalizedKind, label!, appVersion!, userAgent!, now],
                 cancellationToken);

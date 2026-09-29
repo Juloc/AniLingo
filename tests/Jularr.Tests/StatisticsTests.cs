@@ -3,7 +3,6 @@ using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Vocabulary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -110,7 +109,6 @@ public sealed class StatisticsTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -167,7 +165,6 @@ public sealed class StatisticsTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

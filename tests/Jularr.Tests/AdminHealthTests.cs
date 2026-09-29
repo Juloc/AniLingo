@@ -8,7 +8,6 @@ using Jularr.Web.Features.Storage;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -160,7 +159,6 @@ public sealed class AdminHealthTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
             if (acquisitionDirectory.Exists)
             {

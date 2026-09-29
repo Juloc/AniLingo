@@ -40,7 +40,7 @@ public static class LearningCourseModelConfiguration
             entity.HasIndex(x => new { x.ProfileId, x.SourceLanguage, x.TargetLanguage }).IsUnique();
             entity.HasIndex(x => new { x.ProfileId, x.SourceLanguage })
                 .IsUnique()
-                .HasFilter("\"IsPrimary\" = 1");
+                .HasFilter("\"IsPrimary\"");
         });
 
         modelBuilder.Entity<LearningCard>(entity =>

@@ -15,12 +15,22 @@ using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Features.Watchlist;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Jularr.Web.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    // File modification times are compared byte-for-byte against the live file system to detect
+    // changes and to relink moved files. PostgreSQL timestamptz only keeps microseconds, which would
+    // truncate the file system's 100 ns ticks and make every rescan see a "changed" file. Storing
+    // these specific columns as round-trip ISO text preserves full precision (as the SQLite epoch did).
+    private static readonly ValueConverter<DateTime, string> FileTimestampConverter = new(
+        v => v.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+        v => DateTime.Parse(v, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToUniversalTime());
+
     public DbSet<LibraryRoot> LibraryRoots => Set<LibraryRoot>();
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
@@ -139,6 +149,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Path).HasMaxLength(2048);
+            entity.Property(x => x.LastWriteTimeUtc).HasConversion(FileTimestampConverter);
             entity.HasOne<LibraryRoot>().WithMany().HasForeignKey(x => x.LibraryRootId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.Path).IsUnique();
@@ -156,6 +167,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.VideoProfile).HasMaxLength(80);
             entity.Property(x => x.PixelFormat).HasMaxLength(40);
             entity.Property(x => x.DynamicRange).HasMaxLength(24);
+            entity.Property(x => x.SourceLastWriteTimeUtc).HasConversion(FileTimestampConverter);
             entity.HasOne<MediaFile>().WithOne().HasForeignKey<MediaAnalysis>(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.Status, x.ProbeVersion });
         });

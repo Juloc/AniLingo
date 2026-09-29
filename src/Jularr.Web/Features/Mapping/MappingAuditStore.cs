@@ -44,15 +44,15 @@ public sealed class MappingAuditStore(AppDbContext db)
                 """
                 INSERT INTO "AnimeMappingAuditEntries"
                     ("Id", "AnimeId", "Action", "Summary", "Details", "Actor", "CreatedAt")
-                VALUES ($id, $anime, $action, $summary, $details, $actor, $now);
+                VALUES (@id, @anime, @action, @summary, @details, @actor, @now);
                 """;
-            Add(command, "$id", Key(Guid.NewGuid()));
-            Add(command, "$anime", Key(animeId));
-            Add(command, "$action", (action ?? "").Trim());
-            Add(command, "$summary", (summary ?? "").Trim());
-            Add(command, "$details", details ?? "");
-            Add(command, "$actor", (actor ?? "").Trim());
-            Add(command, "$now", DateTimeOffset.UtcNow.UtcDateTime);
+            Add(command, "@id", Key(Guid.NewGuid()));
+            Add(command, "@anime", Key(animeId));
+            Add(command, "@action", (action ?? "").Trim());
+            Add(command, "@summary", (summary ?? "").Trim());
+            Add(command, "@details", details ?? "");
+            Add(command, "@actor", (actor ?? "").Trim());
+            Add(command, "@now", DateTimeOffset.UtcNow.UtcDateTime);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return 0;
         }, cancellationToken);
@@ -69,12 +69,12 @@ public sealed class MappingAuditStore(AppDbContext db)
                 """
                 SELECT "Id", "AnimeId", "Action", "Summary", "Details", "Actor", "CreatedAt"
                 FROM "AnimeMappingAuditEntries"
-                WHERE "AnimeId" = $anime
+                WHERE "AnimeId" = @anime
                 ORDER BY "CreatedAt" DESC, "Id" DESC
-                LIMIT $limit;
+                LIMIT @limit;
                 """;
-            Add(command, "$anime", Key(animeId));
-            Add(command, "$limit", Math.Clamp(limit, 1, 500));
+            Add(command, "@anime", Key(animeId));
+            Add(command, "@limit", Math.Clamp(limit, 1, 500));
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {

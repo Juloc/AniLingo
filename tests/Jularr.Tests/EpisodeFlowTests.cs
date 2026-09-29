@@ -11,7 +11,6 @@ namespace Jularr.Tests;
 [TestClass]
 public sealed class EpisodeFlowTests
 {
-    private const string MigrationId = "20260925213046_AddEpisodePlaybackFlow";
 
     [TestMethod]
     public void ResolverFollowsLocalSeasonAndEpisodeOrder()
@@ -150,46 +149,6 @@ public sealed class EpisodeFlowTests
         Assert.AreEqual(50, progress.Percent);
     }
 
-    [TestMethod]
-    public async Task MigrationKeepsExistingProgressAndAddsFlowTables()
-    {
-        await using var fixture = await EpisodeFlowFixture.CreateAsync(migrate: false);
-        var migrations = fixture.Db.Database.GetMigrations().ToArray();
-        var index = Array.IndexOf(migrations, MigrationId);
-        Assert.IsTrue(index > 0, $"Expected migration {MigrationId}.");
-
-        await fixture.Db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
-
-        var anime = new Anime { Key = "upgrade", Title = "Upgrade" };
-        var episode = new Episode { AnimeId = anime.Id, SeasonNumber = 1, Number = 1, Title = "One" };
-        fixture.Db.AddRange(anime, episode);
-        fixture.Db.Add(new EpisodeProgress
-        {
-            ProfileId = "reader",
-            EpisodeId = episode.Id,
-            PositionMs = 300_000,
-            DurationMs = 1_400_000,
-            IsCompleted = false
-        });
-        await fixture.Db.SaveChangesAsync();
-
-        await DatabaseMigrationBridge.UpgradeAsync(fixture.Db);
-        await fixture.ReopenAsync();
-
-        CollectionAssert.Contains(
-            (await fixture.Db.Database.GetAppliedMigrationsAsync()).ToList(),
-            MigrationId);
-
-        var service = fixture.Service("reader");
-        var progress = await service.GetAsync(episode.Id);
-        Assert.IsNotNull(progress);
-        Assert.AreEqual(300_000, progress.ResumePositionMs);
-        Assert.IsFalse((await service.GetPreferencesAsync()).AutoplayNext);
-        Assert.AreEqual(0, (await service.GetHistoryAsync()).Count);
-
-        await service.UpdateAsync(episode.Id, new EpisodeProgressUpdate(360_000, 1_400_000, false));
-        Assert.AreEqual(1, (await service.GetHistoryAsync()).Count);
-    }
 
     private static EpisodeOrderKey Key(int season, int number) =>
         new(Guid.NewGuid(), season, number);

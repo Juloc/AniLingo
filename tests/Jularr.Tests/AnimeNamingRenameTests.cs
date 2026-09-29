@@ -13,7 +13,6 @@ using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -631,7 +630,6 @@ public sealed class AnimeNamingRenameTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             if (Directory.Exists(TempRoot))
             {
                 Directory.Delete(TempRoot, recursive: true);

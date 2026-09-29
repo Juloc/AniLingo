@@ -5,7 +5,6 @@ using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Tracking;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -247,7 +246,6 @@ public sealed class AnimeMetadataServiceProviderRoleTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(root, recursive: true);

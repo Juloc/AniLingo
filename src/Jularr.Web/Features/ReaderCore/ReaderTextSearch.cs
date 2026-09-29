@@ -60,7 +60,7 @@ public static class ReaderTextSearch
         var originals = await db.NovelChapters
             .AsNoTracking()
             .Where(x => x.WorkId == workId
-                && EF.Functions.Like(x.OriginalText, pattern, "\\"))
+                && EF.Functions.ILike(x.OriginalText, pattern, "\\"))
             .OrderBy(x => x.Number)
             .Select(x => new { x.Id, x.Number, x.Title, Text = x.OriginalText })
             .Take(MaxChaptersScanned)
@@ -82,7 +82,7 @@ public static class ReaderTextSearch
                 where chapter.WorkId == workId
                     && translation.TargetLanguage == translationLanguage
                     && translation.SourceHash == chapter.SourceHash
-                    && EF.Functions.Like(translation.Text, pattern, "\\")
+                    && EF.Functions.ILike(translation.Text, pattern, "\\")
                 orderby chapter.Number, translation.CreatedAt descending
                 select new { chapter.Id, chapter.Number, chapter.Title, translation.Text })
                 .Take(MaxChaptersScanned * 2)

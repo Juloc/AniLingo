@@ -5,7 +5,6 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.ReadingAcquisition;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -274,7 +273,6 @@ public sealed class MangaCompletedDownloadImportTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
         }
     }

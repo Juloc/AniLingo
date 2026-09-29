@@ -71,10 +71,10 @@ public sealed class MediaArtworkAssetStore(AppDbContext db)
                 SELECT "Scope", "OwnerId", "SeasonNumber", "Kind", "FileName", "Source",
                        "SourceIdentity", "FileLength", "FileLastWriteTimeUtc"
                 FROM "MediaArtworkAssets"
-                WHERE "Scope" = $scope AND "OwnerId" = $owner;
+                WHERE "Scope" = @scope AND "OwnerId" = @owner;
                 """;
-            Add(command, "$scope", scope);
-            Add(command, "$owner", ownerId.ToString("D"));
+            Add(command, "@scope", scope);
+            Add(command, "@owner", ownerId.ToString("D"));
 
             var rows = new List<MediaArtworkAsset>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -104,7 +104,7 @@ public sealed class MediaArtworkAssetStore(AppDbContext db)
                 INSERT INTO "MediaArtworkAssets" (
                     "Scope", "OwnerId", "SeasonNumber", "Kind", "FileName", "Source",
                     "SourceIdentity", "FileLength", "FileLastWriteTimeUtc", "UpdatedAt")
-                VALUES ($scope, $owner, $season, $kind, $file, $source, $identity, $length, $written, $now)
+                VALUES (@scope, @owner, @season, @kind, @file, @source, @identity, @length, @written, @now)
                 ON CONFLICT("Scope", "OwnerId", "SeasonNumber", "Kind") DO UPDATE SET
                     "FileName" = excluded."FileName",
                     "Source" = excluded."Source",
@@ -113,16 +113,16 @@ public sealed class MediaArtworkAssetStore(AppDbContext db)
                     "FileLastWriteTimeUtc" = excluded."FileLastWriteTimeUtc",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$scope", asset.Scope);
-            Add(command, "$owner", asset.OwnerId.ToString("D"));
-            Add(command, "$season", asset.SeasonNumber);
-            Add(command, "$kind", asset.Kind);
-            Add(command, "$file", asset.FileName);
-            Add(command, "$source", asset.Source);
-            Add(command, "$identity", asset.SourceIdentity);
-            Add(command, "$length", asset.FileLength);
-            Add(command, "$written", asset.FileLastWriteTimeUtc);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@scope", asset.Scope);
+            Add(command, "@owner", asset.OwnerId.ToString("D"));
+            Add(command, "@season", asset.SeasonNumber);
+            Add(command, "@kind", asset.Kind);
+            Add(command, "@file", asset.FileName);
+            Add(command, "@source", asset.Source);
+            Add(command, "@identity", asset.SourceIdentity);
+            Add(command, "@length", asset.FileLength);
+            Add(command, "@written", asset.FileLastWriteTimeUtc);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);

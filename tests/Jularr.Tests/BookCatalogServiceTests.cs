@@ -4,7 +4,6 @@ using System.Text;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -131,7 +130,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -335,7 +333,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -438,7 +435,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -493,7 +489,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -571,7 +566,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -655,7 +649,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -747,7 +740,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
             if (Directory.Exists(covers))
             {
@@ -816,7 +808,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
             if (Directory.Exists(covers))
             {
@@ -869,7 +860,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -932,7 +922,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -1034,7 +1023,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -1157,7 +1145,6 @@ public sealed class BookCatalogServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

@@ -51,16 +51,16 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "AcquisitionAccessPolicies" ("Kind", "UserAddMode", "ManualAddMode", "UpdatedAt")
-                VALUES ($kind, $userAdd, $manual, $now)
+                VALUES (@kind, @userAdd, @manual, @now)
                 ON CONFLICT("Kind") DO UPDATE SET
                     "UserAddMode" = excluded."UserAddMode",
                     "ManualAddMode" = excluded."ManualAddMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$kind", AcquisitionAccessNames.Kind(policy.Kind));
-            Add(command, "$userAdd", AcquisitionAccessNames.UserAdd(policy.UserAdd));
-            Add(command, "$manual", AcquisitionAccessNames.Manual(policy.Manual));
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@kind", AcquisitionAccessNames.Kind(policy.Kind));
+            Add(command, "@userAdd", AcquisitionAccessNames.UserAdd(policy.UserAdd));
+            Add(command, "@manual", AcquisitionAccessNames.Manual(policy.Manual));
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -74,29 +74,29 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         QuerySingleAsync(
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
-            WHERE "Kind" = $kind AND "Provider" = $provider AND "ExternalId" = $externalId
+            WHERE "Kind" = @kind AND "Provider" = @provider AND "ExternalId" = @externalId
               AND "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing')
             LIMIT 1;
             """,
             command =>
             {
-                Add(command, "$kind", AcquisitionAccessNames.Kind(kind));
-                Add(command, "$provider", provider);
-                Add(command, "$externalId", externalId);
+                Add(command, "@kind", AcquisitionAccessNames.Kind(kind));
+                Add(command, "@provider", provider);
+                Add(command, "@externalId", externalId);
             },
             cancellationToken);
 
     public Task<AcquisitionRequest?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         QuerySingleAsync(
-            $"""SELECT {Columns} FROM "AcquisitionRequests" WHERE "Id" = $id LIMIT 1;""",
-            command => Add(command, "$id", id.ToString()),
+            $"""SELECT {Columns} FROM "AcquisitionRequests" WHERE "Id" = @id LIMIT 1;""",
+            command => Add(command, "@id", id.ToString()),
             cancellationToken);
 
     /// <summary>The request whose current download is this operation, if any.</summary>
     public Task<AcquisitionRequest?> FindByOperationAsync(Guid operationId, CancellationToken cancellationToken) =>
         QuerySingleAsync(
-            $"""SELECT {Columns} FROM "AcquisitionRequests" WHERE "OperationId" = $operationId ORDER BY "UpdatedAt" DESC LIMIT 1;""",
-            command => Add(command, "$operationId", operationId.ToString()),
+            $"""SELECT {Columns} FROM "AcquisitionRequests" WHERE "OperationId" = @operationId ORDER BY "UpdatedAt" DESC LIMIT 1;""",
+            command => Add(command, "@operationId", operationId.ToString()),
             cancellationToken);
 
     public Task<IReadOnlyList<AcquisitionRequest>> ListAsync(
@@ -108,18 +108,18 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
-            WHERE ($kind IS NULL OR "Kind" = $kind)
-              AND ($profile IS NULL OR "RequestedByProfileId" = $profile)
-              AND ($openOnly = 0 OR "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing'))
+            WHERE (@kind::text IS NULL OR "Kind" = @kind)
+              AND (@profile::text IS NULL OR "RequestedByProfileId" = @profile)
+              AND (@openOnly = 0 OR "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing'))
             ORDER BY CASE "Status" WHEN 'pending' THEN 0 ELSE 1 END, "UpdatedAt" DESC
-            LIMIT $limit;
+            LIMIT @limit;
             """,
             command =>
             {
-                Add(command, "$kind", kind is { } value ? AcquisitionAccessNames.Kind(value) : null);
-                Add(command, "$profile", requestedByProfileId);
-                Add(command, "$openOnly", openOnly ? 1 : 0);
-                Add(command, "$limit", Math.Clamp(limit, 1, 500));
+                Add(command, "@kind", kind is { } value ? AcquisitionAccessNames.Kind(value) : null);
+                Add(command, "@profile", requestedByProfileId);
+                Add(command, "@openOnly", openOnly ? 1 : 0);
+                Add(command, "@limit", Math.Clamp(limit, 1, 500));
             },
             cancellationToken);
 
@@ -129,9 +129,9 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
-            WHERE "Kind" = $kind AND "Status" = 'downloading';
+            WHERE "Kind" = @kind AND "Status" = 'downloading';
             """,
-            command => Add(command, "$kind", AcquisitionAccessNames.Kind(kind)),
+            command => Add(command, "@kind", AcquisitionAccessNames.Kind(kind)),
             cancellationToken);
 
     public Task<IReadOnlyList<AcquisitionRequest>> ListByStatusAsync(
@@ -141,13 +141,13 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
-            WHERE "Kind" = $kind AND "Status" = $status
+            WHERE "Kind" = @kind AND "Status" = @status
             ORDER BY "UpdatedAt";
             """,
             command =>
             {
-                Add(command, "$kind", AcquisitionAccessNames.Kind(kind));
-                Add(command, "$status", AcquisitionAccessNames.Status(status));
+                Add(command, "@kind", AcquisitionAccessNames.Kind(kind));
+                Add(command, "@status", AcquisitionAccessNames.Status(status));
             },
             cancellationToken);
 
@@ -156,9 +156,9 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = """UPDATE "AcquisitionRequests" SET "PayloadJson" = $payload WHERE "Id" = $id;""";
-            Add(command, "$id", id.ToString());
-            Add(command, "$payload", payloadJson);
+            command.CommandText = """UPDATE "AcquisitionRequests" SET "PayloadJson" = @payload WHERE "Id" = @id;""";
+            Add(command, "@id", id.ToString());
+            Add(command, "@payload", payloadJson);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -204,22 +204,22 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             command.CommandText =
                 $"""
                 INSERT INTO "AcquisitionRequests" ({Columns})
-                VALUES ($id, $kind, $provider, $externalId, $title, $subtitle, $cover, $payload,
-                        $requestedBy, $status, NULL, NULL, NULL, $now, $now, $decidedBy, $decidedAt);
+                VALUES (@id, @kind, @provider, @externalId, @title, @subtitle, @cover, @payload,
+                        @requestedBy, @status, NULL, NULL, NULL, @now, @now, @decidedBy, @decidedAt);
                 """;
-            Add(command, "$id", request.Id.ToString());
-            Add(command, "$kind", AcquisitionAccessNames.Kind(request.Kind));
-            Add(command, "$provider", request.Provider);
-            Add(command, "$externalId", request.ExternalId);
-            Add(command, "$title", request.Title);
-            Add(command, "$subtitle", request.Subtitle);
-            Add(command, "$cover", request.CoverImageUrl);
-            Add(command, "$payload", request.PayloadJson);
-            Add(command, "$requestedBy", request.RequestedByProfileId);
-            Add(command, "$status", AcquisitionAccessNames.Status(request.Status));
-            Add(command, "$now", now);
-            Add(command, "$decidedBy", decidedByProfileId);
-            Add(command, "$decidedAt", request.DecidedAt);
+            Add(command, "@id", request.Id.ToString());
+            Add(command, "@kind", AcquisitionAccessNames.Kind(request.Kind));
+            Add(command, "@provider", request.Provider);
+            Add(command, "@externalId", request.ExternalId);
+            Add(command, "@title", request.Title);
+            Add(command, "@subtitle", request.Subtitle);
+            Add(command, "@cover", request.CoverImageUrl);
+            Add(command, "@payload", request.PayloadJson);
+            Add(command, "@requestedBy", request.RequestedByProfileId);
+            Add(command, "@status", AcquisitionAccessNames.Status(request.Status));
+            Add(command, "@now", now);
+            Add(command, "@decidedBy", decidedByProfileId);
+            Add(command, "@decidedAt", request.DecidedAt);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -241,22 +241,22 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             command.CommandText =
                 """
                 UPDATE "AcquisitionRequests"
-                SET "Status" = $status,
-                    "StatusMessage" = $message,
-                    "OperationId" = COALESCE($operationId, "OperationId"),
-                    "ResultUrl" = COALESCE($resultUrl, "ResultUrl"),
-                    "DecidedByProfileId" = COALESCE($decidedBy, "DecidedByProfileId"),
-                    "DecidedAt" = CASE WHEN $decidedBy IS NULL THEN "DecidedAt" ELSE $now END,
-                    "UpdatedAt" = $now
-                WHERE "Id" = $id;
+                SET "Status" = @status,
+                    "StatusMessage" = @message,
+                    "OperationId" = COALESCE(@operationId, "OperationId"),
+                    "ResultUrl" = COALESCE(@resultUrl, "ResultUrl"),
+                    "DecidedByProfileId" = COALESCE(@decidedBy, "DecidedByProfileId"),
+                    "DecidedAt" = CASE WHEN @decidedBy::text IS NULL THEN "DecidedAt" ELSE @now END,
+                    "UpdatedAt" = @now
+                WHERE "Id" = @id;
                 """;
-            Add(command, "$id", id.ToString());
-            Add(command, "$status", AcquisitionAccessNames.Status(status));
-            Add(command, "$message", message);
-            Add(command, "$operationId", operationId?.ToString());
-            Add(command, "$resultUrl", resultUrl);
-            Add(command, "$decidedBy", decidedByProfileId);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@id", id.ToString());
+            Add(command, "@status", AcquisitionAccessNames.Status(status));
+            Add(command, "@message", message);
+            Add(command, "@operationId", operationId?.ToString());
+            Add(command, "@resultUrl", resultUrl);
+            Add(command, "@decidedBy", decidedByProfileId);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);

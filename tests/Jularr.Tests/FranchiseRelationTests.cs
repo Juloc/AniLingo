@@ -4,7 +4,6 @@ using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -343,7 +342,6 @@ public sealed class FranchiseRelationTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(directory, recursive: true);

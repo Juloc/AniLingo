@@ -3,7 +3,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReaderCore;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -183,7 +182,6 @@ public sealed class BookReaderFrameTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

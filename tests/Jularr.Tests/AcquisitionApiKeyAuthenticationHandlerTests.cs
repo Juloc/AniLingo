@@ -6,7 +6,6 @@ using Jularr.Web.Features.Auth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -44,7 +43,6 @@ public sealed class AcquisitionApiKeyAuthenticationHandlerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -68,7 +66,6 @@ public sealed class AcquisitionApiKeyAuthenticationHandlerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -97,7 +94,6 @@ public sealed class AcquisitionApiKeyAuthenticationHandlerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -122,7 +118,6 @@ public sealed class AcquisitionApiKeyAuthenticationHandlerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -147,7 +142,6 @@ public sealed class AcquisitionApiKeyAuthenticationHandlerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

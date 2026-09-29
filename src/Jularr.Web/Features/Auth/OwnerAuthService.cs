@@ -406,8 +406,9 @@ public sealed class OwnerAuthService(
         CancellationToken cancellationToken) =>
         db.Database.ExecuteSqlRawAsync(
             """
-            INSERT OR IGNORE INTO "AccountSessionStates" ("AccountId", "Version")
+            INSERT INTO "AccountSessionStates" ("AccountId", "Version")
             VALUES ({0}, 1)
+            ON CONFLICT DO NOTHING
             """,
             new object[] { accountId },
             cancellationToken);

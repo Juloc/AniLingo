@@ -2,7 +2,6 @@ using System.IO.Compression;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Manga;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -65,7 +64,6 @@ public sealed class MangaUploadTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }

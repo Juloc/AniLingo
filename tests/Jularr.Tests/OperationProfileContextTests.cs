@@ -4,7 +4,6 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -122,7 +121,6 @@ public sealed class OperationProfileContextTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);

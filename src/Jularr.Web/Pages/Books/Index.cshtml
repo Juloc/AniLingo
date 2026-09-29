@@ -106,7 +106,11 @@
                         <a class="book-tile-cover" href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
                             @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
                             {
-                                <img src="@book.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                @* Locally imported covers are served as a small cached WebP thumbnail (#570). *@
+                                var coverSrc = book.CoverImageUrl.StartsWith("/Books/Cover/", StringComparison.Ordinal)
+                                    ? book.CoverImageUrl + "?w=320"
+                                    : book.CoverImageUrl;
+                                <img src="@coverSrc" alt="" loading="lazy" referrerpolicy="no-referrer" />
                             }
                             else
                             {

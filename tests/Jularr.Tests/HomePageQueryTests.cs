@@ -4,7 +4,6 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Pages;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -66,7 +65,6 @@ public sealed class HomePageQueryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

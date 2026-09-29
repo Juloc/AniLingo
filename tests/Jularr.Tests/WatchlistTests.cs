@@ -3,7 +3,6 @@ using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Watchlist;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -261,7 +260,6 @@ public sealed class WatchlistTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(directory, recursive: true);

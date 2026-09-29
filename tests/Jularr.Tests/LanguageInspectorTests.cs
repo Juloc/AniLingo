@@ -6,7 +6,6 @@ using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Vocabulary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -498,7 +497,6 @@ internal sealed class LanguageInspectorFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
         if (Directory.Exists(directory))
         {
             Directory.Delete(directory, recursive: true);

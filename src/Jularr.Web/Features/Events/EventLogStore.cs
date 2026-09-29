@@ -29,9 +29,9 @@ public sealed class EventLogStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO Events (
-                        Id, Category, Audience, ProfileId, MediaType, SubjectId,
-                        MessageParamsJson, Severity, DeepLink, DedupKey, RelatedOperationId, CreatedAtUtc)
+                    INSERT INTO "Events" (
+                        "Id", "Category", "Audience", "ProfileId", "MediaType", "SubjectId",
+                        "MessageParamsJson", "Severity", "DeepLink", "DedupKey", "RelatedOperationId", "CreatedAtUtc")
                     VALUES (
                         @id, @category, @audience, @profileId, @mediaType, @subjectId,
                         @messageParamsJson, @severity, @deepLink, @dedupKey, @relatedOperationId, @createdAt);
@@ -64,10 +64,10 @@ public sealed class EventLogStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    SELECT Id, Category, Audience, ProfileId, MediaType, SubjectId,
-                           MessageParamsJson, Severity, DeepLink, DedupKey, RelatedOperationId, CreatedAtUtc
-                    FROM Events
-                    ORDER BY CreatedAtUtc DESC
+                    SELECT "Id", "Category", "Audience", "ProfileId", "MediaType", "SubjectId",
+                           "MessageParamsJson", "Severity", "DeepLink", "DedupKey", "RelatedOperationId", "CreatedAtUtc"
+                    FROM "Events"
+                    ORDER BY "CreatedAtUtc" DESC
                     LIMIT {take};
                     """;
 

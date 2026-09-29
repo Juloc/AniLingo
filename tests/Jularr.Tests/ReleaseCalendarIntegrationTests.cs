@@ -8,7 +8,6 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -450,7 +449,6 @@ public sealed class ReleaseCalendarIntegrationTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(directory, recursive: true);

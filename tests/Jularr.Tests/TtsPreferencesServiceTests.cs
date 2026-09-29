@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Speech;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -27,7 +26,6 @@ public sealed class TtsPreferencesServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -69,7 +67,6 @@ public sealed class TtsPreferencesServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -101,7 +98,6 @@ public sealed class TtsPreferencesServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -128,7 +124,6 @@ public sealed class TtsPreferencesServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

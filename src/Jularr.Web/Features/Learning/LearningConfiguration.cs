@@ -216,14 +216,14 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                     """
                     SELECT "ModeOverride"
                     FROM "LearningScopeModes"
-                    WHERE "ProfileId" = $profileId
-                      AND "ScopeType" = $scopeType
-                      AND "ScopeKey" = $scopeKey
+                    WHERE "ProfileId" = @profileId
+                      AND "ScopeType" = @scopeType
+                      AND "ScopeKey" = @scopeKey
                     LIMIT 1;
                     """;
-                Add(command, "$profileId", profileId);
-                Add(command, "$scopeType", scope.Kind.ToString());
-                Add(command, "$scopeKey", scope.Key);
+                Add(command, "@profileId", profileId);
+                Add(command, "@scopeType", scope.Kind.ToString());
+                Add(command, "@scopeKey", scope.Key);
 
                 var value = await command.ExecuteScalarAsync(cancellationToken);
                 if (value is string raw
@@ -245,13 +245,13 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                     """
                     SELECT "Capability", "IsEnabled"
                     FROM "LearningCapabilityOverrides"
-                    WHERE "ProfileId" = $profileId
-                      AND "ScopeType" = $scopeType
-                      AND "ScopeKey" = $scopeKey;
+                    WHERE "ProfileId" = @profileId
+                      AND "ScopeType" = @scopeType
+                      AND "ScopeKey" = @scopeKey;
                     """;
-                Add(command, "$profileId", profileId);
-                Add(command, "$scopeType", scope.Kind.ToString());
-                Add(command, "$scopeKey", scope.Key);
+                Add(command, "@profileId", profileId);
+                Add(command, "@scopeType", scope.Kind.ToString());
+                Add(command, "@scopeKey", scope.Key);
 
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
@@ -308,13 +308,13 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                 delete.CommandText =
                     """
                     DELETE FROM "LearningScopeModes"
-                    WHERE "ProfileId" = $profileId
-                      AND "ScopeType" = $scopeType
-                      AND "ScopeKey" = $scopeKey;
+                    WHERE "ProfileId" = @profileId
+                      AND "ScopeType" = @scopeType
+                      AND "ScopeKey" = @scopeKey;
                     """;
-                Add(delete, "$profileId", profileId);
-                Add(delete, "$scopeType", scope.Kind.ToString());
-                Add(delete, "$scopeKey", scope.Key);
+                Add(delete, "@profileId", profileId);
+                Add(delete, "@scopeType", scope.Kind.ToString());
+                Add(delete, "@scopeKey", scope.Key);
                 await delete.ExecuteNonQueryAsync(cancellationToken);
                 return;
             }
@@ -325,16 +325,16 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                 INSERT INTO "LearningScopeModes" (
                     "ProfileId", "ScopeType", "ScopeKey", "ModeOverride", "UpdatedAt")
                 VALUES (
-                    $profileId, $scopeType, $scopeKey, $mode, $updatedAt)
+                    @profileId, @scopeType, @scopeKey, @mode, @updatedAt)
                 ON CONFLICT("ProfileId", "ScopeType", "ScopeKey") DO UPDATE SET
                     "ModeOverride" = excluded."ModeOverride",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$scopeType", scope.Kind.ToString());
-            Add(command, "$scopeKey", scope.Key);
-            Add(command, "$mode", mode.Value.ToString());
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@scopeType", scope.Kind.ToString());
+            Add(command, "@scopeKey", scope.Key);
+            Add(command, "@mode", mode.Value.ToString());
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -370,15 +370,15 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                 delete.CommandText =
                     """
                     DELETE FROM "LearningCapabilityOverrides"
-                    WHERE "ProfileId" = $profileId
-                      AND "ScopeType" = $scopeType
-                      AND "ScopeKey" = $scopeKey
-                      AND "Capability" = $capability;
+                    WHERE "ProfileId" = @profileId
+                      AND "ScopeType" = @scopeType
+                      AND "ScopeKey" = @scopeKey
+                      AND "Capability" = @capability;
                     """;
-                Add(delete, "$profileId", profileId);
-                Add(delete, "$scopeType", scope.Kind.ToString());
-                Add(delete, "$scopeKey", scope.Key);
-                Add(delete, "$capability", capability.ToString());
+                Add(delete, "@profileId", profileId);
+                Add(delete, "@scopeType", scope.Kind.ToString());
+                Add(delete, "@scopeKey", scope.Key);
+                Add(delete, "@capability", capability.ToString());
                 await delete.ExecuteNonQueryAsync(cancellationToken);
                 return;
             }
@@ -390,19 +390,19 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                     "ProfileId", "ScopeType", "ScopeKey",
                     "Capability", "IsEnabled", "UpdatedAt")
                 VALUES (
-                    $profileId, $scopeType, $scopeKey,
-                    $capability, $isEnabled, $updatedAt)
+                    @profileId, @scopeType, @scopeKey,
+                    @capability, @isEnabled, @updatedAt)
                 ON CONFLICT(
                     "ProfileId", "ScopeType", "ScopeKey", "Capability") DO UPDATE SET
                     "IsEnabled" = excluded."IsEnabled",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$scopeType", scope.Kind.ToString());
-            Add(command, "$scopeKey", scope.Key);
-            Add(command, "$capability", capability.ToString());
-            Add(command, "$isEnabled", enabled.Value ? 1 : 0);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@scopeType", scope.Kind.ToString());
+            Add(command, "@scopeKey", scope.Key);
+            Add(command, "@capability", capability.ToString());
+            Add(command, "@isEnabled", enabled.Value ? 1 : 0);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -516,18 +516,18 @@ public sealed class LearningConfigurationStore(AppDbContext db)
                     EXISTS(
                         SELECT 1
                         FROM "LearningScopeModes"
-                        WHERE "ProfileId" = $profileId
+                        WHERE "ProfileId" = @profileId
                           AND "ScopeType" <> 'Profile'
                           AND "ModeOverride" <> 'Off'
                     )
                     OR EXISTS(
                         SELECT 1
                         FROM "LearningCapabilityOverrides"
-                        WHERE "ProfileId" = $profileId
+                        WHERE "ProfileId" = @profileId
                           AND "IsEnabled" = 1
                     );
                 """;
-            Add(command, "$profileId", profileId);
+            Add(command, "@profileId", profileId);
             var value = await command.ExecuteScalarAsync(cancellationToken);
             return Convert.ToInt32(value) != 0;
         }

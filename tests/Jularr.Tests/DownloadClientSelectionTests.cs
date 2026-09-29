@@ -204,7 +204,6 @@ public sealed class DownloadClientSelectionTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Directory.Delete(recursive: true);
         }
     }

@@ -36,9 +36,9 @@ public sealed class NotificationSubscriptionStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    SELECT Category, Mode
-                    FROM NotificationSubscriptions
-                    WHERE ProfileId = @profileId;
+                    SELECT "Category", "Mode"
+                    FROM "NotificationSubscriptions"
+                    WHERE "ProfileId" = @profileId;
                     """;
                 Add(command, "@profileId", profileId.Trim());
 
@@ -77,11 +77,11 @@ public sealed class NotificationSubscriptionStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO NotificationSubscriptions (ProfileId, Category, Mode, UpdatedAtUtc)
+                    INSERT INTO "NotificationSubscriptions" ("ProfileId", "Category", "Mode", "UpdatedAtUtc")
                     VALUES (@profileId, @category, @mode, @now)
-                    ON CONFLICT(ProfileId, Category) DO UPDATE SET
-                        Mode = excluded.Mode,
-                        UpdatedAtUtc = excluded.UpdatedAtUtc;
+                    ON CONFLICT("ProfileId", "Category") DO UPDATE SET
+                        "Mode" = excluded."Mode",
+                        "UpdatedAtUtc" = excluded."UpdatedAtUtc";
                     """;
                 Add(command, "@profileId", profileId.Trim());
                 Add(command, "@category", (int)category);

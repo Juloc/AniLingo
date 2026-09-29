@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Infrastructure;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -356,7 +355,6 @@ public sealed class NovelAnnotationPolishTests
         public void Dispose()
         {
             Db.Dispose();
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
