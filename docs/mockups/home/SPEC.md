@@ -168,3 +168,8 @@ Those belong to Admin.
 ## Implementation rule
 
 The mockups are binding visual references for layout/hierarchy. Agents may adapt exact spacing to responsive constraints but must not redesign Home without updating this specification and receiving new approved mockups.
+
+## Canonical identity on Home rows
+
+Recommendation rows use the same canonical identity resolution as Discover/Search. For Anime/Series, one canonical Work is shown once by default even when AniList or another provider returns separate season/part entries. Opening a provider-derived recommendation resolves to the canonical Work and, when applicable, the matching season/presentation target. Home must not create provider-specific duplicate cards that disagree with Discover or Library.
+
