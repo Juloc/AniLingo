@@ -34,7 +34,7 @@ internal sealed class GlobalSearchFixture : IAsyncDisposable
     {
         Db = db;
         this.dataRoot = dataRoot;
-        Monitoring = new AnimeMonitoringStore(dataRoot);
+        Monitoring = new MonitoringStore(dataRoot);
         Requests = new AcquisitionAccessStore(db);
         Works = new WorkService(db);
         Bridge = new LegacyWorkBridge(db, Works, new WorkStructureService(db));
@@ -42,7 +42,7 @@ internal sealed class GlobalSearchFixture : IAsyncDisposable
     }
 
     public AppDbContext Db { get; }
-    public AnimeMonitoringStore Monitoring { get; }
+    public MonitoringStore Monitoring { get; }
     public AcquisitionAccessStore Requests { get; }
     public WorkService Works { get; }
     public LegacyWorkBridge Bridge { get; }
@@ -290,11 +290,11 @@ internal sealed class GlobalSearchFixture : IAsyncDisposable
     public Task MonitorAnimeAsync(Anime anime, bool wanted = false) =>
         Monitoring.UpdateAsync(state =>
         {
-            state.Anime[anime.Key] = new AnimeMonitorSettings(anime.Key, true, false, [], []);
+            state.Anime[anime.Key] = new MonitorSettings(anime.Key, true, false, [], []);
             if (wanted)
             {
-                var key = new AnimeEpisodeKey(anime.Key, 1, 1);
-                state.Wanted[key.ToString()] = new AnimeWantedEpisode(key, AnimeWantedReason.Missing, Stamp);
+                var key = MonitoredUnitKey.ForEpisode(anime.Key, 1, 1);
+                state.Wanted[key.ToString()] = new WantedUnit(key, WantedReason.Missing, Stamp);
             }
 
             return state;

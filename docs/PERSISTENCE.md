@@ -211,8 +211,9 @@ server, rendered at `/Search`. It never calls a provider, so it works when every
   (`MediaSearchFactsLoader`, a fixed number of queries per type, never one per title) using the
   same definitions as `MediaFactsService`: normalised audio/subtitle/text languages, the household
   content language for manga and novels, provider status. Monitored comes from the anime
-  monitoring store, wanted from wanted anime episodes or an open acquisition request naming the
-  title's provider id. A filter on an unknown fact (no year, no genre, no language) never matches;
+  `MonitoringStore` (the other kinds' per-kind stores are not populated by any pipeline yet, so
+  nothing else is monitored), wanted from wanted anime units or an open acquisition request
+  naming the title's provider id. A filter on an unknown fact (no year, no genre, no language) never matches;
   franchises carry no facts and drop out under a fact filter. Genres are only stored for novels and
   books today, so a genre filter can only match those.
 - **Remote half (follow-up).** Provider results merge into the same list by resolving their

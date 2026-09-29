@@ -26,7 +26,7 @@ namespace Jularr.Web.Features.Search;
 /// </summary>
 internal sealed class MediaSearchFactsLoader(
     AppDbContext db,
-    AnimeMonitoringStore monitoring,
+    MonitoringStore monitoring,
     AcquisitionAccessStore requests)
 {
     private readonly record struct RequestKey(MediaAcquisitionKind Kind, string Provider, string ExternalId);

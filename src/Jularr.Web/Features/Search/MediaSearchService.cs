@@ -35,7 +35,7 @@ namespace Jularr.Web.Features.Search;
 /// </summary>
 public sealed class MediaSearchService(
     AppDbContext db,
-    AnimeMonitoringStore monitoring,
+    MonitoringStore monitoring,
     AcquisitionAccessStore requests)
 {
     public const int DefaultLimit = 40;
