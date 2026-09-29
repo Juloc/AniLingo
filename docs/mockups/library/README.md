@@ -257,3 +257,8 @@ The next Library mockup must show:
 - cleaned filter model
 - language-aware cards for video, written media and audiobook
 - at least one example where the preferred language is unavailable and fallback languages are displayed
+
+## Anime identity and provider presentation
+
+Library identity is canonical: an Anime/Series is one Jularr Work with seasons/episodes. AniList entries are mappings/presentation metadata and may be one-to-many for a single Work. Library cards therefore do not duplicate a title merely because AniList has separate entries for seasons/parts. Provider-specific deep links resolve to the same Work and select/highlight the relevant season or presentation group.
+
