@@ -16,7 +16,9 @@ public enum MediaAcquisitionKind
     Anime,
     Manga,
     LightNovel,
-    Book
+    Book,
+    Movie,
+    Tv
 }
 
 /// <summary>Who may use the manual add controls (file upload, URL, NZB, inbox import).</summary>
@@ -159,6 +161,8 @@ public static class AcquisitionAccessNames
         MediaAcquisitionKind.Manga => "manga",
         MediaAcquisitionKind.LightNovel => "lightNovel",
         MediaAcquisitionKind.Book => "book",
+        MediaAcquisitionKind.Movie => "movie",
+        MediaAcquisitionKind.Tv => "tv",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
@@ -168,6 +172,8 @@ public static class AcquisitionAccessNames
         "manga" => MediaAcquisitionKind.Manga,
         "lightNovel" => MediaAcquisitionKind.LightNovel,
         "book" => MediaAcquisitionKind.Book,
+        "movie" => MediaAcquisitionKind.Movie,
+        "tv" => MediaAcquisitionKind.Tv,
         _ => throw new ArgumentException($"Unknown media kind '{value}'.", nameof(value))
     };
 
@@ -178,6 +184,8 @@ public static class AcquisitionAccessNames
         MediaAcquisitionKind.Manga => WorkMediaType.Manga,
         MediaAcquisitionKind.LightNovel => WorkMediaType.LightNovel,
         MediaAcquisitionKind.Book => WorkMediaType.Book,
+        MediaAcquisitionKind.Movie => WorkMediaType.Movie,
+        MediaAcquisitionKind.Tv => WorkMediaType.Series,
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 

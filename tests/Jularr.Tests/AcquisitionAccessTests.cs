@@ -49,7 +49,7 @@ public sealed class AcquisitionAccessTests
         var store = new AcquisitionAccessStore(fixture.Db);
 
         var defaults = await store.GetPoliciesAsync(CancellationToken.None);
-        Assert.AreEqual(4, defaults.Count);
+        Assert.AreEqual(Enum.GetValues<MediaAcquisitionKind>().Length, defaults.Count);
         Assert.IsTrue(defaults.All(policy => policy.Manual == ManualAddMode.OwnerOnly));
 
         await store.SavePolicyAsync(

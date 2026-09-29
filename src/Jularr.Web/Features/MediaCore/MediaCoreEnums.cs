@@ -82,7 +82,9 @@ public enum WorkSourceKind
     NovelWork,
     BookEdition,
     MangaSeries,
-    Episode
+    Episode,
+    Movie,
+    Series
 }
 
 /// <summary>Review state of a correctable provider mapping (external identity or relation).</summary>

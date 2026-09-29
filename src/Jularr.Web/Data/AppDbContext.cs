@@ -10,7 +10,9 @@ using Jularr.Web.Features.Library;
 using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Movies;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.Tv;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Subtitles;
@@ -75,6 +77,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EpisodeSegmentDetectionState> EpisodeSegmentDetectionStates => Set<EpisodeSegmentDetectionState>();
     public DbSet<AcquisitionHistoryEntry> AcquisitionHistory => Set<AcquisitionHistoryEntry>();
     public DbSet<AcquisitionApiKey> AcquisitionApiKeys => Set<AcquisitionApiKey>();
+
+    // First-class video media types (#593 Movie, #594 TV): per-type records bridged to the universal
+    // media core through WorkSourceKind.Movie / WorkSourceKind.Series (TV reuses WorkSeason/WorkEpisode).
+    public DbSet<Movie> Movies => Set<Movie>();
+    public DbSet<TvSeries> TvSeries => Set<TvSeries>();
 
     // Universal media core (#592): provider-independent works, external identities, titles, structure
     // (seasons/episodes, volumes/chapters), editions/versions, typed relations, field-level provenance
@@ -692,6 +699,29 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.TargetWorkId);
             entity.HasIndex(x => x.SourceWorkId);
             entity.HasIndex(x => x.CreatedAt);
+        });
+
+        modelBuilder.Entity<Movie>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(500);
+            entity.Property(x => x.Title).HasMaxLength(1000);
+            entity.Property(x => x.TmdbId).HasMaxLength(64);
+            entity.Property(x => x.ImdbId).HasMaxLength(64);
+            entity.Property(x => x.LibraryPath).HasMaxLength(1024);
+            // A movie's folded title+year resolves to exactly one record so re-import refreshes, never duplicates.
+            entity.HasIndex(x => x.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<TvSeries>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(500);
+            entity.Property(x => x.Title).HasMaxLength(1000);
+            entity.Property(x => x.TmdbId).HasMaxLength(64);
+            entity.Property(x => x.TvdbId).HasMaxLength(64);
+            entity.Property(x => x.LibraryPath).HasMaxLength(1024);
+            entity.HasIndex(x => x.Key).IsUnique();
         });
     }
 }

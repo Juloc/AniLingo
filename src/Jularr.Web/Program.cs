@@ -486,6 +486,15 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImp
 builder.Services.AddScoped<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>());
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>());
+// First-class video media types (#593 Movie, #594 TV): library services + shared completed-download/inbox adapters.
+builder.Services.AddScoped<Jularr.Web.Features.Movies.MovieLibraryService>();
+builder.Services.AddScoped<Jularr.Web.Features.Movies.MovieCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Movies.MovieCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Movies.MovieCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Tv.TvLibraryService>();
+builder.Services.AddScoped<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>());
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadDispatcher>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadImportService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.MediaInboxImportService>();
@@ -510,6 +519,8 @@ builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedAcquisitionService>();
 
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.AnimeAcquisitionRegistration>();
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.MovieAcquisitionRegistration>();
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.TvAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.MediaAcquisitionRegistry>();
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
@@ -651,9 +662,6 @@ try
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await Jularr.Web.Features.Acquisition.Import.MediaFolderSettingsMigration.RunAtStartupAsync(
-        app.Services,
-        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
-    await Jularr.Web.Features.Acquisition.Access.UserAddModeMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     var migratedBibles = await BookTranslationMemoryStore

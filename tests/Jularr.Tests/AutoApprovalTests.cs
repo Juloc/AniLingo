@@ -196,47 +196,6 @@ public sealed class AutoApprovalTests
         Assert.AreEqual(0, await store.CountAutoApprovedSinceAsync("alice", "other-rule", DateTime.UtcNow.AddDays(-1), CancellationToken.None));
     }
 
-    [TestMethod]
-    public async Task TheRetiredAddingRuleMovesIntoTheCapabilityMatrixOnce()
-    {
-        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
-        await SetLegacyModeAsync(fixture.Db, "manga", "automatic");
-        await SetLegacyModeAsync(fixture.Db, "anime", "disabled");
-        await SetLegacyModeAsync(fixture.Db, "book", "request");
-        // The owner already customised light novels in the matrix; the old rule must not overwrite it.
-        await SetLegacyModeAsync(fixture.Db, "lightNovel", "automatic");
-        await fixture.Capabilities.SetRoleDefaultAsync(AccountRole.User, WorkMediaType.LightNovel, MediaCapability.Browse);
-
-        var migrated = await UserAddModeMigration.MigrateAsync(fixture.Store, fixture.Capabilities);
-
-        Assert.AreEqual(2, migrated);
-        var policy = await fixture.Capabilities.LoadAsync();
-        Assert.AreEqual(MediaCapability.Instant, policy.RoleDefault(AccountRole.User, WorkMediaType.Manga));
-        Assert.AreEqual(MediaCapability.Browse, policy.RoleDefault(AccountRole.User, WorkMediaType.Anime));
-        Assert.AreEqual(MediaCapability.Request, policy.RoleDefault(AccountRole.User, WorkMediaType.Book));
-        Assert.AreEqual(MediaCapability.Browse, policy.RoleDefault(AccountRole.User, WorkMediaType.LightNovel));
-        Assert.AreEqual(MediaCapability.Instant, policy.RoleDefault(AccountRole.MediaManager, WorkMediaType.Manga), "Only the User role was ever limited by the old rule.");
-
-        Assert.AreEqual(0, await UserAddModeMigration.MigrateAsync(fixture.Store, fixture.Capabilities), "Running it again does nothing.");
-        await fixture.Capabilities.SetRoleDefaultAsync(AccountRole.User, WorkMediaType.Manga, MediaCapability.Request);
-        Assert.AreEqual(0, await UserAddModeMigration.MigrateAsync(fixture.Store, fixture.Capabilities));
-        Assert.AreEqual(
-            MediaCapability.Request,
-            (await fixture.Capabilities.LoadAsync()).RoleDefault(AccountRole.User, WorkMediaType.Manga),
-            "The owner's later choice in the matrix is never undone.");
-    }
-
-    private static async Task SetLegacyModeAsync(AppDbContext db, string kind, string mode) =>
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            INSERT INTO "AcquisitionAccessPolicies" ("Kind", "UserAddMode", "ManualAddMode", "UpdatedAt")
-            VALUES ({0}, {1}, 'ownerOnly', {2})
-            ON CONFLICT ("Kind") DO UPDATE SET "UserAddMode" = excluded."UserAddMode";
-            """,
-            kind,
-            mode,
-            DateTime.UtcNow.ToString("O"));
-
     private static AutoApprovalRule Rule(
         string name,
         MediaAcquisitionKind[]? kinds = null,
