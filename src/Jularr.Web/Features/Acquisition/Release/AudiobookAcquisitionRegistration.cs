@@ -51,4 +51,7 @@ public sealed class AudiobookAcquisitionRegistration : IMediaAcquisitionRegistra
     public IReleaseParser CreateReleaseParser() => SceneReleaseParser.Instance;
 
     public QualityProfile CreateDefaultQualityProfile() => AudiobookQualityProfiles.CreateDefaultAudiobook();
+
+    // An audiobook is one whole-item unit; monitoring tracks the book, not seasons or episodes.
+    public Monitoring.MonitoringGranularity MonitoringGranularity => Monitoring.MonitoringGranularity.Item;
 }

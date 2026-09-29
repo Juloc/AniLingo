@@ -1,51 +1,60 @@
 using Jularr.Web.Features.Acquisition;
 using Jularr.Web.Features.Acquisition.Ownership;
 using Jularr.Web.Features.Acquisition.Quality;
+using Jularr.Web.Features.Acquisition.Release;
 
 namespace Jularr.Web.Features.Acquisition.Monitoring;
 
-public static class AnimeMonitoringEngine
+/// <summary>
+/// The media-type-agnostic monitoring engine. It decides what is wanted, plans searches, evaluates
+/// candidates for auto-grab and records attempts/history for any media type, at whole-item, season
+/// or episode granularity (see <see cref="MonitoringGranularity"/>). Anime plugs in as one media
+/// type (episode granularity) with no behavioural change; movies/books/audiobooks plug in at item
+/// granularity and series at season granularity. The engine is pure: every method returns a new
+/// <see cref="MonitoringState"/> and never touches storage.
+/// </summary>
+public static class MonitoringEngine
 {
-    public static IReadOnlyList<AnimeWantedEpisode> GetWanted(
-        AnimeMonitoringState state,
-        IEnumerable<AnimeEpisodeInventory> inventory,
-        AnimeQualityProfile profile,
+    public static IReadOnlyList<WantedUnit> GetWanted(
+        MonitoringState state,
+        IEnumerable<MonitoredUnitInventory> inventory,
+        QualityProfile profile,
         DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(profile);
 
-        var wanted = new List<AnimeWantedEpisode>();
+        var wanted = new List<WantedUnit>();
 
-        foreach (var episode in inventory)
+        foreach (var unit in inventory)
         {
-            if (!IsMonitored(state, episode.Key))
+            if (!IsMonitored(state, unit.Key))
             {
                 continue;
             }
 
-            if (episode.AirsAtUtc is DateTimeOffset airsAt && airsAt > now)
+            if (unit.AirsAtUtc is DateTimeOffset airsAt && airsAt > now)
             {
                 continue;
             }
 
-            if (!episode.HasFile)
+            if (!unit.HasFile)
             {
-                wanted.Add(new AnimeWantedEpisode(
-                    episode.Key,
-                    AnimeWantedReason.Missing,
+                wanted.Add(new WantedUnit(
+                    unit.Key,
+                    WantedReason.Missing,
                     now));
                 continue;
             }
 
-            if (episode.CurrentFile is not null &&
+            if (unit.CurrentFile is not null &&
                 profile.UpgradeAllowed &&
-                !IsCutoffMet(profile, episode.CurrentFile))
+                !IsCutoffMet(profile, unit.CurrentFile))
             {
-                wanted.Add(new AnimeWantedEpisode(
-                    episode.Key,
-                    AnimeWantedReason.CutoffUnmet,
+                wanted.Add(new WantedUnit(
+                    unit.Key,
+                    WantedReason.CutoffUnmet,
                     now));
             }
         }
@@ -53,14 +62,14 @@ public static class AnimeMonitoringEngine
         return wanted;
     }
 
-    public static AnimeMonitoringState RefreshWanted(
-        AnimeMonitoringState state,
-        IEnumerable<AnimeEpisodeInventory> inventory,
-        AnimeQualityProfile profile,
+    public static MonitoringState RefreshWanted(
+        MonitoringState state,
+        IEnumerable<MonitoredUnitInventory> inventory,
+        QualityProfile profile,
         DateTimeOffset now)
     {
         var computed = GetWanted(state, inventory, profile, now);
-        var wanted = new Dictionary<string, AnimeWantedEpisode>(StringComparer.OrdinalIgnoreCase);
+        var wanted = new Dictionary<string, WantedUnit>(StringComparer.OrdinalIgnoreCase);
         var history = state.History.ToList();
 
         foreach (var item in computed)
@@ -73,7 +82,7 @@ public static class AnimeMonitoringEngine
             }
 
             wanted[id] = item;
-            history.Add(new AnimeMonitoringHistoryEntry(
+            history.Add(new MonitoringHistoryEntry(
                 now,
                 item.Key,
                 "wanted",
@@ -87,7 +96,7 @@ public static class AnimeMonitoringEngine
                 continue;
             }
 
-            history.Add(new AnimeMonitoringHistoryEntry(
+            history.Add(new MonitoringHistoryEntry(
                 now,
                 previous.Key,
                 "wanted-cleared",
@@ -102,13 +111,13 @@ public static class AnimeMonitoringEngine
         };
     }
 
-    // Same as RefreshWanted, but only the wanted entries of one anime are recomputed; entries of
-    // other anime are kept untouched so single-anime runs never clear them.
-    public static AnimeMonitoringState RefreshWantedForAnime(
-        AnimeMonitoringState state,
+    // Same as RefreshWanted, but only the wanted entries of one work are recomputed; entries of
+    // other works are kept untouched so single-work runs never clear them.
+    public static MonitoringState RefreshWantedForAnime(
+        MonitoringState state,
         string animeKey,
-        IEnumerable<AnimeEpisodeInventory> inventory,
-        AnimeQualityProfile profile,
+        IEnumerable<MonitoredUnitInventory> inventory,
+        QualityProfile profile,
         DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(animeKey);
@@ -132,16 +141,16 @@ public static class AnimeMonitoringEngine
         return refreshed with { Wanted = others };
     }
 
-    public static IReadOnlyList<AnimeSearchRequest> PlanSearches(
-        AnimeMonitoringState state,
-        IEnumerable<AnimeWantedEpisode> wanted,
-        AnimeSearchTrigger trigger,
+    public static IReadOnlyList<MonitoringSearchRequest> PlanSearches(
+        MonitoringState state,
+        IEnumerable<WantedUnit> wanted,
+        MonitoringSearchTrigger trigger,
         DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(wanted);
 
-        var requests = new List<AnimeSearchRequest>();
+        var requests = new List<MonitoringSearchRequest>();
         foreach (var item in wanted)
         {
             if (!state.Anime.TryGetValue(item.Key.AnimeKey, out var settings))
@@ -149,14 +158,14 @@ public static class AnimeMonitoringEngine
                 continue;
             }
 
-            if (trigger == AnimeSearchTrigger.SearchOnAdd && !settings.SearchOnAdd)
+            if (trigger == MonitoringSearchTrigger.SearchOnAdd && !settings.SearchOnAdd)
             {
                 continue;
             }
 
             if (state.Attempts.TryGetValue(item.Key.ToString(), out var attempt))
             {
-                if (attempt.Status is AnimeAcquisitionAttemptStatus.Pending or AnimeAcquisitionAttemptStatus.Grabbed)
+                if (attempt.Status is AcquisitionAttemptStatus.Pending or AcquisitionAttemptStatus.Grabbed)
                 {
                     continue;
                 }
@@ -167,18 +176,18 @@ public static class AnimeMonitoringEngine
                 }
             }
 
-            requests.Add(new AnimeSearchRequest(item.Key, item.Reason, trigger));
+            requests.Add(new MonitoringSearchRequest(item.Key, item.Reason, trigger));
         }
 
         return requests;
     }
 
-    public static AnimeAutoGrabDecision EvaluateCandidate(
-        AnimeQualityProfile profile,
-        AnimeWantedEpisode wanted,
-        AnimeReleaseScoreResult candidate,
-        AnimeReleaseScoreResult? currentFile,
-        AnimeMonitoringState state,
+    public static AutoGrabDecision EvaluateCandidate(
+        QualityProfile profile,
+        WantedUnit wanted,
+        ReleaseScoreResult candidate,
+        ReleaseScoreResult? currentFile,
+        MonitoringState state,
         AcquisitionOwnershipSnapshot? ownership = null,
         DateTimeOffset? now = null)
     {
@@ -193,15 +202,15 @@ public static class AnimeMonitoringEngine
         }
 
         var release = candidate.Candidate.Release;
-        if (!MatchesEpisode(wanted.Key, release))
+        if (!MatchesUnit(wanted.Key, release))
         {
-            return new(false, "Candidate episode numbering does not match the wanted episode.", candidate);
+            return new(false, "Candidate does not match the wanted unit.", candidate);
         }
 
         if (state.Attempts.Values.Any(attempt =>
                 attempt.ReleaseKey is not null &&
                 attempt.ReleaseKey.Equals(release.ReleaseKey, StringComparison.OrdinalIgnoreCase) &&
-                attempt.Status is AnimeAcquisitionAttemptStatus.Pending or AnimeAcquisitionAttemptStatus.Grabbed))
+                attempt.Status is AcquisitionAttemptStatus.Pending or AcquisitionAttemptStatus.Grabbed))
         {
             return new(false, "Release is already pending or was already grabbed.", candidate);
         }
@@ -226,9 +235,9 @@ public static class AnimeMonitoringEngine
             }
         }
 
-        if (wanted.Reason == AnimeWantedReason.Missing)
+        if (wanted.Reason == WantedReason.Missing)
         {
-            return new(true, "Accepted candidate satisfies a missing monitored episode.", candidate);
+            return new(true, "Accepted candidate satisfies a missing monitored unit.", candidate);
         }
 
         if (currentFile is null)
@@ -236,14 +245,14 @@ public static class AnimeMonitoringEngine
             return new(false, "Upgrade decision requires the current file score.", candidate);
         }
 
-        return AnimeReleaseScorer.IsUpgrade(profile, currentFile, candidate)
+        return ReleaseScorer.IsUpgrade(profile, currentFile, candidate)
             ? new(true, "Accepted candidate is an upgrade over the current file.", candidate)
             : new(false, "Candidate is not an upgrade over the current file.", candidate);
     }
 
-    public static AnimeMonitoringState MarkPending(
-        AnimeMonitoringState state,
-        AnimeSearchRequest request,
+    public static MonitoringState MarkPending(
+        MonitoringState state,
+        MonitoringSearchRequest request,
         DateTimeOffset now)
     {
         var attempts = CloneAttempts(state);
@@ -251,13 +260,13 @@ public static class AnimeMonitoringEngine
         attempts[key] = attempts.TryGetValue(key, out var existing)
             ? existing with
             {
-                Status = AnimeAcquisitionAttemptStatus.Pending,
+                Status = AcquisitionAttemptStatus.Pending,
                 LastAttemptAtUtc = now,
                 NextRetryAtUtc = null
             }
-            : new AnimeAcquisitionAttempt(
+            : new AcquisitionAttempt(
                 request.Key,
-                AnimeAcquisitionAttemptStatus.Pending,
+                AcquisitionAttemptStatus.Pending,
                 null,
                 0,
                 now,
@@ -266,9 +275,9 @@ public static class AnimeMonitoringEngine
         return WithHistory(state, attempts, request.Key, now, "search-pending", request.Reason.ToString());
     }
 
-    public static AnimeMonitoringState MarkGrabbed(
-        AnimeMonitoringState state,
-        AnimeEpisodeKey key,
+    public static MonitoringState MarkGrabbed(
+        MonitoringState state,
+        MonitoredUnitKey key,
         string releaseKey,
         DateTimeOffset now)
     {
@@ -278,11 +287,11 @@ public static class AnimeMonitoringEngine
         var id = key.ToString();
         var existing = attempts.TryGetValue(id, out var found)
             ? found
-            : new AnimeAcquisitionAttempt(key, AnimeAcquisitionAttemptStatus.None, null, 0, null, null);
+            : new AcquisitionAttempt(key, AcquisitionAttemptStatus.None, null, 0, null, null);
 
         attempts[id] = existing with
         {
-            Status = AnimeAcquisitionAttemptStatus.Grabbed,
+            Status = AcquisitionAttemptStatus.Grabbed,
             ReleaseKey = releaseKey,
             LastAttemptAtUtc = now,
             NextRetryAtUtc = null
@@ -291,9 +300,9 @@ public static class AnimeMonitoringEngine
         return WithHistory(state, attempts, key, now, "grabbed", releaseKey);
     }
 
-    public static AnimeMonitoringState MarkFailed(
-        AnimeMonitoringState state,
-        AnimeEpisodeKey key,
+    public static MonitoringState MarkFailed(
+        MonitoringState state,
+        MonitoredUnitKey key,
         string? releaseKey,
         DateTimeOffset now,
         TimeSpan? baseDelay = null,
@@ -303,7 +312,7 @@ public static class AnimeMonitoringEngine
         var id = key.ToString();
         var existing = attempts.TryGetValue(id, out var found)
             ? found
-            : new AnimeAcquisitionAttempt(key, AnimeAcquisitionAttemptStatus.None, null, 0, null, null);
+            : new AcquisitionAttempt(key, AcquisitionAttemptStatus.None, null, 0, null, null);
 
         var failureCount = checked(existing.FailureCount + 1);
         var delay = baseDelay ?? TimeSpan.FromMinutes(5);
@@ -315,7 +324,7 @@ public static class AnimeMonitoringEngine
 
         attempts[id] = existing with
         {
-            Status = AnimeAcquisitionAttemptStatus.Failed,
+            Status = AcquisitionAttemptStatus.Failed,
             ReleaseKey = releaseKey ?? existing.ReleaseKey,
             FailureCount = failureCount,
             LastAttemptAtUtc = now,
@@ -331,9 +340,9 @@ public static class AnimeMonitoringEngine
             $"Retry after {retryDelay}.");
     }
 
-    public static AnimeMonitoringState ClearAttempt(
-        AnimeMonitoringState state,
-        AnimeEpisodeKey key,
+    public static MonitoringState ClearAttempt(
+        MonitoringState state,
+        MonitoredUnitKey key,
         DateTimeOffset now,
         string reason)
     {
@@ -342,10 +351,10 @@ public static class AnimeMonitoringEngine
         return WithHistory(state, attempts, key, now, "attempt-cleared", reason);
     }
 
-    // A series-folder rename changes the library's anime key; monitoring settings, wanted
-    // episodes, attempts and history follow it. Returns the same instance when nothing changed.
-    public static AnimeMonitoringState RekeyAnime(
-        AnimeMonitoringState state,
+    // A series-folder rename changes the library key; monitoring settings, wanted units, attempts
+    // and history follow it. Returns the same instance when nothing changed.
+    public static MonitoringState RekeyAnime(
+        MonitoringState state,
         string oldKey,
         string newKey)
     {
@@ -354,7 +363,7 @@ public static class AnimeMonitoringEngine
         ArgumentException.ThrowIfNullOrWhiteSpace(newKey);
 
         bool IsOld(string key) => key.Equals(oldKey, StringComparison.OrdinalIgnoreCase);
-        AnimeEpisodeKey Map(AnimeEpisodeKey key) => IsOld(key.AnimeKey) ? key with { AnimeKey = newKey } : key;
+        MonitoredUnitKey Map(MonitoredUnitKey key) => IsOld(key.AnimeKey) ? key with { AnimeKey = newKey } : key;
 
         if (oldKey.Equals(newKey, StringComparison.Ordinal) ||
             (!state.Anime.Values.Any(item => IsOld(item.AnimeKey)) &&
@@ -387,17 +396,27 @@ public static class AnimeMonitoringEngine
         };
     }
 
-    public static bool IsMonitored(AnimeMonitoringState state, AnimeEpisodeKey key)
+    public static bool IsMonitored(MonitoringState state, MonitoredUnitKey key)
     {
         if (!state.Anime.TryGetValue(key.AnimeKey, out var settings))
         {
             return false;
         }
 
-        var episodeKey = EpisodeOverrideKey(key.SeasonNumber, key.EpisodeNumber);
-        if (settings.EpisodeOverrides.TryGetValue(episodeKey, out var episodeOverride))
+        // Whole-item units carry no season/episode, so overrides never apply: the work's own
+        // monitored flag is the answer.
+        if (key.Granularity == MonitoringGranularity.Item)
         {
-            return episodeOverride;
+            return settings.Monitored;
+        }
+
+        if (key.Granularity == MonitoringGranularity.Episode)
+        {
+            var episodeKey = EpisodeOverrideKey(key.SeasonNumber, key.EpisodeNumber);
+            if (settings.EpisodeOverrides.TryGetValue(episodeKey, out var episodeOverride))
+            {
+                return episodeOverride;
+            }
         }
 
         if (settings.SeasonOverrides.TryGetValue(key.SeasonNumber, out var seasonOverride))
@@ -409,8 +428,8 @@ public static class AnimeMonitoringEngine
     }
 
     public static bool IsCutoffMet(
-        AnimeQualityProfile profile,
-        AnimeReleaseScoreResult current)
+        QualityProfile profile,
+        ReleaseScoreResult current)
     {
         if (string.IsNullOrWhiteSpace(profile.UpgradeCutoffQuality))
         {
@@ -429,7 +448,21 @@ public static class AnimeMonitoringEngine
     public static string EpisodeOverrideKey(int season, int episode) =>
         $"S{season:00}E{episode:00}";
 
-    private static bool MatchesEpisode(AnimeEpisodeKey key, AnimeReleaseInfo release)
+    // Whether a parsed release satisfies the wanted unit, per its granularity:
+    //  - Item: the media type's search already found this release for the work, so any accepted
+    //    release matches (a movie/book/audiobook has no season/episode numbering to check).
+    //  - Season: the release must be a season pack for the same season.
+    //  - Episode: the release's episode range (or absolute range) must cover the episode.
+    private static bool MatchesUnit(MonitoredUnitKey key, ReleaseInfo release) => key.Granularity switch
+    {
+        MonitoringGranularity.Item => true,
+        MonitoringGranularity.Season =>
+            release.SeasonNumber == key.SeasonNumber &&
+            (release.IsSeasonPack || release.EpisodeStart is null),
+        _ => MatchesEpisode(key, release)
+    };
+
+    private static bool MatchesEpisode(MonitoredUnitKey key, ReleaseInfo release)
     {
         if (release.SeasonNumber is int season &&
             release.EpisodeStart is int start &&
@@ -450,7 +483,7 @@ public static class AnimeMonitoringEngine
         return false;
     }
 
-    private static int QualityRank(AnimeQualityProfile profile, string quality)
+    private static int QualityRank(QualityProfile profile, string quality)
     {
         for (var i = 0; i < profile.QualityOrder.Length; i++)
         {
@@ -463,19 +496,19 @@ public static class AnimeMonitoringEngine
         return int.MaxValue;
     }
 
-    private static Dictionary<string, AnimeAcquisitionAttempt> CloneAttempts(AnimeMonitoringState state) =>
+    private static Dictionary<string, AcquisitionAttempt> CloneAttempts(MonitoringState state) =>
         new(state.Attempts, StringComparer.OrdinalIgnoreCase);
 
-    private static AnimeMonitoringState WithHistory(
-        AnimeMonitoringState state,
-        Dictionary<string, AnimeAcquisitionAttempt> attempts,
-        AnimeEpisodeKey key,
+    private static MonitoringState WithHistory(
+        MonitoringState state,
+        Dictionary<string, AcquisitionAttempt> attempts,
+        MonitoredUnitKey key,
         DateTimeOffset now,
         string eventName,
         string reason)
     {
         var history = state.History.ToList();
-        history.Add(new AnimeMonitoringHistoryEntry(now, key, eventName, reason));
+        history.Add(new MonitoringHistoryEntry(now, key, eventName, reason));
 
         TrimHistory(history);
 
@@ -486,7 +519,7 @@ public static class AnimeMonitoringEngine
         };
     }
 
-    private static void TrimHistory(List<AnimeMonitoringHistoryEntry> history)
+    private static void TrimHistory(List<MonitoringHistoryEntry> history)
     {
         const int maxHistory = 2_000;
         if (history.Count > maxHistory)

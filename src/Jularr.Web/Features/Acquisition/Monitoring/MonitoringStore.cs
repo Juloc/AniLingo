@@ -1,8 +1,16 @@
 using System.Text.Json;
+using Jularr.Web.Features.Acquisition.Access;
 
 namespace Jularr.Web.Features.Acquisition.Monitoring;
 
-public sealed class AnimeMonitoringStore
+/// <summary>
+/// The JSON settings store for monitoring state, one file per media type under
+/// <c>/data/acquisition</c>. Anime keeps the historical <c>monitoring.json</c> path (and shape) so
+/// existing state loads unchanged; every other media type gets its own <c>monitoring-{kind}.json</c>,
+/// so the kinds never share a file or collide on work keys. State is a single-writer JSON document
+/// written atomically via a temp file + move, guarded by an in-process gate.
+/// </summary>
+public sealed class MonitoringStore
 {
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -11,13 +19,19 @@ public sealed class AnimeMonitoringStore
         WriteIndented = true
     };
 
-    public AnimeMonitoringStore(string dataRoot)
+    public MonitoringStore(string dataRoot, MediaAcquisitionKind kind = MediaAcquisitionKind.Anime)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
-        _path = Path.Combine(dataRoot, "acquisition", "monitoring.json");
+
+        // Anime is the historical single-file store; its path is preserved for parity. Other media
+        // types get a per-kind file next to it.
+        var fileName = kind == MediaAcquisitionKind.Anime
+            ? "monitoring.json"
+            : $"monitoring-{AcquisitionAccessNames.Kind(kind)}.json";
+        _path = Path.Combine(dataRoot, "acquisition", fileName);
     }
 
-    public async Task<AnimeMonitoringState> LoadAsync(CancellationToken cancellationToken = default)
+    public async Task<MonitoringState> LoadAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -31,7 +45,7 @@ public sealed class AnimeMonitoringStore
     }
 
     public async Task SaveAsync(
-        AnimeMonitoringState state,
+        MonitoringState state,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -54,8 +68,8 @@ public sealed class AnimeMonitoringStore
         }
     }
 
-    public async Task<AnimeMonitoringState> UpdateAsync(
-        Func<AnimeMonitoringState, AnimeMonitoringState> update,
+    public async Task<MonitoringState> UpdateAsync(
+        Func<MonitoringState, MonitoringState> update,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -87,27 +101,27 @@ public sealed class AnimeMonitoringStore
         CancellationToken cancellationToken = default)
     {
         var current = await LoadAsync(cancellationToken);
-        if (ReferenceEquals(AnimeMonitoringEngine.RekeyAnime(current, oldKey, newKey), current))
+        if (ReferenceEquals(MonitoringEngine.RekeyAnime(current, oldKey, newKey), current))
         {
             return false;
         }
 
-        await UpdateAsync(state => AnimeMonitoringEngine.RekeyAnime(state, oldKey, newKey), cancellationToken);
+        await UpdateAsync(state => MonitoringEngine.RekeyAnime(state, oldKey, newKey), cancellationToken);
         return true;
     }
 
-    private async Task<AnimeMonitoringState> LoadUnlockedAsync(CancellationToken cancellationToken)
+    private async Task<MonitoringState> LoadUnlockedAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(_path))
         {
-            return AnimeMonitoringState.Empty();
+            return MonitoringState.Empty();
         }
 
         try
         {
             var json = await File.ReadAllTextAsync(_path, cancellationToken);
-            var state = JsonSerializer.Deserialize<AnimeMonitoringState>(json, JsonOptions);
-            return state ?? AnimeMonitoringState.Empty();
+            var state = JsonSerializer.Deserialize<MonitoringState>(json, JsonOptions);
+            return state ?? MonitoringState.Empty();
         }
         catch (JsonException)
         {

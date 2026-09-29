@@ -197,8 +197,8 @@ each row's Where.
 | Capability | State | Where | Issue |
 | --- | --- | --- | --- |
 | Root folders / storage state | Exists | `LibraryRoot`, `/Admin/System` | — |
-| Monitored/unmonitored works | Exists | `AnimeMonitoringStore` (`/data/acquisition/monitoring.json`) | — |
-| Monitored seasons/episodes (granular) | Partial — monitoring is per-anime, not per-season | `AnimeAcquisitionInventory` | #396 |
+| Monitored/unmonitored works | Exists | Media-type-agnostic `MonitoringEngine`/`MonitoringStore` (one JSON file per kind under `/data/acquisition`; anime keeps `monitoring.json`, `AnimeMonitoring*` are transitional aliases) | — |
+| Monitored seasons/episodes (granular) | Partial — the shared engine tracks whole-item, season and episode granularity (`MonitoringGranularity`, declared per kind via `MediaAcquisitionRegistry.MonitoringGranularityFor`); anime is wired at episode granularity (`AnimeAcquisitionInventory`). Non-anime pipeline wiring is a follow-up | `MonitoringEngine`, `AnimeAcquisitionInventory` | #396 |
 | Missing / cutoff unmet | Exists | Wanted-episode logic, quality-profile upgrade cutoff | — |
 | Rescan/refresh | Exists | `LibraryScanCoordinator`, per-anime repair (`AnimeRepairService`) | — |
 | Rename preview + execute | Exists | `/Library/Rename/{animeId}`, `AnimeRenameService` | — |
