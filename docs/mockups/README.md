@@ -39,6 +39,10 @@ Agents must not redesign an approved screen during implementation without updati
 - `home/SPEC.md` — approved clean Home UX baseline.
 - `admin-dashboard/SPEC.md` — Admin Dashboard live operations/health contract.
 - `admin-media-detail/SPEC.md` — Admin media monitoring/acquisition hierarchy V1.
+- `admin-wanted/SPEC.md` — Admin acquisition worklist.
+- `admin-requests/SPEC.md` — Admin user request moderation.
+- `admin-activity/SPEC.md` — Admin live To-Do/running/failed jobs.
+- `admin-history/SPEC.md` — Admin operational history.
 
 ## Existing image assets
 
