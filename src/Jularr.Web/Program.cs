@@ -362,6 +362,8 @@ builder.Services.AddScoped<PlaybackService>();
 Jularr.Web.Features.Playback.Decision.PlaybackDecisionRegistration.AddPlaybackDecision(builder.Services);
 // Universal media core (#592): the provider-independent work/identity model the #556 children build on.
 Jularr.Web.Features.MediaCore.MediaCoreRegistration.AddMediaCore(builder.Services);
+// Smart & manual collections (#427): user-curated and rule-driven cross-media shelves over works.
+Jularr.Web.Features.Collections.CollectionRegistration.AddCollections(builder.Services);
 // Learning v3 curriculum foundation (#441): blueprint hierarchy + shared course instances + progress.
 Jularr.Web.Features.Learning.Curriculum.CurriculumRegistration.AddLearningCurriculum(builder.Services);
 builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));

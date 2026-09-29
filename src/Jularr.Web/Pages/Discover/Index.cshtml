@@ -43,6 +43,7 @@
     @Html.AntiForgeryToken()
     <header class="discover-header">
         <h1>@ui["discover.index.title"]</h1>
+        <a class="discover-collections-link" href="@Url.Page("/Collections/Index")">@ui["collections.nav.title"]</a>
     </header>
 
     <section class="discover-controls" aria-label="@ui["discover.index.controlsAria"]">
