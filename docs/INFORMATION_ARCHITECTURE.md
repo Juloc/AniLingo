@@ -183,7 +183,7 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 | Subtitles | `/Admin/Subtitles`, `/Settings/Subtitles` (admin-subtitles) | Exists |
 | Media Processing | no dedicated nav entry (optimizer/trickplay/segments run as background Operations, surfaced only in `/Admin/Operations`) | Partial |
 | Playback & Sessions | **missing** — no admin sessions page exists (`Features/PlaybackSessions` has the hub/coordinator/store but no admin view) | Missing. #518 |
-| Storage | `/Admin/System` (admin-system, roots/wake/health); the container-aware folder browser behind the path fields of `/Settings/Acquisition` (`Features/Storage/FolderBrowse`, #604) | Exists |
+| Storage | `/Admin/System` (admin-system, roots/wake/health); the container-aware folder browser behind the path fields of `/Settings/Acquisition` (`Features/Storage/FolderBrowse`, #604); `/Admin/Storage` storage insights (#414: usage per root and media type from the library inventory, largest files, Jularr cache use and a previewed safe cleanup of unusable cache leftovers), linked from the `/Admin` overview and not from the shell nav catalog | Exists |
 | Calendar / Releases | consumer `/Calendar` only; no admin releases nav entry | Partial |
 | Jobs / Activity | `/Admin/Operations`, `/Admin/Scans`, `/Admin/Logs` (admin-operations, admin-scans, admin-logs) | Exists |
 | Integrations | `/Admin/Usenet`, `/Admin/Sonarr` (admin-usenet, admin-sonarr) | Partial — Usenet/Sonarr only, no general integrations hub (Prowlarr health lives under Usenet) |

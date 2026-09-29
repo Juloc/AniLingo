@@ -1,0 +1,183 @@
+@page
+@model Jularr.Web.Pages.Admin.Storage.IndexModel
+@using Jularr.Web.Features.Storage
+@using Jularr.Web.Features.Storage.Insights
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.storage.title"];
+    var usage = Model.Usage;
+    var cleanableAreas = Model.Cache.Usage.Where(x => x.Cleanable && x.ReclaimableBytes > 0).ToList();
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.storage.title"]</h1>
+        <p>@ui["admin.storage.subtitle"]</p>
+    </div>
+    <a class="button" asp-page="/Admin/System">@ui["admin.scans.mediaRoots"]</a>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+<section class="panel" data-storage-roots>
+    <div class="panel-heading"><h2>@ui["admin.storage.roots.title"]</h2></div>
+    @if (usage.Roots.Count == 0)
+    {
+        <p class="muted">@ui["admin.storage.roots.empty"]</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>@ui["admin.storage.roots.column.root"]</th>
+                    <th>@ui["admin.storage.roots.column.state"]</th>
+                    <th>@ui["admin.storage.column.files"]</th>
+                    <th>@ui["admin.storage.column.size"]</th>
+                    <th>@ui["admin.storage.roots.column.free"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var root in usage.Roots)
+                {
+                    <tr>
+                        <td>
+                            <strong>@root.Name</strong>
+                            <small class="muted">@root.Path</small>
+                        </td>
+                        <td><span class="status-pill @IndexModel.HealthCss(root.Health)">@Model.HealthLabel(root.Health)</span></td>
+                        <td>@root.FileCount.ToString("N0")</td>
+                        <td>
+                            @StorageHealth.FormatBytes(root.Bytes)
+                            @if (!root.IsOnline && root.FileCount > 0)
+                            {
+                                <small class="muted">@ui["admin.storage.roots.lastKnown"]</small>
+                            }
+                            @if (root.DuplicateEpisodes > 0)
+                            {
+                                <small class="muted">@ui.Format("admin.storage.roots.duplicates", ("count", root.DuplicateEpisodes))</small>
+                            }
+                        </td>
+                        <td>@(root.FreeBytes is { } free ? StorageHealth.FormatBytes(free) : "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<div class="settings-grid">
+    <section class="panel" data-storage-media-types>
+        <div class="panel-heading"><h2>@ui["admin.storage.media.title"]</h2></div>
+        <table>
+            <thead>
+                <tr>
+                    <th>@ui["admin.storage.media.column.type"]</th>
+                    <th>@ui["admin.storage.column.files"]</th>
+                    <th>@ui["admin.storage.column.size"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var type in usage.MediaTypes)
+                {
+                    <tr>
+                        <td>@Model.MediaKindLabel(type.Kind)</td>
+                        <td>@type.FileCount.ToString("N0")</td>
+                        <td>@StorageHealth.FormatBytes(type.Bytes)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    <section class="panel" data-storage-largest>
+        <div class="panel-heading"><h2>@ui["admin.storage.largest.title"]</h2></div>
+        @if (usage.LargestItems.Count == 0)
+        {
+            <p class="muted">@ui["admin.storage.largest.empty"]</p>
+        }
+        else
+        {
+            <div class="operation-list">
+                @foreach (var item in usage.LargestItems)
+                {
+                    <div class="operation-row">
+                        <div class="operation-copy">
+                            <strong>@item.Title</strong>
+                            <span>
+                                @ui.Format("admin.storage.largest.episode", ("season", item.SeasonNumber), ("episode", item.EpisodeNumber))
+                                · @item.RootName
+                                @if (item.RootHealth != StorageHealthState.Online)
+                                {
+                                    <text> · @Model.HealthLabel(item.RootHealth)</text>
+                                }
+                            </span>
+                        </div>
+                        <span class="status-pill">@StorageHealth.FormatBytes(item.Bytes)</span>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+<section class="panel" data-storage-cache>
+    <div class="panel-heading"><h2>@ui["admin.storage.cache.title"]</h2></div>
+    <p class="muted">@ui["admin.storage.cache.hint"]</p>
+    <table>
+        <thead>
+            <tr>
+                <th>@ui["admin.storage.cache.column.area"]</th>
+                <th>@ui["admin.storage.column.files"]</th>
+                <th>@ui["admin.storage.column.size"]</th>
+                <th>@ui["admin.storage.cache.column.reclaimable"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var area in Model.Cache.Usage)
+            {
+                <tr>
+                    <td>@Model.AreaLabel(area.Area)</td>
+                    <td>@area.Files.ToString("N0")</td>
+                    <td>@StorageHealth.FormatBytes(area.Bytes)</td>
+                    <td>@(area.Cleanable ? StorageHealth.FormatBytes(area.ReclaimableBytes) : "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="panel" data-storage-cleanup>
+    <div class="panel-heading"><h2>@ui["admin.storage.cleanup.title"]</h2></div>
+    @if (cleanableAreas.Count == 0)
+    {
+        <p class="muted">@ui["admin.storage.cleanup.empty"]</p>
+    }
+    else
+    {
+        <p class="muted">@ui["admin.storage.cleanup.hint"]</p>
+        <form method="post" asp-page-handler="Clean" class="form-stack">
+            @foreach (var area in cleanableAreas)
+            {
+                var entries = Model.Cache.Plan.For(area.Area);
+                <fieldset>
+                    <label>
+                        <input type="checkbox" name="areas" value="@area.Area" checked />
+                        @Model.AreaLabel(area.Area) · @StorageHealth.FormatBytes(area.ReclaimableBytes)
+                    </label>
+                    <ul>
+                        @foreach (var entry in entries.OrderByDescending(x => x.Bytes).Take(IndexModel.PreviewEntriesPerArea))
+                        {
+                            <li><small>@IndexModel.EntryName(entry) · @Model.ReasonLabel(entry.Reason) · @StorageHealth.FormatBytes(entry.Bytes)</small></li>
+                        }
+                        @if (entries.Count > IndexModel.PreviewEntriesPerArea)
+                        {
+                            <li><small class="muted">@ui.Format("admin.storage.cleanup.more", ("count", entries.Count - IndexModel.PreviewEntriesPerArea))</small></li>
+                        }
+                    </ul>
+                </fieldset>
+            }
+            <button class="button button-primary" type="submit">@ui["admin.storage.cleanup.run"]</button>
+        </form>
+    }
+</section>
