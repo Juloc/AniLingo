@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Data.Migrations;
 using Jularr.Web.Features.Metadata;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;

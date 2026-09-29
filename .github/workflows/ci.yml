@@ -34,6 +34,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # The test suite runs against a real PostgreSQL (#570). The password is a throwaway CI value.
+    env:
+      JULARR_TEST_DB: "Host=localhost;Port=5432;Username=jularr;Password=jularr_ci;Include Error Detail=true"
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jularr
+          POSTGRES_PASSWORD: jularr_ci
+          POSTGRES_DB: jularr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jularr -d jularr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -65,6 +84,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # The app now requires PostgreSQL at startup (#570). The smoke-test containers reach a
+    # throwaway PostgreSQL container by name on a shared user-defined network.
+    env:
+      PG_CONN: "Host=jularr-ci-pg;Port=5432;Database=jularr;Username=jularr;Password=jularr_ci"
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -83,9 +107,28 @@ jobs:
           cache-from: type=gha,scope=jularr-docker
           cache-to: type=gha,mode=max,scope=jularr-docker
 
+      - name: Start PostgreSQL for smoke tests
+        run: |
+          set -euo pipefail
+          docker network create jularr-ci >/dev/null
+          docker run -d --name jularr-ci-pg --network jularr-ci \
+            -e POSTGRES_USER=jularr -e POSTGRES_PASSWORD=jularr_ci -e POSTGRES_DB=jularr \
+            --health-cmd "pg_isready -U jularr -d jularr" \
+            --health-interval 3s --health-timeout 5s --health-retries 20 \
+            postgres:16 >/dev/null
+          for _ in {1..40}; do
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' jularr-ci-pg)" = healthy ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs jularr-ci-pg
+          exit 1
+
       - name: Smoke test startup without NAS
         run: |
           docker run -d --name jularr-no-nas \
+            --network jularr-ci -e "ConnectionStrings__Default=${PG_CONN}" \
             --cap-drop ALL --security-opt no-new-privileges:true \
             -p 127.0.0.1:18097:8080 "${IMAGE}:${GITHUB_SHA}"
           trap 'docker rm -f jularr-no-nas >/dev/null 2>&1 || true' EXIT
@@ -126,6 +169,7 @@ jobs:
           sudo mount --make-rshared "${HOST_PARENT}"
 
           docker run -d --name jularr-media-gateway \
+            --network jularr-ci -e "ConnectionStrings__Default=${PG_CONN}" \
             --cap-drop ALL --security-opt no-new-privileges:true \
             -e 'JULARR_MEDIA_ROOT=/host-mounts/arr_bay4_media' \
             --mount "type=bind,source=${HOST_PARENT},target=/host-mounts,bind-propagation=rslave" \
@@ -200,6 +244,7 @@ jobs:
           docker run --rm --user 0:0 --entrypoint chown -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" -R 1654:1654 /data
 
           docker run -d --name jularr-legacy \
+            --network jularr-ci -e "ConnectionStrings__Default=${PG_CONN}" \
             --cap-drop ALL --security-opt no-new-privileges:true \
             -v jularr-legacy-data:/data -p 127.0.0.1:18098:8080 "${IMAGE}:${GITHUB_SHA}"
           for _ in {1..30}; do
@@ -211,6 +256,12 @@ jobs:
 
           docker logs jularr-legacy
           exit 1
+
+      - name: Stop smoke-test PostgreSQL
+        if: always()
+        run: |
+          docker rm -f jularr-ci-pg >/dev/null 2>&1 || true
+          docker network rm jularr-ci >/dev/null 2>&1 || true
 
       # publish pushes exactly this smoke-tested image instead of rebuilding it
       # on another runner, where a cache miss or newer apt package could differ.

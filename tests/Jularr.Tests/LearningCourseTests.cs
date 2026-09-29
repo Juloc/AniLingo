@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Vocabulary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -659,7 +658,6 @@ public sealed class LearningCourseTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
 
             if (System.IO.Directory.Exists(Directory))
             {

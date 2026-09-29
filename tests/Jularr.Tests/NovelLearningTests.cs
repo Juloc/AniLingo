@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -452,7 +451,6 @@ public sealed class NovelLearningTests
         {
             await Db.DisposeAsync();
             await services.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             if (Directory.Exists(directory))
             {
                 Directory.Delete(directory, recursive: true);

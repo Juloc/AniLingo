@@ -5,7 +5,6 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Tracking;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -699,7 +698,6 @@ public sealed class NovelEpubVolumeTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(Root, recursive: true);

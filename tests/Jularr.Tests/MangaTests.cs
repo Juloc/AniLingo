@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.ReaderPreferences;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -70,7 +69,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -179,7 +177,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -236,7 +233,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -277,7 +273,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -311,7 +306,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -398,7 +392,6 @@ public sealed class MangaTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }

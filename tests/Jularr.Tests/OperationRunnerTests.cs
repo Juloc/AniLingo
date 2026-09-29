@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Operations;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -55,7 +54,6 @@ public sealed class OperationRunnerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }
@@ -98,7 +96,6 @@ public sealed class OperationRunnerTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TryDelete(root);
         }
     }

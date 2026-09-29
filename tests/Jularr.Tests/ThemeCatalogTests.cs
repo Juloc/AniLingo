@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Appearance;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -59,7 +58,6 @@ public sealed class ThemeCatalogTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }

@@ -7,7 +7,6 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Operations;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -408,7 +407,6 @@ public sealed class BookCompletedDownloadImportTests
             var db = Db;
             await services.DisposeAsync();
             await db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
         }
     }

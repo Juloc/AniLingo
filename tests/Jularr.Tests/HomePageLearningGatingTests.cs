@@ -6,7 +6,6 @@ using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Pages;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -246,7 +245,6 @@ public sealed class HomePageLearningGatingTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
 

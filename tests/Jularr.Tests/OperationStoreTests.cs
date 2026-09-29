@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -92,7 +91,6 @@ public sealed class OperationStoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -141,7 +139,6 @@ public sealed class OperationStoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -223,7 +220,6 @@ public sealed class OperationStoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

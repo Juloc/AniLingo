@@ -3,7 +3,6 @@ using System.Net.Sockets;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Storage;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -293,7 +292,6 @@ public sealed class StorageHealthTests
         public async ValueTask DisposeAsync()
         {
             await db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             temp.Dispose();
         }
     }

@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Mapping;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -118,7 +117,6 @@ public sealed class ProviderRoleArtworkSourceTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 if (File.Exists(databasePath))

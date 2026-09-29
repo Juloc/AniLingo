@@ -11,7 +11,6 @@ using Jularr.Web.Features.Storage;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Infrastructure;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;

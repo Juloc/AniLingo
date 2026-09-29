@@ -4,7 +4,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.ReaderCore;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -423,7 +422,6 @@ public sealed class TranslateGemmaTrackTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             System.IO.Directory.Delete(Directory, recursive: true);
         }
     }

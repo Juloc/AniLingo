@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -254,7 +253,6 @@ public sealed class BookOpdsSourceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(dbPath);
 
             if (Directory.Exists(settingsDirectory))
@@ -384,7 +382,6 @@ public sealed class BookOpdsSourceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(dbPath);
 
             if (Directory.Exists(settingsDirectory))

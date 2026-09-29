@@ -4,7 +4,6 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Reading;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -424,7 +423,6 @@ public sealed class ContinueReadingQueryTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
 

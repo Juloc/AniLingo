@@ -13,7 +13,6 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Tracking;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -962,7 +961,6 @@ public sealed class AniListSyncTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             try
             {
                 Directory.Delete(root, recursive: true);

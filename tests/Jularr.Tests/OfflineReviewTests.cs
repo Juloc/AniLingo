@@ -5,7 +5,6 @@ using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Vocabulary;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -116,7 +115,6 @@ public sealed class OfflineReviewTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -187,7 +185,6 @@ public sealed class OfflineReviewTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -261,7 +258,6 @@ public sealed class OfflineReviewTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

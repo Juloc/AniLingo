@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -92,7 +91,6 @@ public sealed class BookEditionFileTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -157,7 +155,6 @@ public sealed class BookEditionFileTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

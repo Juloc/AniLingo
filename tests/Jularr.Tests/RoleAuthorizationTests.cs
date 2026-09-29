@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -205,7 +204,6 @@ public sealed class RoleAuthorizationTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

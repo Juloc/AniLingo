@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Library;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -169,7 +168,6 @@ internal sealed class MediaInventoryFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
 
         if (Directory.Exists(TempRoot))
         {

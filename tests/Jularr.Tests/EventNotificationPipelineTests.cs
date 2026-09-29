@@ -6,7 +6,6 @@ using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Notifications;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -266,7 +265,6 @@ public sealed class EventNotificationPipelineTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

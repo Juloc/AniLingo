@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -145,7 +144,6 @@ public sealed class VocabularyAggregationTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
 
             if (Directory.Exists(tempRoot))
             {

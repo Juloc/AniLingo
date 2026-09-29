@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -89,7 +88,6 @@ public sealed class AuthServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -113,7 +111,6 @@ public sealed class AuthServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -166,7 +163,6 @@ public sealed class AuthServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -200,7 +196,6 @@ public sealed class AuthServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -248,7 +243,6 @@ public sealed class AuthServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
