@@ -241,14 +241,9 @@ public sealed class AcquisitionModel(
         return RedirectToPage();
     }
 
-    /// <summary>Every media type has its own remote path mappings, in display order.</summary>
+    /// <summary>Every media type has its own remote path mappings.</summary>
     public IReadOnlyList<MediaAcquisitionKind> PathMappingKinds { get; } =
-    [
-        MediaAcquisitionKind.Anime,
-        MediaAcquisitionKind.Manga,
-        MediaAcquisitionKind.LightNovel,
-        MediaAcquisitionKind.Book
-    ];
+        Enum.GetValues<MediaAcquisitionKind>();
 
     public string KindLabel(MediaAcquisitionKind kind) =>
         Ui[$"admin.requests.kind.{AcquisitionAccessNames.Kind(kind)}"];

@@ -59,7 +59,7 @@ monitored anime, recent decisions and recent imports.
 | Download status, progress, failure reason | the download client's Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
 | Ownership (mode, Jularr/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
-| Import mode (global/per root), remote path mappings, lossless playback optimization | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
+| Import mode (global/per root), per-media-type folders and remote path mappings, lossless playback optimization | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
 | Tag catalog, delay profiles, tag-scoped indexer restrictions | `/data/acquisition/acquisition-policy.json` (`AcquisitionPolicyStore`) |
 | Per-profile AniList Current/Planning auto-monitor opt-in | `/data/acquisition/anilist-auto-monitor.json` (`AniListAutoMonitorSettingsStore`) |
 | Per-episode grab/delay/import/upgrade history | the database (`AcquisitionHistoryEntry`, via `AcquisitionHistoryService`) |
@@ -142,11 +142,19 @@ another candidate; the episode also backs off and is searched again later unless
 
 ## Import
 
-When an anime download completes, the SABnzbd monitor hands it to `AnimeImportExecutor`:
+Anime uses the same completed-download spine as every other media type. When an anime download
+completes, the SABnzbd monitor calls the shared `CompletedDownloadImportService`. It asks the exact
+download client recorded on the download for the completed path, applies the **Anime** remote path
+mappings, hands the files to the Anime adapter (`AnimeImportExecutor`, an
+`ICompletedDownloadImportAdapter` behind `CompletedDownloadDispatcher`) and records the reported path,
+mapped path, destination, import mode and result on the download operation. The shared layer also
+lists and classifies the download's files (`CompletedDownloadFiles`) and commits each file
+(`LibraryFilePlacer`); the Anime adapter keeps the episode mapping, Sonarr ownership, naming and
+library reconciliation:
 
 1. Wait if a library scan or rename is running (the import stays *Importing* and continues before
    the next scheduler run). Renames likewise refuse to start while an import runs.
-2. Enumerate the completed folder SABnzbd reports.
+2. List the files of the completed folder (shared).
 3. Plan with `AnimeImportPlanner` (#298): map every file to the requested local
    episodes (season/episode or AniList absolute number), score it, detect existing files and apply
    `SonarrParallelSafety.CanImport`/`CanMutateLibraryPath`. Only confident single-anime matches are
@@ -157,8 +165,8 @@ When an anime download completes, the SABnzbd monitor hands it to `AnimeImportEx
    anime key and episode; otherwise the file needs a decision.
 5. Claim the destination as an Jularr path and check `CanMutateLibraryPath` again; Sonarr-owned
    or Sonarr-active paths are never touched. An existing destination is never overwritten.
-6. Move the file (and matching subtitle/NFO sidecars). An existing worse file is deleted only after
-   the new file is in place.
+6. Place the file with the import mode (shared `LibraryFilePlacer`): the matching subtitle/NFO sidecars
+   follow it, and an existing worse file is deleted only after the new file is in place.
 7. Reconcile only that anime's folder with the library scanner, so the episode appears with the
    planned numbering.
 8. When *Lossless playback optimization* is enabled, queue one `media-optimization` operation for
@@ -183,7 +191,9 @@ On startup, and before every scheduler run, the scheduler:
 
 - resumes imports that were interrupted or deferred,
 - imports anime downloads that completed within the last 7 days while Jularr was not running
-  (the storage path is read from SABnzbd history),
+  (through the shared import step: the path comes from the download's own SABnzbd connection, so a
+  download whose files cannot be located is retried and, 24 hours after it finished, ends as a failed
+  import on **Needs a decision**),
 - reconciles search attempts with the acquisition relation and Operations: an interrupted search
   whose release SABnzbd already accepted is recorded as grabbed (and its ownership job registered)
   instead of being searched again, finished imports clear the attempt, and failed or exhausted
@@ -198,12 +208,16 @@ per library root: **Move** (the historical default, removes the source), **Copy*
 source), **Hardlink** (no extra disk space, keeps the download seeding; fails the import with a
 clear reason when the source and the library root are on different filesystems) or **Hardlink or
 copy** (the explicit choice to fall back to a copy only on a different filesystem — no other mode
-falls back silently). The same page's remote path mappings (`RemotePrefix` → `LocalPrefix`) rewrite
-a path reported by the download client before anything reads it, and rewrite every Sonarr-observed
-path (series folder, episode file, queue output, history) the same way, so Sonarr ↔ Jularr path
-matching (ownership checks, rename-loop detection) still works when the two containers mount the
-shared storage differently — closing the "different mount paths" gap from
-[SONARR_MIGRATION.md](SONARR_MIGRATION.md).
+falls back silently). The same page's remote path mappings (`RemotePrefix` → `LocalPrefix`) belong to a
+media type: the mappings of a media type rewrite a path the download client reports for that media
+type before anything reads it, and the **Anime** mappings also rewrite every Sonarr-observed path
+(series folder, episode file, queue output, history) the same way, so Sonarr ↔ Jularr path matching
+(ownership checks, rename-loop detection) still works when the two containers mount the shared
+storage differently — closing the "different mount paths" gap from
+[SONARR_MIGRATION.md](SONARR_MIGRATION.md). `AnimeImportSettingsState.TranslatePath(kind, path)` is
+the one translation everything uses. Earlier versions had one global list; it is copied into every
+media type once when the settings file is first read, so existing setups keep translating exactly as
+before and each media type's list can then be pruned.
 
 The same import modes and remote path mappings apply to Manga, Light Novels and Books through the
 shared `ImportFileTransfer` and `CompletedDownloadLocationResolver`; their folders are set under

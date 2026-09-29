@@ -41,11 +41,11 @@ Ownership decisions and Sonarr links persist in the canonical ownership store (`
 ### Different mount paths
 
 When Sonarr and Jularr see the shared library under different paths (different container
-mounts), configure the remote path mappings on `/Settings/Acquisition`: every Sonarr-observed path
+mounts), configure the **Anime** remote path mappings on `/Settings/Acquisition`: every Sonarr-observed path
 (series folder, episode file, queue output path, history source/target path) is rewritten through
-that mapping before Jularr compares it to its own paths, so ownership recognition and rename-loop
-detection keep working. The same mapping also rewrites completed-download paths reported by the
-download client (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md#import-mode-and-remote-path-mapping)) — it is one canonical list for both purposes.
+those mappings before Jularr compares it to its own paths, so ownership recognition and rename-loop
+detection keep working. The same Anime mappings also rewrite completed anime download paths reported by the
+download client (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md#import-mode-and-remote-path-mapping)) — they are one canonical list for both purposes.
 
 ## Safe rollout
 

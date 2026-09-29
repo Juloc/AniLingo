@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Backup;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
 
@@ -205,6 +206,35 @@ public sealed class RemotePathMappingTests
         Assert.AreEqual(MediaFolderSettingsMigration.MediaFoldersVersion, state.Version);
         Assert.AreEqual(Path.GetFullPath("/data/inbox/books"), state.InboxFor(MediaAcquisitionKind.Book));
         Assert.AreEqual("/data/dl/x", state.TranslatePath(MediaAcquisitionKind.Book, "/downloads/x"), "The inbox migration keeps the mappings of its media type.");
+    }
+
+    [TestMethod]
+    public async Task ABackupTakenBeforePerMediaTypeMappingsRestoresIntoTheNewShape()
+    {
+        using var directory = new TempDirectory();
+        var bundle = new AcquisitionBackupBundle(
+            AcquisitionBackupService.CurrentVersion,
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, string>
+            {
+                ["import-settings.json"] =
+                    """{"Version":2,"DefaultImportMode":3,"RootImportModes":{},"RemotePathMappings":[{"RemotePrefix":"/tv","LocalPrefix":"/data/anime"}]}"""
+            });
+
+        var restored = await new AcquisitionBackupService(directory.Path).RestoreAsync(bundle, CancellationToken.None);
+
+        Assert.IsTrue(restored.Success, string.Join(" ", restored.Errors));
+        var state = await new AnimeImportSettingsStore(directory.Path).LoadAsync();
+        Assert.AreEqual(ImportMode.HardlinkOrCopy, state.DefaultImportMode);
+        Assert.AreEqual("/data/anime/Frieren", state.TranslatePath(MediaAcquisitionKind.Anime, "/tv/Frieren"));
+        Assert.AreEqual("/data/anime/Frieren", state.TranslatePath(MediaAcquisitionKind.Book, "/tv/Frieren"));
+
+        var exported = await new AcquisitionBackupService(directory.Path).ExportAsync(CancellationToken.None);
+        using var document = JsonDocument.Parse(exported.Files["import-settings.json"]);
+        Assert.IsTrue(
+            document.RootElement.GetProperty("mediaLibraries").GetProperty("Anime").TryGetProperty("remotePathMappings", out var anime) &&
+            anime.GetArrayLength() == 1,
+            "A new backup carries the per-media-type mappings.");
     }
 
     [TestMethod]
