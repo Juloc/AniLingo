@@ -32,7 +32,9 @@ env:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Tests run against a real PostgreSQL with an isolated database per test (#570), which is
+    # slower than the former in-process SQLite; the ceiling is generous so a loaded runner has room.
+    timeout-minutes: 60
 
     # The test suite runs against a real PostgreSQL (#570). The password is a throwaway CI value.
     env:
