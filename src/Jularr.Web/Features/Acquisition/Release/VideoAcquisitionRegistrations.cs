@@ -61,6 +61,9 @@ public sealed class MovieAcquisitionRegistration : IMediaAcquisitionRegistration
     public IReleaseParser CreateReleaseParser() => SceneReleaseParser.Instance;
 
     public QualityProfile CreateDefaultQualityProfile() => VideoQualityProfiles.CreateDefaultMovie1080p();
+
+    // A movie is one whole-item unit; monitoring tracks the film, not seasons or episodes.
+    public Monitoring.MonitoringGranularity MonitoringGranularity => Monitoring.MonitoringGranularity.Item;
 }
 
 /// <summary>TV/Series as one registration on the shared acquisition engine: scene parser + the 1080p TV profile (#594).</summary>

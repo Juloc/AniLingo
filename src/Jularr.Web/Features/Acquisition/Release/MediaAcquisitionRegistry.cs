@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Quality;
 
 namespace Jularr.Web.Features.Acquisition.Release;
@@ -38,6 +39,14 @@ public interface IMediaAcquisitionRegistration
     IReleaseParser CreateReleaseParser();
 
     QualityProfile CreateDefaultQualityProfile();
+
+    /// <summary>
+    /// The granularity the shared monitoring engine tracks this media type at (see
+    /// <see cref="MonitoringGranularity"/>). Episode is the default (anime/TV); whole-item media
+    /// (movies, audiobooks, books) override it to <see cref="MonitoringGranularity.Item"/>. A default
+    /// interface member so a registration that does not monitor need not implement it.
+    /// </summary>
+    MonitoringGranularity MonitoringGranularity => MonitoringGranularity.Episode;
 }
 
 /// <summary>
@@ -72,6 +81,9 @@ public sealed class MediaAcquisitionRegistry
     public IReleaseParser ParserFor(MediaAcquisitionKind kind) => Get(kind).CreateReleaseParser();
 
     public QualityProfile DefaultProfileFor(MediaAcquisitionKind kind) => Get(kind).CreateDefaultQualityProfile();
+
+    /// <summary>The granularity the monitoring engine tracks <paramref name="kind"/> at.</summary>
+    public MonitoringGranularity MonitoringGranularityFor(MediaAcquisitionKind kind) => Get(kind).MonitoringGranularity;
 
     private IMediaAcquisitionRegistration Get(MediaAcquisitionKind kind) =>
         registrations.TryGetValue(kind, out var registration)
