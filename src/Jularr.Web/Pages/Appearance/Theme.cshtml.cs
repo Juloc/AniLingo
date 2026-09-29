@@ -68,7 +68,7 @@ public sealed class ThemeModel(AppDbContext db) : PageModel
     }
 
     private IActionResult SelectedThemeResponse(string? themeId) =>
-        Request.Headers.Accept.Any(value => value.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        Request.Headers.Accept.Any(value => value?.Contains("application/json", StringComparison.OrdinalIgnoreCase) == true)
             ? new JsonResult(new { themeId })
             : RedirectToPage("/Settings/Appearance");
 }
