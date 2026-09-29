@@ -58,4 +58,7 @@ object ClientApiRoutes {
 
     const val TtsPreferences = "$Base/me/tts-preferences"
     const val SpeechModels = "$Base/speech/models"
+
+    const val PairingStart = "$Base/pairing/start"
+    const val PairingPoll = "$Base/pairing/poll"
 }

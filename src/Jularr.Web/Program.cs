@@ -33,6 +33,7 @@ using Jularr.Web.Features.Notifications;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Pairing;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
@@ -226,6 +227,46 @@ builder.Services.AddRateLimiter(options =>
             {
                 AutoReplenishment = true,
                 PermitLimit = 6,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+    // Device-code TV pairing (#489, Features/Pairing): start/poll are anonymous (a TV has no
+    // session yet), so both are scoped by IP; approve runs in an authenticated browser/app
+    // session and is scoped by that account, matching "wake" above.
+    options.AddPolicy("pairing-start", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+    options.AddPolicy("pairing-approve", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+    // Higher than "pairing-start": the TV polls roughly every DevicePairingStore.PollIntervalSeconds
+    // for up to DevicePairingStore.PairingLifetime, so one pairing attempt needs ~60 polls.
+    options.AddPolicy("pairing-poll", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 40,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
@@ -540,6 +581,8 @@ builder.Services.AddHostedService<PlaybackJobWorker>();
 builder.Services.AddSingleton<PlaybackSessionStore>();
 builder.Services.AddSingleton<PlaybackSessionConnectionRegistry>();
 builder.Services.AddSingleton<PlaybackSessionCoordinator>();
+builder.Services.AddSingleton<DevicePairingStore>();
+builder.Services.AddHostedService<DiscoveryBeaconService>();
 
 var app = builder.Build();
 
@@ -561,6 +604,7 @@ app.MapClientApiOfflineV1();
 app.MapClientApiOfflineLibraryV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
+app.MapDiscoveryWellKnown();
 app.MapReaderThemeCatalog();
 app.MapLanguageInspector();
 app.MapAiActivity();

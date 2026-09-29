@@ -17,6 +17,21 @@
     <string name="tv_login_button_sign_in">Sign in</string>
     <string name="tv_login_button_change_server">Change server</string>
 
+    <!-- LAN discovery (#489) -->
+    <string name="tv_setup_discovering">Searching your network for Jularr…</string>
+    <string name="tv_setup_discovered_heading">Found on your network</string>
+    <string name="tv_setup_discovered_connect">Connect</string>
+    <string name="tv_setup_manual_heading">Or enter a server address</string>
+
+    <!-- Device-code pairing (#489) -->
+    <string name="tv_pairing_title">Connect this TV</string>
+    <string name="tv_pairing_starting">Getting a code…</string>
+    <string name="tv_pairing_start_failed">Could not reach the server. Retrying…</string>
+    <string name="tv_pairing_instructions">On your phone or computer, go to %1$s/Pair and enter this code.</string>
+    <string name="tv_pairing_waiting">Waiting for approval…</string>
+    <string name="tv_pairing_use_password">Sign in with password instead</string>
+    <string name="tv_pairing_use_code">Use a code instead</string>
+
     <!-- Sidebar -->
     <string name="tv_sidebar_home">Home</string>
     <string name="tv_sidebar_watchlist">Watchlist</string>

@@ -7,6 +7,8 @@ import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
 import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
+import de.juloc.jularr.core.model.DevicePairingPollResult
+import de.juloc.jularr.core.model.DevicePairingSession
 import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
@@ -72,6 +74,20 @@ interface JularrClientApi {
     suspend fun getTtsPreferences(): TtsPreferences
     suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences
     suspend fun getSpeechModels(): SpeechModelsResponse
+
+    /**
+     * `POST /pairing/start` (#489): begins a device-code pairing and returns the short user
+     * code the TV displays plus the opaque device code it polls with. Anonymous: a fresh TV has
+     * no session yet.
+     */
+    suspend fun startDevicePairing(): DevicePairingSession
+
+    /**
+     * `POST /pairing/poll` (#489): asks whether [deviceCode] has been approved yet. A successful
+     * [DevicePairingPollResult.Approved] result means the server already signed this connection
+     * in (the same cookie mechanism `login` uses) — the caller does not call `login` afterward.
+     */
+    suspend fun pollDevicePairing(deviceCode: String): DevicePairingPollResult
 }
 
 sealed interface ApiCompatibility {
