@@ -120,6 +120,11 @@ public static class MediaCoreNormalization
                 continue; // strip combining diacritics
             }
 
+            if (ch is '\'' or '’' or 'ʼ' or '`' or '´')
+            {
+                continue; // drop apostrophes so "journey's" folds to "journeys", not "journey s"
+            }
+
             if (char.IsLetterOrDigit(ch))
             {
                 builder.Append(ch);
