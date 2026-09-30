@@ -121,6 +121,10 @@ builder.Services.AddScoped<Jularr.Web.Features.Recommendations.MediaRecommendati
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();
+builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddSingleton<HostTelemetrySampler>();
+builder.Services.AddSingleton<IHostTelemetry>(services => services.GetRequiredService<HostTelemetrySampler>());
+builder.Services.AddHostedService(services => services.GetRequiredService<HostTelemetrySampler>());
 builder.Services.AddScoped<KnownDeviceRegistry>();
 builder.Services.AddSingleton<SecurityEventLog>();
 builder.Services.AddScoped<SystemHealthService>();
