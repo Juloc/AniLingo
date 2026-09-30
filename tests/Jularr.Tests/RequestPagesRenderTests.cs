@@ -5,6 +5,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Collections;
 using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Metadata;
@@ -221,13 +222,13 @@ public sealed class RequestPagesRenderTests
 
         var html = await host.GetHtmlAsync("/Library", asOwner: false);
 
-        var cards = html.Split("<article class=\"banner-card", StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
+        var cards = html.Split("<article class=\"lib-card", StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
         Assert.AreEqual(3, cards.Length);
         string CardOf(string title) => cards.Single(card => card.Contains(title, StringComparison.Ordinal));
-        Assert.IsFalse(CardOf("Playable Show").Contains("banner-card-availability", StringComparison.Ordinal), "It already has a play button.");
-        StringAssert.Contains(CardOf("Empty Show"), "banner-card-availability-local");
-        StringAssert.Contains(CardOf("Empty Show"), "In library");
-        StringAssert.Contains(CardOf("Requested Show"), "banner-card-availability-requested");
+        Assert.IsFalse(CardOf("Playable Show").Contains("lib-state", StringComparison.Ordinal), "A complete title carries no marker.");
+        StringAssert.Contains(CardOf("Empty Show"), "lib-state-missing");
+        StringAssert.Contains(CardOf("Empty Show"), "Not available");
+        StringAssert.Contains(CardOf("Requested Show"), "lib-state-requested");
         StringAssert.Contains(CardOf("Requested Show"), "Downloading");
     }
 
@@ -309,6 +310,10 @@ public sealed class RequestPagesRenderTests
                         services.AddSingleton(settings);
                         services.AddSingleton(new QualityProfileStore(new DirectoryInfo(Path.Combine(data.FullName, "quality"))));
                         services.AddScoped<AcquisitionAccessStore>();
+                        // The Library page's Collections view.
+                        services.AddScoped<Jularr.Web.Features.MediaFacts.MediaFactsService>();
+                        services.AddScoped<Jularr.Web.Features.Franchises.FranchiseStore>();
+                        services.AddCollections();
                         services.AddScoped<RequestHistoryQuery>();
                         services.AddScoped<AcquisitionRequestService>();
                         services.AddSingleton<IJularrEventPublisher, RecordingEventPublisher>();

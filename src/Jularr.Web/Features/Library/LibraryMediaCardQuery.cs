@@ -27,6 +27,17 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
 {
     public async Task<IReadOnlyList<MediaBannerCardData>> GetAnimeAsync(
         string profileId,
+        CancellationToken cancellationToken) =>
+        [.. (await GetAnimeEntriesAsync(profileId, cancellationToken)).Entries.Select(x => x.Card)];
+
+    /// <summary>
+    /// The Library page's read model: the banner-card facts plus what browsing needs (poster, format,
+    /// when the title was added and last watched, how many units are playable or missing). The
+    /// query count is the same as <see cref="GetAnimeAsync"/>; a failing open-request lookup only
+    /// drops the requested state and flags the result as degraded.
+    /// </summary>
+    public async Task<LibraryEntries> GetAnimeEntriesAsync(
+        string profileId,
         CancellationToken cancellationToken)
     {
         var titles = await (
@@ -50,24 +61,37 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
                 metadata == null ? null : metadata.BannerImageUrl,
                 metadata == null ? null : metadata.CoverImageUrl,
                 metadata == null ? null : metadata.Provider,
-                metadata == null ? null : metadata.ExternalId))
+                metadata == null ? null : metadata.ExternalId,
+                metadata == null ? null : metadata.Format,
+                anime.CreatedAt))
             .ToListAsync(cancellationToken);
 
         if (titles.Count == 0)
         {
-            return [];
+            return new LibraryEntries([], false);
         }
 
-        // The stage of an open request per AniList id, for the availability badge (#597).
-        var openRequests = (await new AcquisitionAccessStore(db).ListAsync(
-                MediaAcquisitionKind.Anime,
-                requestedByProfileId: null,
-                openOnly: true,
-                limit: 500,
-                cancellationToken))
-            .Where(request => request.Provider == AniListMetadataProvider.ProviderKey)
-            .GroupBy(request => request.ExternalId)
-            .ToDictionary(group => group.Key, group => group.First().Status);
+        // The stage of an open request per AniList id, for the availability badge (#597). Losing it
+        // only hides the requested state, so the grid still renders.
+        var degraded = false;
+        Dictionary<string, AcquisitionRequestStatus> openRequests;
+        try
+        {
+            openRequests = (await new AcquisitionAccessStore(db).ListAsync(
+                    MediaAcquisitionKind.Anime,
+                    requestedByProfileId: null,
+                    openOnly: true,
+                    limit: 500,
+                    cancellationToken))
+                .Where(request => request.Provider == AniListMetadataProvider.ProviderKey)
+                .GroupBy(request => request.ExternalId)
+                .ToDictionary(group => group.Key, group => group.First().Status);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            openRequests = [];
+            degraded = true;
+        }
 
         var episodes = (await db.Episodes
                 .AsNoTracking()
@@ -118,16 +142,17 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
             .Concat(sidecarSubtitles)
             .ToLookup(x => (x.AnimeId, x.Kind));
 
-        return
-        [
-            .. titles.Select(title => BuildCard(
-                title,
-                episodes[title.Id].ToArray(),
-                progress,
-                OrderLanguages(languages[(title.Id, MediaStreamKind.Audio)]),
-                OrderLanguages(languages[(title.Id, MediaStreamKind.Subtitle)]),
-                openRequests))
-        ];
+        return new LibraryEntries(
+            [
+                .. titles.Select(title => BuildEntry(
+                    title,
+                    episodes[title.Id].ToArray(),
+                    progress,
+                    OrderLanguages(languages[(title.Id, MediaStreamKind.Audio)]),
+                    OrderLanguages(languages[(title.Id, MediaStreamKind.Subtitle)]),
+                    openRequests))
+            ],
+            degraded);
     }
 
     /// <summary>
@@ -191,7 +216,7 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
             : (MediaBannerProgressState.InProgress, next);
     }
 
-    private static MediaBannerCardData BuildCard(
+    private static LibraryCardEntry BuildEntry(
         TitleRow title,
         IReadOnlyList<EpisodeRow> episodes,
         IReadOnlyDictionary<Guid, EpisodeProgressState> progress,
@@ -210,7 +235,34 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
             .Order()
             .ToArray();
 
-        return new MediaBannerCardData(
+        // Units the library knows, one per number: the regular episodes, or the specials of a title
+        // that has only those. A unit with a file is playable, one without is missing.
+        var knownUnits = episodes.Any(x => x.SeasonNumber > 0)
+            ? episodes.Where(x => x.SeasonNumber > 0)
+            : episodes;
+        var unitHasMedia = knownUnits
+            .GroupBy(x => (x.SeasonNumber, x.Number))
+            .Select(group => group.Any(x => x.HasMedia))
+            .ToArray();
+        var playableUnits = unitHasMedia.Count(hasMedia => hasMedia);
+        var missingUnits = unitHasMedia.Length - playableUnits;
+        if (string.Equals(title.Status, "FINISHED", StringComparison.OrdinalIgnoreCase)
+            && localSeasons.Length <= 1
+            && title.ProviderEpisodeCount is int providerCount
+            && providerCount > unitHasMedia.Length)
+        {
+            // A finished title whose provider lists more episodes than the library holds.
+            missingUnits += providerCount - unitHasMedia.Length;
+        }
+
+        var lastWatched = episodes
+            .Select(x => progress.TryGetValue(x.Id, out var row)
+                && (row.IsCompleted || row.PositionMs >= EpisodeProgressService.MinimumResumeMs)
+                    ? (DateTime?)row.UpdatedAt
+                    : null)
+            .Max();
+
+        var card = new MediaBannerCardData(
             MediaBannerKind.Anime,
             title.Title,
             $"/Library/Anime/{title.Id}",
@@ -231,6 +283,16 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
                     && openRequests.TryGetValue(externalId, out var requestStatus)
                         ? requestStatus
                         : null));
+
+        return new LibraryCardEntry(
+            card,
+            AnimeArtworkStore.ResolvePosterUrl(title.Id, title.CoverImageUrl)
+                ?? AnimeArtworkStore.ResolveFanartUrl(title.Id, title.BannerImageUrl),
+            title.Format,
+            playableUnits,
+            missingUnits,
+            title.CreatedAt,
+            lastWatched);
     }
 
     private static MediaBannerProgress? BuildProgress(
@@ -305,7 +367,9 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
         string? BannerImageUrl,
         string? CoverImageUrl,
         string? Provider,
-        string? ExternalId);
+        string? ExternalId,
+        string? Format,
+        DateTime CreatedAt);
 
     private sealed record EpisodeRow(
         Guid Id,

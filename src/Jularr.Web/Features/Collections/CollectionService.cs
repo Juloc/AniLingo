@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.Shell;
@@ -17,6 +18,14 @@ public sealed record CollectionSummaryView(
     string? Description,
     int ItemCount,
     DateTime? LastMaterializedAt);
+
+/// <summary>A collection as a Library tile: name, kind, how many works the profile can browse and up to four poster URLs.</summary>
+public sealed record CollectionTileView(
+    Guid Id,
+    CollectionKind Kind,
+    string Name,
+    int ItemCount,
+    IReadOnlyList<string> PosterUrls);
 
 /// <summary>One card of a collection shelf plus, for a smart collection, the reasons the work matched.</summary>
 public sealed record CollectionCardView(Guid WorkId, MediaBannerCardModel Card, IReadOnlyList<string> Reasons);
@@ -48,6 +57,11 @@ public sealed class CollectionService(
     private static readonly ConcurrentDictionary<string, BoardCacheEntry> Cache = new(StringComparer.Ordinal);
     private static readonly TimeSpan BoardLifetime = TimeSpan.FromMinutes(2);
 
+    /// <summary>Posters in a collection tile's mosaic.</summary>
+    public const int MosaicSize = 4;
+
+    private const int MosaicCandidates = 12;
+
     public async Task<IReadOnlyList<CollectionSummaryView>> ListAsync(string profileId, CancellationToken cancellationToken)
     {
         var collections = await store.ListAsync(profileId, cancellationToken);
@@ -73,6 +87,85 @@ public sealed class CollectionService(
                 counts.GetValueOrDefault(x.Id),
                 x.LastMaterializedAt))
         ];
+    }
+
+    /// <summary>
+    /// The collections of a profile as Library tiles: the count of works the profile may browse and up to
+    /// <see cref="MosaicSize"/> poster URLs taken from the first works that have artwork. Only anime works
+    /// carry poster artwork today; other media fall back to the tile placeholder.
+    /// </summary>
+    public async Task<IReadOnlyList<CollectionTileView>> ListTilesAsync(
+        ClaimsPrincipal? user,
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        var collections = await store.ListAsync(profileId, cancellationToken);
+        if (collections.Count == 0)
+        {
+            return [];
+        }
+
+        var access = await shell.GetMediaAccessAsync(user, cancellationToken);
+        var ids = collections.Select(x => x.Id).ToList();
+        var items = await (
+            from item in db.CollectionItems.AsNoTracking()
+            join work in db.Works.AsNoTracking() on item.WorkId equals work.Id
+            where ids.Contains(item.CollectionId)
+            orderby item.Position, work.CanonicalTitle
+            select new { item.CollectionId, item.WorkId, work.MediaType })
+            .ToListAsync(cancellationToken);
+
+        var visible = items
+            .Where(x => access.IsVisible(x.MediaType))
+            .GroupBy(x => x.CollectionId)
+            .ToDictionary(group => group.Key, group => group.Select(x => x.WorkId).ToList());
+
+        // Poster candidates: a handful of works per collection is enough to fill four tiles.
+        var candidates = visible.Values.SelectMany(works => works.Take(MosaicCandidates)).Distinct().ToList();
+        var posters = await ResolvePostersAsync(candidates, cancellationToken);
+
+        return
+        [
+            .. collections.Select(collection =>
+            {
+                var works = visible.GetValueOrDefault(collection.Id) ?? [];
+                return new CollectionTileView(
+                    collection.Id,
+                    collection.Kind,
+                    collection.Name,
+                    works.Count,
+                    [
+                        .. works.Take(MosaicCandidates)
+                            .Select(work => posters.GetValueOrDefault(work))
+                            .Where(url => !string.IsNullOrWhiteSpace(url))
+                            .Take(MosaicSize)
+                            .Select(url => url!)
+                    ]);
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, string?>> ResolvePostersAsync(
+        IReadOnlyCollection<Guid> workIds,
+        CancellationToken cancellationToken)
+    {
+        if (workIds.Count == 0)
+        {
+            return new Dictionary<Guid, string?>();
+        }
+
+        var covers = await (
+            from link in db.WorkSourceLinks.AsNoTracking()
+            join metadata in db.AnimeMetadata.AsNoTracking() on link.SourceId equals metadata.AnimeId
+            where workIds.Contains(link.WorkId) && link.SourceKind == WorkSourceKind.Anime
+            select new { link.WorkId, link.SourceId, metadata.CoverImageUrl })
+            .ToListAsync(cancellationToken);
+
+        return covers
+            .GroupBy(x => x.WorkId)
+            .ToDictionary(
+                group => group.Key,
+                group => AnimeArtworkStore.ResolvePosterUrl(group.First().SourceId, group.First().CoverImageUrl));
     }
 
     public Task<Collection?> GetAsync(string profileId, Guid id, CancellationToken cancellationToken) =>
