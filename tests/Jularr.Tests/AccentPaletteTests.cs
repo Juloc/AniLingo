@@ -74,6 +74,27 @@ public sealed class AccentPaletteTests
     }
 
     [TestMethod]
+    public void AppearanceResetButtonRestoresTheDefaultLilaNotTheOldBrandRed()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Jularr.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.IsNotNull(directory, "Could not locate Jularr repository root.");
+        var web = Path.Combine(directory.FullName, "src", "Jularr.Web");
+        var page = File.ReadAllText(Path.Combine(web, "Pages", "Settings", "Appearance.cshtml"));
+        var script = File.ReadAllText(Path.Combine(web, "wwwroot", "js", "appearance-settings.js"));
+
+        StringAssert.Contains(page, "data-default-seed=\"@AppAccent.DefaultSeed\"");
+        Assert.IsFalse(page.Contains("BrandSeed", StringComparison.Ordinal), "The reset seed must be the default lila.");
+        StringAssert.Contains(script, "host.dataset.defaultSeed");
+        StringAssert.Contains(script, "save(defaultSeed)");
+        Assert.IsFalse(script.Contains("brandSeed", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void BrandSeedKeepsJularrRedWithWhiteLabels()
     {
         // The ink-seal red stays selectable and anchors the ink-and-paper artwork (0deg rotation).
