@@ -1,10 +1,12 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -27,6 +29,10 @@ public sealed class AnimeModel(
     AniListAccountService aniListAccountService,
     FranchiseStore franchises,
     FranchiseService franchiseService,
+    WatchlistStore watchlist,
+    WatchlistLibraryResolver watchlistLibrary,
+    AcquisitionAccessStore requestStore,
+    IMediaCapabilityService mediaCapabilities,
     ILogger<AnimeModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -46,7 +52,44 @@ public sealed class AnimeModel(
     // Owner-defined display grouping (#524). Empty for works with no groups, which then render as
     // a plain episode list exactly as before. Never alters episode identity or file paths.
     public IReadOnlyList<PresentationSection<EpisodeRow>> PresentationSections { get; private set; } = [];
-    public IReadOnlyList<SeasonRow> Seasons { get; private set; } = [];
+
+    /// <summary>The season rail: the seasons (specials last), or the owner's display groups when the work has some.</summary>
+    public IReadOnlyList<AnimeStructureEntry> Structure { get; private set; } = [];
+
+    public AnimeStructureEntry? Selected { get; private set; }
+
+    /// <summary>Season art by entry key; an entry without art shows its number instead.</summary>
+    public IReadOnlyDictionary<string, string?> StructureArt { get; private set; } = new Dictionary<string, string?>();
+
+    /// <summary>The episodes of the selected entry, in the chosen order.</summary>
+    public IReadOnlyList<EpisodeRow> SelectedEpisodes { get; private set; } = [];
+
+    public AnimeEpisodeSort Sort { get; private set; }
+    public AnimeEpisodeLayout Layout { get; private set; }
+
+    /// <summary>The episode the primary action opens, and what that action is called.</summary>
+    public EpisodeRow? NextEpisode { get; private set; }
+    public AnimePrimaryAction PrimaryAction { get; private set; } = AnimePrimaryAction.Start;
+
+    public int WatchedEpisodeCount { get; private set; }
+
+    /// <summary>The open request for this anime, if any: what is on its way.</summary>
+    public AcquisitionRequestStatus? OpenRequest { get; private set; }
+
+    /// <summary>Whether the anime is on the profile's watchlist ("My List"); null without a provider match to identify it.</summary>
+    public bool? IsOnWatchlist { get; private set; }
+
+    /// <summary>The address of the request form for more episodes or languages; null when the profile cannot request.</summary>
+    public string? RequestHref { get; private set; }
+
+    /// <summary>Related works of the franchise, ready to render as a compact list.</summary>
+    public IReadOnlyList<RelatedWork> Related { get; private set; } = [];
+
+    /// <summary>Related works beyond the ones listed; they are on the franchise page.</summary>
+    public int RelatedMore { get; private set; }
+
+    /// <summary>Related works listed in the side panel.</summary>
+    public const int RelatedLimit = 6;
     public int SuggestedMappingSeason { get; private set; }
     public int SuggestedMappingEpisodeStart { get; private set; } = 1;
     public bool IsOwner => currentAccount.IsOwner;
@@ -66,9 +109,14 @@ public sealed class AnimeModel(
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? q,
+        string? part,
+        string? sort,
+        string? view,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        Sort = AnimeDetailView.ParseSort(sort);
+        Layout = AnimeDetailView.ParseLayout(view);
         var anime = await db.Anime
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -175,15 +223,6 @@ public sealed class AnimeModel(
                 EpisodeMappings = [];
             }
 
-            Seasons = episodeRows
-                .GroupBy(x => x.SeasonNumber)
-                .Select(group => new SeasonRow(
-                    group.Key,
-                    group.Min(x => x.Number),
-                    group.Max(x => x.Number),
-                    group.Count()))
-                .ToArray();
-
             var firstUnmapped = episodeRows.FirstOrDefault(episode =>
                 episode.Number > 0 &&
                 !EpisodeMappings.Any(mapping =>
@@ -236,12 +275,24 @@ public sealed class AnimeModel(
         var progressByEpisode = await episodeProgressService.GetForAnimeAsync(
             id,
             cancellationToken);
+        var mediaByEpisode = await AnimeEpisodeMediaQuery.LoadAsync(db, id, cancellationToken);
+        var preferences = await episodeProgressService.GetPreferencesAsync(cancellationToken);
+
+        if (Metadata is { Provider.Length: > 0, ExternalId.Length: > 0 } requested)
+        {
+            OpenRequest = (await requestStore.FindOpenAsync(
+                MediaAcquisitionKind.Anime,
+                requested.Provider,
+                requested.ExternalId,
+                cancellationToken))?.Status;
+        }
 
         Episodes = episodeRows
             .Select(episode =>
             {
                 var coverage = coverageByEpisode.GetValueOrDefault(episode.Id, Coverage.Empty);
                 var progress = progressByEpisode.GetValueOrDefault(episode.Id);
+                var media = mediaByEpisode.GetValueOrDefault(episode.Id) ?? AnimeEpisodeMediaFacts.None;
 
                 return new EpisodeRow(
                     episode.Id,
@@ -255,7 +306,15 @@ public sealed class AnimeModel(
                     progress?.IsCompleted == true,
                     progress is { IsCompleted: false, ResumePositionMs: > 0 }
                         ? progress.Percent
-                        : null);
+                        : null,
+                    media.RuntimeMinutes ?? Metadata?.EpisodeDurationMinutes,
+                    AnimeDetailView.Availability(
+                        media,
+                        OpenRequest,
+                        preferences.PreferredAudioLanguage,
+                        preferences.PreferredSubtitleLanguage),
+                    AnimeDetailView.Chips(media.AudioLanguages, preferences.PreferredAudioLanguage),
+                    AnimeDetailView.Chips(media.SubtitleLanguages, preferences.PreferredSubtitleLanguage));
             })
             .ToArray();
 
@@ -267,6 +326,17 @@ public sealed class AnimeModel(
             episode => episode.Number,
             Ui["library.presentation.otherHeading"]);
 
+        WatchedEpisodeCount = Episodes.Count(x => x.IsWatched);
+        (NextEpisode, PrimaryAction) = AnimeDetailView.ChoosePrimary(
+            Episodes,
+            episode => episode.SeasonNumber,
+            episode => episode.IsWatched,
+            episode => episode.ResumePercent);
+        BuildStructure(part);
+
+        await LoadRelatedAsync(cancellationToken);
+        await LoadWatchlistAndRequestAsync(cancellationToken);
+
         // Local-only: remote AniList progress is loaded after first paint
         // through OnGetExternalProgressAsync.
         ExternalProgress = await aniListAccountService.GetAnimeProgressSummaryAsync(
@@ -274,6 +344,185 @@ public sealed class AnimeModel(
             cancellationToken);
 
         return Page();
+    }
+
+    /// <summary>The address of this page for a season, sort and layout; values that are the default stay out of it.</summary>
+    public string PageHref(string? partKey, AnimeEpisodeSort sort, AnimeEpisodeLayout layout)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(partKey))
+        {
+            parts.Add($"part={Uri.EscapeDataString(partKey)}");
+        }
+
+        if (AnimeDetailView.SortName(sort) is { } sortName)
+        {
+            parts.Add($"sort={sortName}");
+        }
+
+        if (AnimeDetailView.LayoutName(layout) is { } layoutName)
+        {
+            parts.Add($"view={layoutName}");
+        }
+
+        var query = parts.Count == 0 ? "" : "?" + string.Join('&', parts);
+        return $"/Library/Anime/{AnimeId}{query}#episodes";
+    }
+
+    // The season rail, the selected entry and its sorted episodes. An owner-defined display grouping
+    // (#524) takes the place of the seasons in the rail, exactly as it did in the old list.
+    private void BuildStructure(string? part)
+    {
+        string? keyOfNext = null;
+        IReadOnlyList<EpisodeRow> PickEpisodes(AnimeStructureEntry entry) => entry.SeasonNumber is int season
+            ? [.. Episodes.Where(x => x.SeasonNumber == season)]
+            : PresentationSections[int.Parse(entry.Key.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture)].Items;
+
+        if (PresentationSections.Count > 0)
+        {
+            Structure = AnimeDetailView.GroupEntries(
+                PresentationSections.Select(section => (section.Name, section.Items.Count)));
+            if (NextEpisode is not null)
+            {
+                var index = PresentationSections
+                    .Select((section, position) => (section, position))
+                    .FirstOrDefault(x => x.section.Items.Contains(NextEpisode)).position;
+                keyOfNext = $"g{index}";
+            }
+        }
+        else
+        {
+            Structure = AnimeDetailView.SeasonEntries(Episodes.Select(x => x.SeasonNumber));
+            keyOfNext = NextEpisode is null ? null : $"s{NextEpisode.SeasonNumber}";
+        }
+
+        Selected = AnimeDetailView.SelectEntry(Structure, part, keyOfNext);
+        SelectedEpisodes = Selected is null
+            ? []
+            : AnimeDetailView.Sort(PickEpisodes(Selected), Sort, x => x.Number, x => x.IsWatched);
+
+        StructureArt = Structure.ToDictionary(
+            entry => entry.Key,
+            entry => entry.SeasonNumber is int season && season > 0
+                ? AnimeArtworkStore.ResolveSeasonPosterUrl(AnimeId, season, Metadata?.CoverImageUrl)
+                : CoverImageUrl,
+            StringComparer.Ordinal);
+    }
+
+    private async Task LoadRelatedAsync(CancellationToken cancellationToken)
+    {
+        if (FranchiseGroups.Count == 0)
+        {
+            return;
+        }
+
+        var matches = await watchlistLibrary.ResolveAsync(
+            FranchiseGroups.SelectMany(group => group.Items).Select(item => item.Identity),
+            cancellationToken);
+        var fallbackHref = Franchises.Count > 0 ? $"/Franchises/{Franchises[0].Id}" : null;
+
+        var all = new List<RelatedWork>();
+        foreach (var group in FranchiseGroups)
+        {
+            foreach (var item in group.Items)
+            {
+                var match = matches.GetValueOrDefault(item.Identity.Key);
+                var href = match?.DetailsUrl ?? fallbackHref;
+                if (href is null)
+                {
+                    continue;
+                }
+
+                all.Add(new RelatedWork(
+                    item.Title,
+                    match is not null && item.Identity.MediaType == WatchlistMediaType.Anime
+                        ? AnimeArtworkStore.ResolvePosterUrl(match.MediaId, item.CoverImageUrl)
+                        : item.CoverImageUrl,
+                    group.GroupKey,
+                    Jularr.Web.Features.Watchlist.WatchlistLabels.FormatKey(item.Format),
+                    item.Identity.MediaType,
+                    item.Year,
+                    href,
+                    match is not null));
+            }
+        }
+
+        Related = [.. all.Take(RelatedLimit)];
+        RelatedMore = Math.Max(0, all.Count - RelatedLimit);
+    }
+
+    private async Task LoadWatchlistAndRequestAsync(CancellationToken cancellationToken)
+    {
+        if (Metadata is not { Provider.Length: > 0, ExternalId.Length: > 0 } matched)
+        {
+            return;
+        }
+
+        IsOnWatchlist = (await watchlist.GetEffectiveKeysAsync(currentAccount.ProfileId, cancellationToken))
+            .Contains(new WatchlistIdentity(WatchlistMediaType.Anime, matched.Provider, matched.ExternalId).Key);
+
+        // Requesting more goes through the same request form Discover uses, and is offered only to
+        // profiles whose capability for anime allows requesting (checked again when they submit).
+        if (string.Equals(matched.Provider, AniListMetadataProvider.ProviderKey, StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(matched.ExternalId, out _) &&
+            await mediaCapabilities.GetEffectiveCapabilityAsync(User, WorkMediaType.Anime, cancellationToken) >= MediaCapability.Request)
+        {
+            RequestHref = Url.Page("/Requests/New", new
+            {
+                externalId = matched.ExternalId,
+                title = AnimeTitle,
+                coverImageUrl = matched.CoverImageUrl
+            });
+        }
+    }
+
+    public async Task<IActionResult> OnPostFollowAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (await WatchlistDraftOfAsync(id, cancellationToken) is not { } work)
+        {
+            return NotFound();
+        }
+
+        await watchlist.FollowAsync(currentAccount.ProfileId, work, cancellationToken);
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostUnfollowAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (await WatchlistDraftOfAsync(id, cancellationToken) is not { } work)
+        {
+            return NotFound();
+        }
+
+        await watchlist.UnfollowAsync(currentAccount.ProfileId, work.Identity, cancellationToken);
+        return RedirectToPage(new { id });
+    }
+
+    // The draft is built from the stored provider match, never from what the browser sends.
+    private async Task<WatchlistDraft?> WatchlistDraftOfAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var metadata = await metadataService.GetAsync(id, cancellationToken);
+        if (metadata is null ||
+            !WatchlistDraftInput.TryCreate(
+                "anime",
+                metadata.Provider,
+                metadata.ExternalId,
+                metadata.PreferredTitle,
+                metadata.NativeTitle,
+                metadata.CoverImageUrl,
+                metadata.Format,
+                metadata.Status,
+                metadata.SeasonYear,
+                out var draft))
+        {
+            return null;
+        }
+
+        return draft;
     }
 
     public async Task<IActionResult> OnGetExternalProgressAsync(
@@ -326,6 +575,9 @@ public sealed class AnimeModel(
         Guid id,
         Guid episodeId,
         bool watched,
+        string? part,
+        string? sort,
+        string? view,
         CancellationToken cancellationToken)
     {
         var belongsToAnime = await db.Episodes
@@ -342,7 +594,18 @@ public sealed class AnimeModel(
             watched,
             cancellationToken);
 
-        return RedirectToPage(new { id });
+        // Back to the same season, order and layout, at the episode list.
+        return RedirectToPage(
+            null,
+            null,
+            new
+            {
+                id,
+                part = string.IsNullOrWhiteSpace(part) ? null : part,
+                sort = AnimeDetailView.SortName(AnimeDetailView.ParseSort(sort)),
+                view = AnimeDetailView.LayoutName(AnimeDetailView.ParseLayout(view))
+            },
+            "episodes");
     }
 
     public async Task<IActionResult> OnPostMatchMetadataAsync(
@@ -552,12 +815,7 @@ public sealed class AnimeModel(
         public static Coverage Empty { get; } = new(0, 0, 0);
     }
 
-    public sealed record SeasonRow(
-        int Number,
-        int FirstEpisode,
-        int LastEpisode,
-        int EpisodeCount);
-
+    /// <param name="RuntimeMinutes">From the file when it was analysed, otherwise what the provider states per episode.</param>
     public sealed record EpisodeRow(
         Guid Id,
         int SeasonNumber,
@@ -568,10 +826,27 @@ public sealed class AnimeModel(
         int PreparedOccurrences,
         int JapaneseSubtitleTracks,
         bool IsWatched,
-        int? ResumePercent)
+        int? ResumePercent,
+        int? RuntimeMinutes,
+        AnimeEpisodeAvailability Availability,
+        AnimeLanguageChips Audio,
+        AnimeLanguageChips Subtitles)
     {
         public int PreparationPercent => TotalOccurrences == 0
             ? 0
             : (int)Math.Floor((double)PreparedOccurrences / TotalOccurrences * 100);
     }
+
+    /// <summary>One entry of the Related Works panel.</summary>
+    /// <param name="GroupKey">The catalog key of the relation group, for example "Sequels &amp; prequels".</param>
+    /// <param name="FormatKey">The catalog key of the provider format (TV, Movie, OVA), when it is known.</param>
+    public sealed record RelatedWork(
+        string Title,
+        string? CoverImageUrl,
+        string GroupKey,
+        string? FormatKey,
+        WatchlistMediaType MediaType,
+        int? Year,
+        string Href,
+        bool InLibrary);
 }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
 using Jularr.Web.Features.Acquisition.Backup;
 using Jularr.Web.Features.Acquisition.DownloadClients;
@@ -117,6 +118,10 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped<ReleaseCalendarService>();
                         services.AddSingleton(TimeProvider.System);
                         services.AddScoped<AnimeMetadataService>();
+                        // The detail page's watchlist toggle, related works and open-request state.
+                        services.AddScoped<WatchlistStore>();
+                        services.AddScoped<WatchlistLibraryResolver>();
+                        services.AddScoped<AcquisitionAccessStore>();
                         services.AddScoped<AniListAccountService>();
 
                         var protectionProvider = new EphemeralDataProtectionProvider();
