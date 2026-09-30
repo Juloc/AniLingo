@@ -59,6 +59,17 @@ public sealed class PwaManifestTests
         StringAssert.Contains(layout, "apple-touch-icon");
         StringAssert.Contains(layout, "href=\"~/css/site.css\" asp-append-version=\"true\"");
         StringAssert.Contains(layout, "src=\"~/js/pwa.js\" asp-append-version=\"true\"");
+        StringAssert.Contains(layout, "data-app-version=\"@AppBuildInfo.Version\"");
+
+        var siteCss = File.ReadAllText(Path.Combine(webRoot, "css", "site.css"));
+        Assert.IsFalse(
+            siteCss.Contains("font-family: Inter", StringComparison.Ordinal),
+            "The global app shell must not depend on a locally installed Inter font.");
+
+        var offlineHtml = File.ReadAllText(Path.Combine(webRoot, "offline.html"));
+        Assert.IsFalse(
+            offlineHtml.Contains("font-family: Inter", StringComparison.Ordinal),
+            "The offline shell must use the same deterministic system-font policy.");
 
         var serviceWorker = File.ReadAllText(
             Path.Combine(webRoot, "service-worker.js"));
@@ -69,9 +80,18 @@ public sealed class PwaManifestTests
         StringAssert.Contains(serviceWorker, "SKIP_WAITING");
         StringAssert.Contains(serviceWorker, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(serviceWorker, "cache: \"reload\"");
-        StringAssert.Contains(serviceWorker, "putLatestAsset");
-        StringAssert.Contains(serviceWorker, "cached.pathname === current.pathname");
+        StringAssert.Contains(serviceWorker, "jularr-static-v1-");
+        StringAssert.Contains(serviceWorker, "workerUrl.searchParams.get(\"v\")");
+        StringAssert.Contains(serviceWorker, "cacheFirstVersioned");
+        StringAssert.Contains(serviceWorker, "isVersionedAsset");
+        StringAssert.Contains(serviceWorker, "pathname.startsWith(\"/build/\")");
         StringAssert.Contains(serviceWorker, "request.mode === \"navigate\"");
+        Assert.IsFalse(
+            serviceWorker.Contains("clients.claim()", StringComparison.Ordinal),
+            "A newly activated worker must not silently take over other open tabs.");
+        Assert.IsFalse(
+            serviceWorker.Contains("putLatestAsset", StringComparison.Ordinal),
+            "Versioned asset variants must not delete each other from a shared cache.");
         Assert.IsFalse(serviceWorker.Contains("\"/Learn", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("\"/Library", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("handler=Media", StringComparison.Ordinal));
@@ -100,9 +120,17 @@ public sealed class PwaManifestTests
         Assert.IsFalse(pwaRuntime.Contains("pwa-player-actions", StringComparison.Ordinal));
         StringAssert.Contains(pwaRuntime, "navigator.share");
         StringAssert.Contains(pwaRuntime, "currentFingerprintedAssets");
+        StringAssert.Contains(pwaRuntime, "link[rel=\"modulepreload\"][href]");
         StringAssert.Contains(pwaRuntime, "url.searchParams.has(\"v\")");
+        StringAssert.Contains(pwaRuntime, "url.pathname.startsWith(\"/build/\")");
+        StringAssert.Contains(pwaRuntime, "serviceWorkerBuildKey");
+        StringAssert.Contains(pwaRuntime, "encodeURIComponent(serviceWorkerBuildKey())");
+        StringAssert.Contains(pwaRuntime, "activateWaitingServiceWorker");
         StringAssert.Contains(pwaRuntime, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(pwaRuntime, "updateViaCache: \"none\"");
+        Assert.IsFalse(
+            pwaRuntime.Contains("controllerchange", StringComparison.Ordinal),
+            "Only the tab whose user accepted the update should reload.");
     }
 
     [TestMethod]
