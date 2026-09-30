@@ -22,6 +22,7 @@ public sealed class RoleAuthorizationTests
     private static readonly Dictionary<string, string> PagePolicies = new(StringComparer.Ordinal)
     {
         ["Jularr.Web.Pages.Acquisition.IndexModel"] = JularrPolicies.AdminMedia,
+        ["Jularr.Web.Pages.Admin.HistoryModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.IndexModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.LogsModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.OperationModel"] = JularrPolicies.AdminMedia,

@@ -61,7 +61,14 @@
         <h1>@operation.Title</h1>
         <p>@operation.Category · @operation.Kind</p>
     </div>
-    <a class="button" asp-page="/Admin/Operations">@ui["admin.operation.backToOperations"]</a>
+    @if (Model.BackToHistory is { } backToHistory)
+    {
+        <a class="button" href="@backToHistory">@ui["admin.operation.backToHistory"]</a>
+    }
+    else
+    {
+        <a class="button" asp-page="/Admin/Operations">@ui["admin.operation.backToOperations"]</a>
+    }
 </header>
 
 <partial name="_AdminNavigation" model="Model.Ui" />
@@ -85,6 +92,7 @@
             {
                 <div><span>@ui["admin.operation.user"]</span><strong>@operation.ProfileId</strong></div>
             }
+            <div><span>@ui["admin.operation.performedBy"]</span><strong>@(Model.ActorName ?? ui["admin.history.actor.system"])</strong></div>
             @if (!string.IsNullOrWhiteSpace(operation.Subject))
             {
                 <div><span>@ui["admin.operation.subject"]</span><strong>@operation.Subject</strong></div>

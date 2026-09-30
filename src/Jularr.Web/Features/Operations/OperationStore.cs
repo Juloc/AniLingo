@@ -26,6 +26,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
     private const int MaxExternalProviderLength = 80;
     private const int MaxExternalIdLength = 240;
     private const int MaxDetailsLength = 8000;
+    private const int MaxActorLength = 80;
 
     public async Task<Guid> CreateAsync(
         OperationDescriptor descriptor,
@@ -47,13 +48,15 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                         "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                         "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                         "ExternalProvider", "ExternalId",
-                        "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details")
+                        "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details",
+                        "ActorProfileId")
                     VALUES (
                         @id, @kind, @category, @lane, @status, @profileId, @title, @subject,
                         NULL, NULL, NULL, @isDownload, @bytesTotal,
                         NULL, NULL, NULL, 1, @retryable,
                         @externalProvider, @externalId,
-                        @createdAt, NULL, NULL, @updatedAt, @details);
+                        @createdAt, NULL, NULL, @updatedAt, @details,
+                        @actorProfileId);
                     """;
                 Add(command, "@id", id.ToString("D"));
                 Add(command, "@kind", Trim(descriptor.Kind, 100) ?? "background");
@@ -71,6 +74,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                 Add(command, "@createdAt", Format(now));
                 Add(command, "@updatedAt", Format(now));
                 Add(command, "@details", Trim(descriptor.Details, MaxDetailsLength));
+                Add(command, "@actorProfileId", Trim(descriptor.ActorProfileId ?? OperationActor.Current, MaxActorLength));
                 await command.ExecuteNonQueryAsync(cancellationToken);
             },
             cancellationToken);
@@ -98,7 +102,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
                     FROM "Operations"
                     WHERE "Id" = @id
                     LIMIT 1;
@@ -176,7 +180,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
                     FROM "Operations"
                     {where}
                     ORDER BY
@@ -200,6 +204,193 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                 return (IReadOnlyList<OperationSnapshot>)result;
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// One page of the finished operations (Admin → History), newest or oldest first by the time they
+    /// finished, with how many operations the filter matches in total. The date range, result, kind and
+    /// text filters all run in the database, so a long history stays cheap to page through.
+    /// </summary>
+    public async Task<OperationHistoryPage> QueryHistoryAsync(
+        OperationHistoryFilter filter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        if (filter.Kinds is { Count: 0 })
+        {
+            return new OperationHistoryPage([], 0);
+        }
+
+        var (where, parameters) = HistoryWhere(filter, includeKinds: true);
+        var direction = filter.NewestFirst ? "DESC" : "ASC";
+        var limit = Math.Clamp(filter.Limit, 1, 200);
+        var offset = Math.Max(filter.Offset, 0);
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                int total;
+                await using (var count = connection.CreateCommand())
+                {
+                    count.CommandText = $"""SELECT COUNT(*) FROM "Operations" {where};""";
+                    foreach (var parameter in parameters)
+                    {
+                        Add(count, parameter.Name, parameter.Value);
+                    }
+
+                    total = Convert.ToInt32(
+                        await count.ExecuteScalarAsync(cancellationToken),
+                        CultureInfo.InvariantCulture);
+                }
+
+                var items = new List<OperationSnapshot>();
+                if (total > 0)
+                {
+                    await using var command = connection.CreateCommand();
+                    command.CommandText =
+                        $"""
+                        SELECT "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                               "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                               "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                               "ExternalProvider", "ExternalId",
+                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                        FROM "Operations"
+                        {where}
+                        ORDER BY {HistoryTime} {direction}, "Id" {direction}
+                        LIMIT {limit} OFFSET {offset};
+                        """;
+                    foreach (var parameter in parameters)
+                    {
+                        Add(command, parameter.Name, parameter.Value);
+                    }
+
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                    {
+                        items.Add(ReadOperation(reader));
+                    }
+                }
+
+                return new OperationHistoryPage(items, total);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// How many finished operations each kind has under the filter, ignoring the filter's kinds; the
+    /// history page groups them into its categories for the counts and to narrow to one category.
+    /// </summary>
+    public async Task<IReadOnlyList<OperationKindCount>> CountHistoryByKindAsync(
+        OperationHistoryFilter filter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        var (where, parameters) = HistoryWhere(filter, includeKinds: false);
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    $"""
+                    SELECT "Kind", "Category", COUNT(*)
+                    FROM "Operations"
+                    {where}
+                    GROUP BY "Kind", "Category";
+                    """;
+                foreach (var parameter in parameters)
+                {
+                    Add(command, parameter.Name, parameter.Value);
+                }
+
+                var rows = new List<OperationKindCount>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    rows.Add(new OperationKindCount(
+                        new OperationKindKey(reader.GetString(0), reader.GetString(1)),
+                        ReadCount(reader, 2)));
+                }
+
+                return (IReadOnlyList<OperationKindCount>)rows;
+            },
+            cancellationToken);
+    }
+
+    // The moment an operation entered history; a finished operation always has one, the fallback only
+    // guards rows written by older versions.
+    private const string HistoryTime = "COALESCE(\"FinishedAtUtc\", \"UpdatedAtUtc\")";
+
+    private static (string Where, List<(string Name, object? Value)> Parameters) HistoryWhere(
+        OperationHistoryFilter filter,
+        bool includeKinds)
+    {
+        var conditions = new List<string> { "\"Status\" IN (3, 4, 5, 6)" };
+        var parameters = new List<(string Name, object? Value)>();
+
+        if (filter.FromUtc is { } from)
+        {
+            conditions.Add($"{HistoryTime} >= @fromUtc");
+            parameters.Add(("@fromUtc", Format(from)));
+        }
+
+        if (filter.ToUtc is { } to)
+        {
+            conditions.Add($"{HistoryTime} < @toUtc");
+            parameters.Add(("@toUtc", Format(to)));
+        }
+
+        if (filter.Statuses is { Count: > 0 } statuses)
+        {
+            conditions.Add($"\"Status\" IN ({string.Join(", ", statuses.Select(status => (int)status))})");
+        }
+
+        if (includeKinds && filter.Kinds is { Count: > 0 } kinds)
+        {
+            var alternatives = new List<string>();
+            foreach (var key in kinds)
+            {
+                var index = parameters.Count;
+                alternatives.Add($"(\"Kind\" = @kind{index} AND \"Category\" = @category{index})");
+                parameters.Add(($"@kind{index}", key.Kind));
+                parameters.Add(($"@category{index}", key.Category));
+            }
+
+            conditions.Add("(" + string.Join(" OR ", alternatives) + ")");
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = "%" + filter.Search.Trim()
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("%", "\\%", StringComparison.Ordinal)
+                .Replace("_", "\\_", StringComparison.Ordinal) + "%";
+            parameters.Add(("@search", search));
+            var alternatives = new List<string>
+            {
+                "\"Title\" ILIKE @search",
+                "\"Subject\" ILIKE @search",
+                "\"Message\" ILIKE @search",
+                "\"Error\" ILIKE @search",
+                "\"Kind\" ILIKE @search"
+            };
+            if (filter.SearchActorIds is { Count: > 0 } actors)
+            {
+                var names = new List<string>();
+                foreach (var actor in actors)
+                {
+                    var name = $"@actor{parameters.Count}";
+                    names.Add(name);
+                    parameters.Add((name, actor));
+                }
+
+                alternatives.Add($"\"ActorProfileId\" IN ({string.Join(", ", names)})");
+            }
+
+            conditions.Add("(" + string.Join(" OR ", alternatives) + ")");
+        }
+
+        return ("WHERE " + string.Join(" AND ", conditions), parameters);
     }
 
     public async Task<OperationSummary> GetSummaryAsync(
@@ -558,7 +749,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
                     FROM "Operations"
                     WHERE "ExternalProvider" = @provider
                       AND "ExternalId" IS NOT NULL
@@ -901,7 +1092,8 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
             ReadNullableDate(reader, 21),
             ReadNullableDate(reader, 22),
             ParseDate(reader.GetString(23)),
-            ReadNullableString(reader, 24));
+            ReadNullableString(reader, 24),
+            ReadNullableString(reader, 25));
 
     private static int ReadCount(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)
