@@ -29,8 +29,8 @@ public sealed class SystemHealthService(
     AcquisitionHealthStore acquisitionHealth)
 {
     // Below this, a full library root going offline would leave no room to finish an import.
-    private const long ErrorFreeBytes = 2_000_000_000; // 2 GB
-    private const long WarningFreeBytes = 10_000_000_000; // 10 GB
+    public const long ErrorFreeBytes = 2_000_000_000; // 2 GB
+    public const long WarningFreeBytes = 10_000_000_000; // 10 GB
     private static readonly TimeSpan ToolProbeTimeout = TimeSpan.FromSeconds(5);
 
     public async Task<SystemHealthSnapshot> GetAsync(CancellationToken cancellationToken)

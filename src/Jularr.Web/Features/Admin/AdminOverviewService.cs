@@ -190,6 +190,39 @@ internal static class AdminServerLoad
         return (null, null);
     }
 
+    /// <summary>Free/total bytes of the volume behind <paramref name="path"/>, or nulls when it cannot be read.</summary>
+    public static (long? Free, long? Total) VolumeSpace(string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            {
+                return (null, null);
+            }
+
+            // Windows wants the drive root; elsewhere the volume is resolved from any path inside it.
+            var name = OperatingSystem.IsWindows() ? Path.GetPathRoot(path) : path;
+            if (string.IsNullOrEmpty(name))
+            {
+                return (null, null);
+            }
+
+            var drive = new DriveInfo(name);
+            return drive.IsReady ? (drive.AvailableFreeSpace, drive.TotalSize) : (null, null);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        return (null, null);
+    }
+
     // "/data" is the production mount; the base directory is the fallback so local development
     // (no such path on Windows) still reports something instead of nothing.
     private static IEnumerable<string> DataVolumeCandidates()
