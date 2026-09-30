@@ -279,6 +279,11 @@ Conversion plan:
 - CI/local runs use an **ephemeral** PostgreSQL in Docker (e.g.
   `postgres:18` on a throwaway port), separate from any shared/app database, torn
   down after the run.
+- **Isolation contract:** each test process derives a unique run id and uses its own
+  template (`jt_<unix>_<rand>_tpl`) and databases (`jt_<unix>_<rand>_<n>`), so concurrent
+  `dotnet test` runs can share one server (`JULARR_TEST_DB` overrides the default
+  `localhost:5433`). A run drops only its own databases at exit; leftovers of crashed runs
+  are reclaimed by a later run once older than 12 hours.
 
 ## Deployment
 
