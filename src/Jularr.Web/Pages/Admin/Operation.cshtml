@@ -21,14 +21,7 @@
         _ => status.ToString()
     };
 
-    string MediaLabel(MediaAcquisitionKind kind) => kind switch
-    {
-        MediaAcquisitionKind.Anime => ui["admin.operation.media.anime"],
-        MediaAcquisitionKind.Manga => ui["admin.operation.media.manga"],
-        MediaAcquisitionKind.LightNovel => ui["admin.operation.media.lightNovel"],
-        MediaAcquisitionKind.Book => ui["admin.operation.media.book"],
-        _ => kind.ToString()
-    };
+    string MediaLabel(MediaAcquisitionKind kind) => ui[MediaKindLabelKeys.Operation(kind)];
 
     string ImportStateLabel(DownloadImportState state) => state switch
     {

@@ -119,13 +119,7 @@ public sealed class AcquisitionModel(
         _ => kind.ToString().ToLowerInvariant()
     };
 
-    public string MediaLabel(MediaAcquisitionKind kind) => kind switch
-    {
-        MediaAcquisitionKind.Manga => Ui["settings.acquisition.mediaFolders.manga"],
-        MediaAcquisitionKind.LightNovel => Ui["settings.acquisition.mediaFolders.lightNovel"],
-        MediaAcquisitionKind.Book => Ui["settings.acquisition.mediaFolders.book"],
-        _ => kind.ToString()
-    };
+    public string MediaLabel(MediaAcquisitionKind kind) => Ui[MediaKindLabelKeys.Folders(kind)];
 
     /// <summary>
     /// Sets the folders of one reading media type: its durable library folder, import mode and
