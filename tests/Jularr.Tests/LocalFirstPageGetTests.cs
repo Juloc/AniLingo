@@ -199,7 +199,7 @@ public sealed class LocalFirstPageGetTests
     {
         await using var fixture = await LocalFirstFixture.CreateAsync();
         await fixture.AddAnimeAsync("Local Anime", episodes: 3);
-        var page = fixture.Attach(new LibraryIndexModel(fixture.Db, fixture.OwnerAccount));
+        var page = fixture.Attach(fixture.LibraryPage());
 
         await page.OnGetAsync(CancellationToken.None);
 
@@ -428,6 +428,20 @@ public sealed class LocalFirstPageGetTests
 
             return new Jularr.Web.Pages.IndexModel(Db, OwnerAccount, recommendations);
         }
+
+        public LibraryIndexModel LibraryPage() => new(
+            Db,
+            OwnerAccount,
+            new Jularr.Web.Features.Collections.CollectionService(
+                new Jularr.Web.Features.Collections.CollectionStore(Db),
+                new Jularr.Web.Features.Collections.CollectionFactsProvider(
+                    Db,
+                    new Jularr.Web.Features.MediaFacts.MediaFactsService(Db),
+                    new FranchiseStore(Db)),
+                Db,
+                new Jularr.Web.Features.Shell.AppShellService(
+                    new MediaCapabilityService(new MediaCapabilityStore(root)))),
+            NullLogger<LibraryIndexModel>.Instance);
 
         public DiscoverIndexModel DiscoverPage()
         {

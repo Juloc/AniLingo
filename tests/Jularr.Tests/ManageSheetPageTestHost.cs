@@ -16,6 +16,7 @@ using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
+using Jularr.Web.Features.Collections;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.MediaMapping;
@@ -105,6 +106,9 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped<EpisodeProgressService>();
                         services.AddScoped<FranchiseStore>();
                         services.AddScoped<MediaRelationStore>();
+                        // The Library page's Collections view lists the profile's collections.
+                        services.AddScoped<Jularr.Web.Features.MediaFacts.MediaFactsService>();
+                        services.AddCollections();
                         // AnimeModel's GET only reads existing franchise membership (#425); it
                         // never triggers a refresh, so the relation source and rate limiter below
                         // are unused placeholders, same reasoning as the AniList HttpClient below.
