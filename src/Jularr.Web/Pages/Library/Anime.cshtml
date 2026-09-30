@@ -377,6 +377,7 @@
                         </div>;
 
                         Func<dynamic?, IHtmlContent> filesGroup = @<div class="inline-actions">
+                            <a class="button" href="/Admin/Media/@Model.AnimeId">@ui["admin.media.manageLink"]</a>
                             <a class="button" href="/Library/Rename/@Model.AnimeId">@ui["library.anime.renameFiles"]</a>
                             <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">@ui["library.anime.repair"]</a>
                             <a class="button" href="/Library/PresentationGroups/@Model.AnimeId">@ui["library.presentation.manageLink"]</a>

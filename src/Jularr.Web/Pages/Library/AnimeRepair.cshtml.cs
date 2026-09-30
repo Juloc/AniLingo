@@ -90,7 +90,7 @@ public sealed class AnimeRepairModel(
     // Queues a folder-scoped run through the one scan entry point (LibraryScanCoordinator), the
     // same way the filesystem watcher requests a folder scan; the coordinator's per-root guard
     // applies exactly as it does there.
-    public async Task<IActionResult> OnPostRescanAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRescanAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
     {
         var result = await repair.RescanFolderAsync(id, currentAccount.ProfileId, cancellationToken);
         TempData[result.Queued ? "Status" : "Error"] = result.Message;
@@ -99,7 +99,7 @@ public sealed class AnimeRepairModel(
             TempData["RepairOperation"] = operationId.ToString("D");
         }
 
-        return RedirectToPage(new { id });
+        return Back(id, returnUrl);
     }
 
     public async Task<IActionResult> OnPostRefreshLocalAsync(Guid id, CancellationToken cancellationToken)
@@ -144,7 +144,7 @@ public sealed class AnimeRepairModel(
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostReanalyzeAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostReanalyzeAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
@@ -175,7 +175,7 @@ public sealed class AnimeRepairModel(
                 ("message", exception.Message));
         }
 
-        return RedirectToPage(new { id });
+        return Back(id, returnUrl);
     }
 
     public async Task<IActionResult> OnPostMatchAsync(
@@ -260,7 +260,7 @@ public sealed class AnimeRepairModel(
     }
 
     // Queues the same lossless optimization an import runs, for every existing file of the anime.
-    public async Task<IActionResult> OnPostOptimizeAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostOptimizeAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var anime = await db.Anime.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -279,7 +279,7 @@ public sealed class AnimeRepairModel(
         if (mediaFileIds.Length == 0)
         {
             TempData["Error"] = ui["library.animeRepair.noMediaFiles"];
-            return RedirectToPage(new { id });
+            return Back(id, returnUrl);
         }
 
         var operationId = await optimizationQueue.QueueAsync(
@@ -289,6 +289,14 @@ public sealed class AnimeRepairModel(
             cancellationToken);
         TempData["Status"] = ui.Format("library.animeRepair.optimizeQueued", ("count", mediaFileIds.Length));
         TempData["RepairOperation"] = operationId.ToString("D");
-        return RedirectToPage(new { id });
+        return Back(id, returnUrl);
     }
+
+    // The media detail page runs these same actions and wants the admin back on itself, not on this page.
+    private IActionResult Back(Guid id, string? returnUrl) =>
+        !string.IsNullOrEmpty(returnUrl)
+        && Url.IsLocalUrl(returnUrl)
+        && returnUrl.StartsWith($"/Admin/Media/{id:D}", StringComparison.OrdinalIgnoreCase)
+            ? LocalRedirect(returnUrl)
+            : RedirectToPage(new { id });
 }

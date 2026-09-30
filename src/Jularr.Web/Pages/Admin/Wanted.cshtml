@@ -233,6 +233,10 @@
                                            asp-route-mode="Episode"
                                            asp-fragment="search-results">@ui["admin.wanted.manualSearch"]</a>
                                     }
+                                    @if (item.Source == WantedSource.Monitored && item.AnimeId is { } managedId)
+                                    {
+                                        <a class="button" href="/Admin/Media/@managedId">@ui["admin.media.manage"]</a>
+                                    }
                                     @if (item.DetailUrl is { } detailUrl)
                                     {
                                         <a class="button" href="@detailUrl">@ui["admin.requests.viewMedia"]</a>

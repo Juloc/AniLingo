@@ -501,6 +501,7 @@ builder.Services.AddScoped<IndexerSearchCoordinator>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionAccessStore>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionRequestService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.WantedListService>();
+builder.Services.AddScoped<Jularr.Web.Features.Library.AdminMediaDetailService>();
 // Request experience (#597): auto-approval rules and requester-selectable quality profiles are
 // configuration (JSON store under /data); the per-user history is a query over the request table.
 builder.Services.AddSingleton(_ => new Jularr.Web.Features.Acquisition.Access.AcquisitionRequestSettingsStore("/data"));
