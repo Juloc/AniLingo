@@ -1,117 +1,268 @@
 # Admin Wanted — V1
 
-Status: approved UX direction from planning mockups.
+Status: approved planning direction; mockup required before implementation.
 
-Global UX rules: `docs/UX.md`
+Global UX rules: `docs/UX.md`.
 
 ## Purpose
 
 Wanted is the Admin acquisition worklist for content Jularr still needs.
 
-It answers:
+The list answers:
 - What is missing?
-- What is being searched for?
-- What was requested and approved for acquisition?
-- What searches failed?
-- What profile/language/version is desired?
+- What is currently being searched for?
+- What was requested/approved for acquisition?
+- What failed?
+- Which profile, language and version target applies?
 - What should the admin do next?
 
 Wanted is technical acquisition state, not user request moderation.
 
-## Tabs
+## Worklist
 
-Primary tabs:
+Primary states:
 - All
 - Requested
 - Missing
 - Searching
 - Failed
 
-`Requested` here means an approved acquisition need that originated from a user/admin request and is now part of the acquisition pipeline.
+`Requested` means an approved acquisition need that has entered the acquisition pipeline. User approval/moderation belongs to Admin Requests.
 
-User approval/moderation itself belongs to Admin Requests.
+Desktop uses a compact table. Mobile uses stacked cards.
 
-## Desktop layout
-
-Use:
-- persistent Admin sidebar
-- title
-- state tabs with small count pills
-- search
-- filters
-- structured Wanted table
-- sort and pagination
-
-Recommended filters:
-- media type
-- language
-- profile
-- priority
-- status
-- requester/source where useful
-
-Recommended columns:
-- Work / unit
+Recommended worklist fields:
+- Work / structure unit
 - Media type
-- Desired language/profile/version
-- Status
-- Last search/result
-- Actions
+- desired language
+- acquisition / quality profile
+- desired version or edition where applicable
+- status
+- last search result
+- last search age
+- actions
 
-Examples of units:
-- Anime/Series episode
-- Movie version such as 4K HDR Remux
-- Manga volume
-- Light Novel volume
-- Book edition
+Selecting a Wanted item opens the reusable **Acquisition dialog**. Manual Search is not a second independent workflow/page.
+
+## Acquisition dialog
+
+The dialog is the main interaction surface for one Wanted target and uses exactly three primary tabs:
+
+1. **Search** — default and primary tab
+2. **Current** — current target and existing-data details
+3. **History** — previous searches, grabs, failures and import outcomes
+
+Desktop: large centered dialog or side-expanded modal with enough width for a dense results table.
+
+Mobile/tablet: full-screen sheet/page presentation using the same tabs and data model.
+
+TV: unsupported.
+
+### Search tab
+
+Search is the main tab.
+
+Header context:
+- target Work + Structure/unit
+- effective acquisition profile
+- target language(s)
+- current monitored state
+- temporary profile/language selectors for this search
+- Refresh/Search action
+
+Changing the temporary profile/language context re-evaluates candidate scoring for the dialog but does not silently change the persisted media configuration.
+
+Results show normalized external ReleaseCandidates before import.
+
+The default main score is always the score for the **currently effective profile + language target**.
+
+Optional additional profile score columns can be enabled through the table column chooser. They are comparison data only.
+
+Candidate columns are configurable. The default set should include:
+- decision / warning state
+- score
+- release title
+- indexer/source
+- age
+- size
+- parsed quality
+- languages
+- audio
+- subtitles
+- release group
+- release type: single / multi-episode / season pack
+- parsed episode/volume/unit identity
+- match confidence
+- grab action
+
+Additional provider/indexer metadata may be exposed as optional columns where available, but the UI must not depend on provider-specific schemas.
+
+Filters:
+- accepted / warning / rejected
+- score range
+- quality
+- language
+- audio
+- subtitles
+- size
+- age
+- source/indexer
+- release group
+- single / multi / season pack
+- match confidence
+- rejection reason
+- profile score where useful
+
+Sorting defaults to effective-profile score, then decision quality and source preference.
+
+### Candidate decision visibility
+
+Do not hide releases only because Jularr thinks they are wrong or unsuitable.
+
+Every returned candidate that can be normalized enough to display should remain visible and carry a clear decision state:
+- Eligible
+- Warning / manual review
+- Rejected
+
+Examples:
+- likely wrong episode/unit
+- unknown or ambiguous episode mapping
+- wrong season
+- profile score below minimum
+- language mismatch
+- quality below/above configured limits
+- size outside profile limits
+- blocked release/group
+- already present / existing file preferred
+- prior failed or blocklisted release
+
+The row shows a compact warning/rejection indicator. Opening the row/detail drawer shows the exact reasons and score breakdown.
+
+A candidate that appears to be the wrong episode/unit must therefore still be visible in Manual Search, clearly marked with Jularr's parsed identity and the requested identity side by side.
+
+Automatic acquisition must never select a rejected identity mismatch.
+
+Manual override may be offered only when policy allows it. For an identity mismatch, override requires an explicit confirmation and explicit target mapping; it must not silently teach the parser or rewrite canonical IDs.
+
+Hard failures that cannot be safely grabbed remain non-overridable.
+
+### Score presentation
+
+The score is an evaluation result, not a property of the release itself.
+
+The visible main score is calculated against:
+- selected acquisition profile
+- target language policy
+- quality preferences
+- custom format / release preferences
+- source/indexer policy
+- release-type preference such as season-pack preference
+- size/age rules where configured
+
+Candidate detail shows the score breakdown by rule.
+
+Optional comparison mode may show the same candidate scored against other configured profiles without changing the active target.
+
+A Season Pack indicator is explicit and filterable; pack preference contributes to score only through profile rules.
+
+### Current tab
+
+Shows the current acquisition target and existing state:
+- canonical Work / Structure identity
+- requested unit(s)
+- monitored state
+- desired languages
+- effective profile
+- desired edition/version where applicable
+- current local asset/file if one exists
+- current quality/languages/audio/subtitles
+- current profile score where applicable
+- missing/incomplete reason
+- source of the need: monitoring, approved request, upgrade, repair, manual admin action
+
+This tab is factual context, not another metadata editor.
+
+### History tab
+
+Shows events scoped to this acquisition target:
+- searches
+- automatic decisions
+- manual grabs
+- rejected/overridden candidates
+- download client handoff
+- import result
+- failure/blocklist result
+- actor
+- timestamp
+- effective profile/language at decision time
+
+History entries open their decision details where useful.
 
 ## Actions
 
-Per item:
+Worklist:
 - Automatic search
-- Automatic… with temporary profile/language options
-- Manual search
+- Open Acquisition dialog on Search tab
 - Open media detail
 - Pause/unmonitor where applicable
-- Inspect last failure/history
 
-Bulk actions are allowed for compatible selected items.
+Dialog:
+- Search/refresh
+- change temporary profile/language context
+- filter/sort/configure columns
+- inspect candidate
+- grab eligible candidate
+- explicitly override eligible warnings when authorized
+- open provider/indexer health when a source failed
 
-## Mobile layout
+Bulk actions are allowed only for compatible Wanted targets.
 
-Wanted items become large stacked cards.
+## Light / Dark
 
-Each card prioritizes:
-- artwork/title
-- unit identity
-- media type
-- desired language/profile/version
-- acquisition status
-- last search age/result
-- overflow actions
+Both are first-class Admin surfaces.
 
-Search/filter controls remain easy to use with >=44px touch targets.
+Use restrained Fluent-2-like styling:
+- light/dark surfaces
+- compact borders
+- subtle tinted warning/status states
+- no large decorative hero artwork
+- no full-color chip wall
 
-## Visual language
+## Loading / Empty / Error / Partial states
 
-- Light Admin design.
-- No full-color pills.
-- Status/type tags use border + lightly tinted background.
-- Small icon accents are allowed.
-- Avoid large decorative artwork/backgrounds.
+Required:
+- worklist loading
+- worklist empty
+- Search in progress
+- no candidates found
+- accepted/rejected mixed results
+- all candidates rejected
+- partial indexer failure
+- indexer unavailable/rate limited
+- ambiguous target identity
+- grab queued
+- grab failed
+- history empty
+- current data partial/unavailable
 
-## Relationship to Manual Search
+Partial provider failure must not discard valid results from providers that succeeded.
 
-Manual Search is a drilldown from a Wanted item.
+## Domain / architecture constraints
 
-Wanted identifies the need.
-Manual Search shows the concrete release candidates and their scores/rejection reasons.
+- Wanted references canonical Work -> Structure -> Edition -> Version -> Asset/File -> Track concepts.
+- ReleaseCandidate is external/temporary acquisition data, not a parallel persisted media model.
+- Provider-native identifiers/fields remain provenance/evidence, not canonical domain identity.
+- Identity validation happens before quality/profile score can make a candidate eligible.
+- Manual override must not bypass canonical target selection or create hidden duplicate structures.
 
-## Acceptance criteria
+## Must not implement
 
-- Requested, Missing, Searching and Failed acquisition states are distinguishable.
-- Wanted supports all media types and version/edition granularity.
-- Movie Wanted can represent a missing monitored version, not only a missing whole movie.
-- Last search/result is visible.
-- Automatic and Manual Search are directly reachable.
-- Desktop and Mobile use the same data/state model with different layouts.
+- No separate Anime/Series/Movie acquisition core.
+- No independent Manual Search page with different logic.
+- No hiding rejected candidates without a user filter.
+- No single opaque score without a breakdown.
+- No score treated as globally intrinsic to a release.
+- No automatic grab of a candidate Jularr considers the wrong canonical unit.
+- No silent parser correction from a manual override.
+- No arbitrary provider-specific columns permanently hard-coded into the default table.
+- No consumer exposure of this Admin workflow.
