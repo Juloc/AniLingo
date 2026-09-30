@@ -32,6 +32,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.SessionsModel"] = JularrPolicies.SessionsStopOthers,
         ["Jularr.Web.Pages.Admin.Storage.IndexModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.SubtitlesModel"] = JularrPolicies.AdminMedia,
+        ["Jularr.Web.Pages.Admin.WantedModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Library.AnimeRepairModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Settings.SubtitlesModel"] = JularrPolicies.AdminMedia,
 

@@ -236,7 +236,7 @@
                                         or AcquisitionRequestStatus.Downloading or AcquisitionRequestStatus.Importing
                                         && request.Kind == MediaAcquisitionKind.Anime)
                                     {
-                                        <a class="button" href="/Acquisition#wanted">@ui["admin.requests.wanted"]</a>
+                                        <a class="button" asp-page="/Admin/Wanted">@ui["admin.requests.wanted"]</a>
                                     }
                                     @if (request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed)
                                     {

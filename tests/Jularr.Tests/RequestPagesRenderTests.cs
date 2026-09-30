@@ -168,7 +168,8 @@ public sealed class RequestPagesRenderTests
         Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "button-primary\" type=\"submit\">\\s*Approve\\s*</button>").Count, "Only the pending request can be approved.");
         Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "type=\"submit\">Reject</button>").Count);
         Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "type=\"submit\">Reopen</button>").Count);
-        StringAssert.Contains(all, "href=\"/Acquisition#wanted\"");
+        StringAssert.Contains(all, "class=\"button\" href=\"/Admin/Wanted\"");
+        Assert.IsFalse(all.Contains("/Acquisition#wanted", StringComparison.Ordinal));
 
         var rejected = await host.GetHtmlAsync("/Admin/Requests?tab=rejected", asOwner: true);
         StringAssert.Contains(rejected, "Rejected Show");
