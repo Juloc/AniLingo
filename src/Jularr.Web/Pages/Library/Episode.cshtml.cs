@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
+using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -102,6 +103,12 @@ public sealed class EpisodeModel(
         && (LearningSettings.IsEnabled(LearningCapability.LanguageLookup)
             || LearningSettings.IsEnabled(LearningCapability.ReadingAids)
             || LearningSettings.IsEnabled(LearningCapability.AiExplanations));
+    /// <summary>
+    /// The Japanese learning subtitle is offered (and can be the default) only
+    /// for profiles that opted into player language tools; learning is opt-in.
+    /// </summary>
+    public bool ShowLearningSubtitle =>
+        LanguageAssistanceAvailability.AllowsLearningSubtitle(LearningSettings);
     public bool NeedsLearningSource =>
         ShowContentMetrics
         || ShowPreparationSuggestions
@@ -171,7 +178,7 @@ public sealed class EpisodeModel(
                 ?? await episodeProgressService.GetPreferencesAsync(cancellationToken);
             Controls = PlayerControls.Build(
                 playbackMedia,
-                Playback.Cues.Count > 0,
+                Playback.Cues.Count > 0 && ShowLearningSubtitle,
                 await FindLearningSourceStreamIndexAsync(id, playbackMedia.SourcePath, cancellationToken),
                 preferences);
         }

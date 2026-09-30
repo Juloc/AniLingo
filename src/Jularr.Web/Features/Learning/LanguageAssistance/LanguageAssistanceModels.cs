@@ -42,6 +42,14 @@ public sealed record LanguageAssistanceAvailability(
     /// <summary>Start spaced repetition for a word.</summary>
     public bool CanLearn => Vocabulary && Reviews;
 
+    /// <summary>
+    /// The interactive Japanese learning subtitle (word lookup overlay) may be
+    /// the player's subtitle only when the profile opted into player language
+    /// tools for this scope; otherwise the normal subtitle track applies.
+    /// </summary>
+    public static bool AllowsLearningSubtitle(LearningResolvedSettings settings) =>
+        From(settings, LanguageSourceType.Anime).ShowInspector;
+
     public static LanguageAssistanceAvailability From(
         LearningResolvedSettings settings,
         LanguageSourceType? surface) =>

@@ -1006,10 +1006,14 @@
     let playbackCueKey = "";
     const playbackCueCache = new Map();
 
-    const learningOverlayVisible = () => subtitleChoice !== "off" && cues.length > 0;
+    // The learning overlay belongs to the "learning" choice (or the embedded stream
+    // that is the learning source); any other track is a plain subtitle.
+    const learningOverlayVisible = () =>
+        cues.length > 0 && (subtitleChoice === "learning" || selectedSubtitleIsLearningSource());
 
-    const selectedSubtitleIsLearningSource = () =>
-        subtitleSelect?.selectedOptions[0]?.dataset.learningSource === "true";
+    function selectedSubtitleIsLearningSource() {
+        return subtitleSelect?.selectedOptions[0]?.dataset.learningSource === "true";
+    }
 
     // Text tracks become cues drawn here; picture tracks are burned in by the server instead.
     const playbackTrackId = () =>

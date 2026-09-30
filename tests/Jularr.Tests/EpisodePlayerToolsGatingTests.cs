@@ -73,6 +73,36 @@ public sealed class EpisodePlayerToolsGatingTests
         Assert.IsFalse(model.ShowPlayerTools);
     }
 
+    [TestMethod]
+    public void FreshProfileDoesNotOfferTheJapaneseLearningSubtitle()
+    {
+        var model = NewModel();
+
+        Assert.IsFalse(
+            model.ShowLearningSubtitle,
+            "Learning is opt-in: a fresh profile (mode Off) gets normal subtitles, not the learning view.");
+    }
+
+    [TestMethod]
+    public void LearningSubtitleNeedsPlayerToolsWithALanguageCapability()
+    {
+        var model = NewModel();
+        SetLearningSettings(model, LearningMode.Custom, [LearningCapability.PlayerTools]);
+        Assert.IsFalse(model.ShowLearningSubtitle);
+
+        SetLearningSettings(
+            model,
+            LearningMode.Custom,
+            [LearningCapability.LanguageLookup]);
+        Assert.IsFalse(model.ShowLearningSubtitle, "Lookup without PlayerTools is not a player surface.");
+
+        SetLearningSettings(
+            model,
+            LearningMode.LanguageTools,
+            LearningConfigurationDefaults.For(LearningMode.LanguageTools).Where(x => x.Value).Select(x => x.Key));
+        Assert.IsTrue(model.ShowLearningSubtitle);
+    }
+
     private static EpisodeModel NewModel() =>
         new(null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
 
