@@ -37,6 +37,8 @@ public sealed class OperationsModel(
 
     public bool CanRetry(OperationSnapshot operation) => actions.CanRetry(operation);
 
+    public bool CanChangePriority(OperationSnapshot operation) => actions.CanChangePriority(operation);
+
     /// <summary>The address of the activity with the given filter; default values stay out of it.</summary>
     public static string Href(AdminActivityFilter filter) => AdminActivityQuery.Href(PagePath, filter);
 
@@ -44,6 +46,7 @@ public sealed class OperationsModel(
         string? tab,
         string? type,
         string? status,
+        string? priority,
         string? q,
         int p,
         CancellationToken cancellationToken)
@@ -55,7 +58,8 @@ public sealed class OperationsModel(
             AdminHistoryQuery.ParseCategory(type),
             AdminActivityQuery.TryParseStatus(status),
             string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
-            Math.Max(p, 1)));
+            Math.Max(p, 1),
+            OperationPriorities.TryParse(priority)));
         Plan = AdminActivityQuery.Plan([], filter);
 
         try
@@ -109,6 +113,28 @@ public sealed class OperationsModel(
             ?? (outcome.Succeeded
                 ? Ui["admin.operation.retryQueued"]
                 : Ui["admin.operation.retryUnavailable"]);
+        return Back(returnUrl);
+    }
+
+    public async Task<IActionResult> OnPostPriorityAsync(Guid id, string? priority, string? returnUrl, CancellationToken cancellationToken)
+    {
+        if (OperationPriorities.TryParse(priority) is not { } parsed)
+        {
+            return BadRequest();
+        }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var store = new OperationStore(db);
+        var operation = await store.GetAsync(id, cancellationToken);
+        if (operation is null)
+        {
+            return NotFound();
+        }
+
+        TempData["Status"] = actions.CanChangePriority(operation)
+            && await store.SetPriorityAsync(id, parsed, cancellationToken)
+                ? Ui["admin.operation.priorityChanged"]
+                : Ui["admin.operation.priorityUnavailable"];
         return Back(returnUrl);
     }
 

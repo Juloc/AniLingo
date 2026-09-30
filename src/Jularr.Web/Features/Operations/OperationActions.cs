@@ -20,6 +20,13 @@ public interface IOperationActions
 
     bool CanRetry(OperationSnapshot operation);
 
+    /// <summary>
+    /// Whether a change of priority would decide something: the operation waits in one of this process's
+    /// queues, whose worker takes the highest priority first. (Downloads waiting in the download client
+    /// are ordered by the client, and work that already runs is not interrupted.)
+    /// </summary>
+    bool CanChangePriority(OperationSnapshot operation);
+
     /// <summary>Whether something in this process (or the download client) still holds the work of the operation.</summary>
     bool HasRuntime(OperationSnapshot operation);
 
@@ -45,6 +52,14 @@ public sealed class OperationActions(
         ArgumentNullException.ThrowIfNull(operation);
         return operation.Retryable
             && operation.Status is OperationStatus.Failed or OperationStatus.Interrupted
+            && HasRuntime(operation);
+    }
+
+    public bool CanChangePriority(OperationSnapshot operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return operation.Status == OperationStatus.Queued
+            && !SabnzbdDownloadService.IsSabnzbdOperation(operation)
             && HasRuntime(operation);
     }
 

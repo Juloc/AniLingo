@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Threading.Channels;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Operations;
@@ -185,9 +186,7 @@ public abstract class BackgroundJobQueueBase(
         }
     }
 
-    internal IAsyncEnumerable<QueuedBackgroundWork> ReadAllAsync(
-        CancellationToken cancellationToken) =>
-        channel.Reader.ReadAllAsync(cancellationToken);
+    internal ChannelReader<QueuedBackgroundWork> Reader => channel.Reader;
 
     internal async Task RecoverAsync(CancellationToken cancellationToken)
     {
@@ -238,11 +237,16 @@ public abstract class BackgroundJobWorkerBase<TQueue>(
     ILogger logger) : BackgroundService
     where TQueue : BackgroundJobQueueBase
 {
+    // How much queued work the worker looks at when it chooses the next job; work beyond that waits in
+    // the (bounded) queue, so producers are held back as before.
+    private const int MaxWaiting = 32;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await queue.RecoverAsync(stoppingToken);
 
-        await foreach (var queued in queue.ReadAllAsync(stoppingToken))
+        var waiting = new List<QueuedBackgroundWork>();
+        while (await TakeNextAsync(waiting, stoppingToken) is { } queued)
         {
             if (!queue.TryGetRuntimeWork(queued.OperationId, out var runtime)
                 || runtime is null)
@@ -337,6 +341,61 @@ public abstract class BackgroundJobWorkerBase<TQueue>(
                     queued.OperationId,
                     keepForRetry: runtime.Retryable);
             }
+        }
+    }
+
+    // The next job to run: the highest priority among the queued work (read fresh, so a change made
+    // while the job waited counts), the earliest first among equals. Null once the queue is closed.
+    private async Task<QueuedBackgroundWork?> TakeNextAsync(
+        List<QueuedBackgroundWork> waiting,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            while (waiting.Count < MaxWaiting && queue.Reader.TryRead(out var item))
+            {
+                waiting.Add(item);
+            }
+
+            if (waiting.Count > 0)
+            {
+                break;
+            }
+
+            if (!await queue.Reader.WaitToReadAsync(cancellationToken))
+            {
+                return null;
+            }
+        }
+
+        var index = waiting.Count == 1 ? 0 : await PickAsync(waiting, cancellationToken);
+        var next = waiting[index];
+        waiting.RemoveAt(index);
+        return next;
+    }
+
+    private async Task<int> PickAsync(
+        List<QueuedBackgroundWork> waiting,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var store = new OperationStore(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+            var priorities = await store.GetPrioritiesAsync(
+                waiting.Select(work => work.OperationId).Distinct().ToArray(),
+                cancellationToken);
+            return Math.Max(
+                0,
+                OperationPriorities.PickNext(
+                    waiting
+                        .Select(work => priorities.GetValueOrDefault(work.OperationId, OperationPriority.Normal))
+                        .ToArray()));
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException)
+        {
+            logger.LogWarning(exception, "Could not read operation priorities; running queued work in order.");
+            return 0;
         }
     }
 }

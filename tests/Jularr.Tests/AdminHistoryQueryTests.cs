@@ -22,6 +22,7 @@ public sealed class AdminHistoryQueryTests
     [DataRow("manga-upload-import", "Manga", AdminHistoryCategory.Imports)]
     [DataRow("remote-epub-import", "Books", AdminHistoryCategory.Imports)]
     [DataRow("media-optimization", "Library", AdminHistoryCategory.Remux)]
+    [DataRow("media-optimization-recovery", "Library", AdminHistoryCategory.Repack)]
     [DataRow("episode-subtitle-import", "Learning", AdminHistoryCategory.Subtitle)]
     [DataRow("learning-text-batch", "Subtitles", AdminHistoryCategory.Subtitle)]
     [DataRow("episode-learning-preparation", "Learning", AdminHistoryCategory.Subtitle)]

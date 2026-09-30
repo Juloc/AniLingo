@@ -67,7 +67,7 @@
     color: var(--admhist-tone); font-size: 12px; font-weight: 700; white-space: nowrap;
 }
 .admhist-tag { --admhist-tone: var(--accent-text); }
-.admhist-tag-acquisition, .admhist-tag-remux { --admhist-tone: var(--info-text); }
+.admhist-tag-acquisition, .admhist-tag-remux, .admhist-tag-repack { --admhist-tone: var(--info-text); }
 .admhist-tag-metadata, .admhist-tag-maintenance { --admhist-tone: var(--muted); }
 .admhist-result-success { --admhist-tone: var(--success-text); }
 .admhist-result-warning { --admhist-tone: var(--warning-text); }

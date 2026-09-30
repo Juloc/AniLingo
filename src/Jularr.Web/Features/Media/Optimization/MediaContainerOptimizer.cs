@@ -50,6 +50,10 @@ public sealed class MediaContainerOptimizer(
     MediaOptimizationOptions? options = null)
 {
     public const string OperationKind = "media-optimization";
+
+    // The startup run that finishes or undoes a file swap a crash interrupted; the admin activity files
+    // it under Repack, while the run that rewrites the container (OperationKind) is the Remux.
+    public const string RecoveryOperationKind = "media-optimization-recovery";
     public const string LogModule = "Optimization";
     public const string PartialSuffix = ".jularr-partial";
 
