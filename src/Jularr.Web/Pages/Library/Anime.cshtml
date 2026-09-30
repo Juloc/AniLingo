@@ -1,27 +1,24 @@
 @page "/Library/Anime/{id:guid}"
+@using Jularr.Web.Features.Franchises
 @using Jularr.Web.Features.Learning
+@using Jularr.Web.Features.Library
 @using Jularr.Web.Features.Tracking
+@using Jularr.Web.Features.Watchlist
 @using Jularr.Web.Ui
 @using Microsoft.AspNetCore.Html
 @model Jularr.Web.Pages.Library.AnimeModel
+@* Layout and hierarchy follow docs/mockups/anime-series-detail/SPEC.md (binding): one backdrop hero with its
+   facts inside it, then seasons | episodes | related works. Owner-only tools stay in the Manage sheet. *@
 @{
     var ui = Model.Ui;
     ViewData["Title"] = Model.AnimeTitle;
-    var watchedEpisodeCount = Model.Episodes.Count(x => x.IsWatched);
-    var seriesProgressPercent = Model.Episodes.Count == 0
-        ? 0
-        : watchedEpisodeCount * 100 / Model.Episodes.Count;
-    var resumeEpisode = Model.Episodes.FirstOrDefault(x => x.ResumePercent is not null);
-    var nextEpisode = resumeEpisode
-        ?? Model.Episodes.FirstOrDefault(x => !x.IsWatched)
-        ?? Model.Episodes.FirstOrDefault();
-    var primaryActionKey = resumeEpisode is not null
-        ? "library.mediaCard.continueWatching"
-        : Model.Episodes.Any(x => !x.IsWatched)
-            ? watchedEpisodeCount > 0
-                ? "library.mediaCard.continueWatching"
-                : "library.mediaCard.startWatching"
-            : "library.mediaCard.watchAgain";
+    var next = Model.NextEpisode;
+    var primaryActionKey = Model.PrimaryAction switch
+    {
+        AnimePrimaryAction.Continue => "library.mediaCard.continueWatching",
+        AnimePrimaryAction.Start => "library.mediaCard.startWatching",
+        _ => "library.mediaCard.watchAgain"
+    };
     var backLink = new ContextBackLinkModel("/Library", $"← {ui["nav.library"]}", "back-link");
     var providerStatus = MediaBannerCardModel.MapStatus(Model.Metadata?.Status);
     var providerStatusLabel = providerStatus switch
@@ -34,163 +31,160 @@
         _ => null
     };
     var providerRating = Model.Metadata?.AverageScore is int averageScore and > 0 and <= 100
-        ? (averageScore / 10m).ToString("0.0")
+        ? (averageScore / 10m).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
         : null;
+
+    // Without a wide backdrop the cover becomes a blurred background: never a second, sharp poster.
+    var hasBackdrop = !string.IsNullOrWhiteSpace(Model.BannerImageUrl);
+    var heroArt = hasBackdrop ? Model.BannerImageUrl : Model.CoverImageUrl;
+
+    string SeasonName(AnimeStructureEntry entry) => entry.GroupName
+        ?? (entry.IsSpecials
+            ? ui["library.anime.specials"]
+            : ui.Format("library.watch.season", ("number", entry.SeasonNumber)));
+    string EpisodeCountText(int count) => count == 1
+        ? ui["library.anime.oneEpisode"]
+        : ui.Format("library.index.episodeCount", ("count", count));
+
+    var regularSeasons = Model.Episodes.Where(x => x.SeasonNumber > 0).Select(x => x.SeasonNumber).Distinct().Count();
+    var hasSpecials = Model.Episodes.Any(x => x.SeasonNumber == 0);
+    var structureText = string.Join(" + ", new[]
+    {
+        regularSeasons > 1 ? ui.Format("mediaFacts.seasonCount", ("count", regularSeasons)) : null,
+        hasSpecials ? ui["library.anime.specials"] : null
+    }.Where(x => x is not null));
+    var formatKey = Jularr.Web.Features.Watchlist.WatchlistLabels.FormatKey(Model.Metadata?.Format);
+    var heroYear = Model.Metadata?.SeasonYear ?? Model.LocalMetadata?.Year;
+    var heroDescription = !string.IsNullOrWhiteSpace(Model.Metadata?.Description)
+        ? Model.Metadata!.Description
+        : Model.LocalMetadata?.Plot;
+    var episodeTotal = Model.Metadata?.EpisodeCount ?? (Model.Episodes.Count > 0 ? Model.Episodes.Count : (int?)null);
+    var runtime = Model.Metadata?.EpisodeDurationMinutes;
+    var watchedPercent = Model.Episodes.Count == 0 ? 0 : Model.WatchedEpisodeCount * 100 / Model.Episodes.Count;
+    var hasStrip = providerRating is not null || episodeTotal is not null || runtime is not null
+        || Model.Facts is { HasLanguages: true } || Model.WatchedEpisodeCount > 0;
+    var hasUpcoming = false;
+    var upcoming = await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Anime, mediaId = Model.AnimeId, ui });
+    using (var upcomingText = new System.IO.StringWriter())
+    {
+        upcoming.WriteTo(upcomingText, System.Text.Encodings.Web.HtmlEncoder.Default);
+        hasUpcoming = !string.IsNullOrWhiteSpace(upcomingText.ToString());
+    }
+    var hasSide = hasUpcoming || Model.Related.Count > 0 || Model.Franchises.Count > 0 || Model.ExternalProgress is not null;
+    var sortOptions = new[]
+    {
+        (AnimeEpisodeSort.EpisodeAscending, ui["library.anime.sort.episodeAsc"]),
+        (AnimeEpisodeSort.EpisodeDescending, ui["library.anime.sort.episodeDesc"]),
+        (AnimeEpisodeSort.UnwatchedFirst, ui["library.anime.sort.unwatched"])
+    };
 }
 
 @section Head {
-    <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/library-presentation.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/anime-detail.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/context-back-link.js" asp-append-version="true"></script>
+    <script src="~/js/anime-detail.js" asp-append-version="true" defer></script>
 }
 
-<section class="anime-hero">
-    @if (!string.IsNullOrWhiteSpace(Model.BannerImageUrl))
-    {
-        <img class="anime-banner-image"
-             src="@Model.BannerImageUrl"
-             alt=""
-             loading="eager"
-             referrerpolicy="no-referrer" />
-    }
-    <div class="anime-hero-shade"></div>
-    <div class="anime-hero-content">
-        @if (!string.IsNullOrWhiteSpace(Model.CoverImageUrl))
+<div class="ad-page">
+<partial name="_ContextBackLink" model="backLink" />
+
+<section class="ad-hero@(hasBackdrop ? "" : " ad-hero-derived")" aria-labelledby="ad-title">
+    <div class="ad-hero-bg" aria-hidden="true">
+        @if (!string.IsNullOrWhiteSpace(heroArt))
         {
-            <img class="anime-detail-poster"
-                 src="@Model.CoverImageUrl"
-                 alt=""
-                 loading="eager"
-                 referrerpolicy="no-referrer" />
+            <img class="ad-hero-art" src="@heroArt" alt="" loading="eager" referrerpolicy="no-referrer" />
         }
-        <div class="anime-hero-copy">
-            <partial name="_ContextBackLink" model="backLink" />
-            <div class="anime-title-line">
-                <h1>@Model.AnimeTitle</h1>
-                @if (providerStatus is { } status && providerStatusLabel is not null)
+    </div>
+    <div class="ad-hero-copy">
+        <h1 id="ad-title">@Model.AnimeTitle</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.Metadata?.NativeTitle) ||
+             !string.Equals(Model.LocalAnimeTitle, Model.AnimeTitle, StringComparison.Ordinal))
+        {
+            <p class="ad-hero-alt">
+                @if (!string.IsNullOrWhiteSpace(Model.Metadata?.NativeTitle))
                 {
-                    <span class="anime-status anime-status-@status.ToString().ToLowerInvariant()">@providerStatusLabel</span>
+                    <span lang="ja">@Model.Metadata!.NativeTitle</span>
                 }
-            </div>
-
-            @if (Model.Metadata is { } metadata)
-            {
                 @if (!string.Equals(Model.LocalAnimeTitle, Model.AnimeTitle, StringComparison.Ordinal))
                 {
-                    <span class="local-title">@Model.LocalAnimeTitle</span>
+                    <span>@Model.LocalAnimeTitle</span>
                 }
-                @if (!string.IsNullOrWhiteSpace(metadata.NativeTitle))
-                {
-                    <span class="native-title" lang="ja">@metadata.NativeTitle</span>
-                }
+            </p>
+        }
 
-                <div class="anime-facts">
-                    @if (metadata.SeasonYear is int seasonYear)
-                    {
-                        <span>@seasonYear</span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(metadata.Format))
-                    {
-                        <span>@metadata.Format</span>
-                    }
-                    @if (metadata.EpisodeCount is int episodeCount)
-                    {
-                        <span>@ui.Format("library.index.episodeCount", ("count", episodeCount))</span>
-                    }
-                    @if (metadata.EpisodeDurationMinutes is int duration)
-                    {
-                        <span>@ui.Format("library.anime.durationMinutes", ("minutes", duration))</span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(metadata.Season))
-                    {
-                        <span>@metadata.Season</span>
-                    }
-                    @if (providerRating is not null)
-                    {
-                        <span class="anime-rating" aria-label="@ui["library.mediaCard.rating"]">★ @providerRating</span>
-                    }
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(metadata.Description))
-                {
-                    <p class="anime-description">@metadata.Description</p>
-                }
-            }
-            else if (Model.LocalMetadata is { } localMetadata)
+        <ul class="ad-hero-meta">
+            @if (heroYear is int year)
             {
-                @if (!string.Equals(Model.LocalAnimeTitle, Model.AnimeTitle, StringComparison.Ordinal))
-                {
-                    <span class="local-title">@Model.LocalAnimeTitle</span>
-                }
-
-                @* No provider match yet: the local tvshow.nfo year/plot is shown as a fallback only. *@
-                <div class="anime-facts">
-                    @if (localMetadata.Year is int localYear)
-                    {
-                        <span>@localYear</span>
-                    }
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(localMetadata.Plot))
-                {
-                    <p class="anime-description">@localMetadata.Plot</p>
-                }
+                <li>@year</li>
             }
-            else
+            @if (formatKey is not null)
             {
-                <p>@ui.Format("library.anime.episodesDiscovered", ("count", Model.Episodes.Count))</p>
+                <li>@ui[formatKey]</li>
             }
-
-            @if (Model.Facts is not null)
+            @if (structureText.Length > 0)
             {
-                <partial name="_MediaFacts" model="Model.Facts" />
+                <li>@structureText</li>
             }
-
-            @if (nextEpisode is not null)
+            @if (providerStatus is { } status && providerStatusLabel is not null)
             {
-                <div class="anime-viewing-state">
-                    <a class="button button-primary anime-primary-action"
-                       href="/Library/Episode/@nextEpisode.Id">
-                        @ui[primaryActionKey]
-                    </a>
-                    <div class="anime-next-episode">
-                        <strong>S@(nextEpisode.SeasonNumber.ToString("00")) · E@(nextEpisode.Number.ToString("00"))</strong>
-                        <span>@nextEpisode.Title</span>
-                    </div>
-                    @if (Model.Episodes.Count > 0)
-                    {
-                        <div class="anime-series-progress">
-                            <div class="anime-series-progress-label">
-                                <span>@watchedEpisodeCount / @Model.Episodes.Count @ui["library.watch.episodesHeading"]</span>
-                                <strong>@seriesProgressPercent%</strong>
-                            </div>
-                            <div class="progress-track" role="progressbar"
-                                 aria-label="@ui.Format("library.mediaCard.progressWatched", ("percent", seriesProgressPercent))"
-                                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="@seriesProgressPercent">
-                                <span style="width:@seriesProgressPercent%"></span>
-                            </div>
-                        </div>
-                    }
-                </div>
+                <li class="ad-status ad-status-@status.ToString().ToLowerInvariant()">@providerStatusLabel</li>
             }
+        </ul>
 
-            <div class="inline-actions anime-secondary-actions">
-                <a class="button"
-                   href="@Url.Page("/Settings/LearningScope", new {
-                       mediaType = LearningMediaType.Anime,
-                       scope = "work",
-                       workKey = Model.AnimeId.ToString(),
-                       label = Model.AnimeTitle,
-                       returnUrl = $"/Library/Anime/{Model.AnimeId}"
-                   })">
-                    @ui["library.languageToolsAndLearning"]
+        @if (!string.IsNullOrWhiteSpace(heroDescription))
+        {
+            <p class="ad-hero-description">@heroDescription</p>
+        }
+        else if (Model.Metadata is null)
+        {
+            <p class="ad-hero-description">@ui.Format("library.anime.episodesDiscovered", ("count", Model.Episodes.Count))</p>
+        }
+
+        <div class="ad-hero-actions">
+            @if (next is not null)
+            {
+                <a class="ad-primary" href="/Library/Episode/@next.Id">
+                    <partial name="_AnimeDetailIcon" model='"play"' />
+                    <span>@ui[primaryActionKey]</span>
+                    <small>@AnimeDetailView.EpisodeCode(next.SeasonNumber, next.Number)</small>
                 </a>
+            }
 
-                @if (Model.IsOwner)
-                {
+            @if (Model.IsOnWatchlist is bool onList)
+            {
+                <form method="post" asp-page-handler="@(onList ? "Unfollow" : "Follow")" asp-route-id="@Model.AnimeId" class="ad-inline-form">
+                    <button class="ad-secondary@(onList ? " is-on" : "")" type="submit"
+                            aria-pressed="@(onList ? "true" : "false")"
+                            title="@(onList ? ui["library.anime.watchlistRemoveAria"] : null)">
+                        <partial name="_AnimeDetailIcon" model='onList ? "check" : "plus"' />
+                        <span>@(onList ? ui["library.anime.watchlistOn"] : ui["library.anime.watchlistAdd"])</span>
+                    </button>
+                </form>
+            }
+
+            <details class="ad-menu" data-ad-menu>
+                <summary class="ad-secondary ad-icon-button" aria-label="@ui["library.anime.moreActions"]">
+                    <partial name="_AnimeDetailIcon" model='"more"' />
+                </summary>
+                <div class="ad-menu-panel">
+                    <a href="@Url.Page("/Settings/LearningScope", new {
+                        mediaType = LearningMediaType.Anime,
+                        scope = "work",
+                        workKey = Model.AnimeId.ToString(),
+                        label = Model.AnimeTitle,
+                        returnUrl = $"/Library/Anime/{Model.AnimeId}"
+                    })">@ui["library.languageToolsAndLearning"]</a>
+                    @if (Model.RequestHref is not null)
+                    {
+                        <a href="@Model.RequestHref">@ui["library.anime.requestMore"]</a>
+                    }
+                </div>
+            </details>
+
+            @if (Model.IsOwner)
+            {
                     Func<dynamic?, IHtmlContent> metadataGroup = @<div>
                             <form method="get" class="metadata-search">
                                 <input type="search"
@@ -406,111 +400,246 @@
                             ui,
                             needsReview ? new ManageSheetReviewBadge(ui["manage.needsReview"], "/Settings/MappingReview") : null);
                     <partial name="_ManageSheet" model="manageSheet" />
-                }
-            </div>
+            }
         </div>
     </div>
+
+    @if (hasStrip)
+    {
+        <ul class="ad-hero-strip">
+            @if (providerRating is not null)
+            {
+                <li title="@ui["library.mediaCard.rating"]">
+                    <partial name="_AnimeDetailIcon" model='"star"' />
+                    <span><span class="sr-only">@ui["library.mediaCard.rating"] </span>@providerRating</span>
+                </li>
+            }
+            @if (episodeTotal is int total)
+            {
+                <li>
+                    <partial name="_AnimeDetailIcon" model='"episodes"' />
+                    <span>@ui.Format("mediaFacts.episodeCount", ("count", total))</span>
+                </li>
+            }
+            @if (runtime is int minutesPerEpisode)
+            {
+                <li>
+                    <partial name="_AnimeDetailIcon" model='"clock"' />
+                    <span>@ui.Format("library.anime.durationMinutes", ("minutes", minutesPerEpisode))</span>
+                </li>
+            }
+            @if (Model.Facts is { HasLanguages: true } facts)
+            {
+                @foreach (var group in facts.LanguageGroups.Where(x => x.Usage != Jularr.Web.Features.MediaFacts.MediaFactsLanguageUsage.Text))
+                {
+                    <li role="group" aria-label="@group.Label" title="@group.Label">
+                        <partial name="_AnimeDetailIcon" model='group.Usage == Jularr.Web.Features.MediaFacts.MediaFactsLanguageUsage.Audio ? "audio" : "subtitles"' />
+                        <span>
+                            @foreach (var chip in group.Chips)
+                            {
+                                <span class="ad-strip-lang@(chip.IsPartial ? " is-partial" : "")" title="@chip.PartialLabel">@chip.Code</span>
+                            }
+                        </span>
+                    </li>
+                }
+            }
+            @if (Model.WatchedEpisodeCount > 0)
+            {
+                <li class="ad-strip-progress">
+                    <span>@Model.WatchedEpisodeCount / @Model.Episodes.Count @ui["library.watch.episodesHeading"]</span>
+                    <span class="progress-track" role="progressbar"
+                          aria-label="@ui.Format("library.mediaCard.progressWatched", ("percent", watchedPercent))"
+                          aria-valuemin="0" aria-valuemax="100" aria-valuenow="@watchedPercent"><span style="width:@watchedPercent%"></span></span>
+                </li>
+            }
+        </ul>
+    }
 </section>
 
-<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises, Model.FranchiseGroups)" />
-
-@await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Anime, mediaId = Model.AnimeId, ui })
-
-@if (Model.ExternalProgress is { } externalProgress)
-{
-    var externalPanel = new ExternalProgressPanel(
-        externalProgress,
-        Url.Page(null, "ExternalProgress", new { id = Model.AnimeId })!,
-        // Range mappings can point at another AniList part; only reuse the
-        // matched cover when the resolved entry is the metadata match itself.
-        Model.Metadata is { } matchedMetadata &&
-        matchedMetadata.ExternalId == externalProgress.MatchedMediaId?.ToString()
-            ? matchedMetadata.CoverImageUrl
-            : null,
-        Ui: ui);
-    <partial name="_ExternalProgress" model="externalPanel" />
-}
-
-@{
-    // One episode row, reused by the plain list and by the grouped layout so both render
-    // identically. The row shows only internal identity (S..E.., title); presentation grouping
-    // never changes the episode code or its link target.
-    Func<Jularr.Web.Pages.Library.AnimeModel.EpisodeRow, IHtmlContent> renderEpisode = @<text>
-        @{ var episodeCode = $"S{item.SeasonNumber:00}E{item.Number:00}"; }
-        <div class="episode-row-shell @(item.IsWatched ? "is-watched" : "")">
-        <a class="episode-row" href="/Library/Episode/@item.Id">
-            <div class="episode-number">E@(item.Number.ToString("00"))</div>
-            <div class="episode-main">
-                <strong>S@(item.SeasonNumber.ToString("00")) · @item.Title</strong>
-                @if (item.IsWatched)
-                {
-                    <span class="episode-watch-state">✓ @ui["library.episode.watched"]</span>
-                }
-                else if (item.ResumePercent is int resumePercent)
-                {
-                    <span class="episode-watch-state">@ui.Format("library.anime.inProgressWatched", ("percent", resumePercent))</span>
-                }
-                <span>
-                    @if (item.JapaneseSubtitleTracks == 0)
-                    {
-                        <text>@ui["library.anime.noJapaneseSubtitle"]</text>
-                    }
-                    else if (Model.ShowContentMetrics)
-                    {
-                        <text>@ui.Format("library.anime.vocabularyCandidates", ("count", item.TotalTerms), ("percent", item.PreparationPercent))</text>
-                    }
-                    else
-                    {
-                        <text>@ui.Format("library.anime.subtitleTrackCount", ("count", item.JapaneseSubtitleTracks))</text>
-                    }
-                </span>
-                @if (Model.ShowContentMetrics)
-                {
-                    <div class="progress-track"><span style="width:@item.PreparationPercent%"></span></div>
-                }
-            </div>
-            <span class="episode-arrow">›</span>
-        </a>
-        <form method="post"
-              class="episode-watched-form"
-              asp-page-handler="Watched"
-              asp-route-id="@Model.AnimeId">
-            <input type="hidden" name="episodeId" value="@item.Id" />
-            <input type="hidden" name="watched" value="@(item.IsWatched ? "false" : "true")" />
-            <button class="button"
-                    type="submit"
-                    aria-label="@(item.IsWatched ? ui.Format("library.anime.markUnwatchedAria", ("code", episodeCode)) : ui.Format("library.anime.markWatchedAria", ("code", episodeCode)))">
-                @(item.IsWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])
-            </button>
-        </form>
-        </div>
-    </text>;
-}
-
-@if (Model.PresentationSections.Count > 0)
-{
-    @foreach (var groupSection in Model.PresentationSections)
+<div class="ad-main@(Model.Structure.Count == 0 ? " no-rail" : "")@(hasSide ? "" : " no-side")">
+    @if (Model.Structure.Count > 0)
     {
-        <details class="presentation-group" open>
-            <summary class="presentation-group-summary">
-                <span class="presentation-group-name">@groupSection.Name</span>
-                <span class="presentation-group-count">@ui.Format("library.presentation.episodeCount", ("count", groupSection.Items.Count))</span>
-            </summary>
-            <div class="episode-list">
-                @foreach (var episode in groupSection.Items)
+        <nav class="ad-seasons" aria-labelledby="ad-seasons-title">
+            <h2 id="ad-seasons-title">@ui["library.anime.seasonsHeading"]</h2>
+            <ul>
+                @foreach (var entry in Model.Structure)
                 {
-                    @renderEpisode(episode)
+                    var isSelected = entry.Key == Model.Selected?.Key;
+                    var art = Model.StructureArt.GetValueOrDefault(entry.Key);
+                    <li>
+                        <a class="ad-season@(isSelected ? " is-selected" : "")"
+                           href="@Model.PageHref(entry.Key, Model.Sort, Model.Layout)"
+                           aria-current="@(isSelected ? "true" : null)">
+                            <span class="ad-season-art" aria-hidden="true">
+                                @if (!string.IsNullOrWhiteSpace(art))
+                                {
+                                    <img src="@art" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+                                }
+                                else
+                                {
+                                    <span>@(entry.SeasonNumber is int number ? (number == 0 ? "SP" : $"S{number}") : entry.Key.ToUpperInvariant())</span>
+                                }
+                            </span>
+                            <span class="ad-season-copy">
+                                <strong>@SeasonName(entry)</strong>
+                                <small>@EpisodeCountText(entry.EpisodeCount)</small>
+                            </span>
+                            <partial name="_AnimeDetailIcon" model='"chevron"' />
+                        </a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    }
+
+    <section class="ad-episodes" id="episodes" aria-labelledby="ad-episodes-title">
+        <header class="ad-episodes-head">
+            <h2 id="ad-episodes-title">@ui["library.watch.episodesHeading"]</h2>
+            @if (Model.Selected is { } selected)
+            {
+                <span class="ad-context">@ui.Format("library.anime.selectedSeasonContext", ("season", SeasonName(selected)), ("count", EpisodeCountText(selected.EpisodeCount)))</span>
+            }
+            @if (Model.SelectedEpisodes.Count > 0)
+            {
+                <div class="ad-tools">
+                    <form method="get" action="/Library/Anime/@Model.AnimeId#episodes" class="ad-sort" data-ad-sort>
+                        @if (Model.Selected is { } sortScope)
+                        {
+                            <input type="hidden" name="part" value="@sortScope.Key" />
+                        }
+                        @if (AnimeDetailView.LayoutName(Model.Layout) is { } layoutValue)
+                        {
+                            <input type="hidden" name="view" value="@layoutValue" />
+                        }
+                        <label>
+                            <span>@ui["library.anime.sortLabel"]</span>
+                            <select name="sort">
+                                @foreach (var (value, label) in sortOptions)
+                                {
+                                    <option value="@AnimeDetailView.SortName(value)" selected="@(value == Model.Sort)">@label</option>
+                                }
+                            </select>
+                        </label>
+                        <noscript><button type="submit" class="button">@ui["common.search"]</button></noscript>
+                    </form>
+                    <div class="ad-view" role="group" aria-label="@ui["library.anime.viewAria"]">
+                        @foreach (var (layout, icon, label) in new[]
+                        {
+                            (AnimeEpisodeLayout.Grid, "grid", ui["library.anime.view.grid"]),
+                            (AnimeEpisodeLayout.List, "list", ui["library.anime.view.list"])
+                        })
+                        {
+                            <a class="ad-view-button@(layout == Model.Layout ? " is-active" : "")"
+                               href="@Model.PageHref(Model.Selected?.Key, Model.Sort, layout)"
+                               aria-current="@(layout == Model.Layout ? "true" : null)"
+                               aria-label="@label" title="@label">
+                                <partial name="_AnimeDetailIcon" model="icon" />
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+        </header>
+
+        @if (Model.SelectedEpisodes.Count == 0)
+        {
+            <div class="ad-empty">
+                <p>@ui["library.anime.noEpisodes"]</p>
+                @if (Model.OpenRequest is not null)
+                {
+                    var pending = AnimeDetailView.Availability(AnimeEpisodeMediaFacts.None, Model.OpenRequest, null, null);
+                    <span class="ad-state ad-state-@AnimeDetailView.AvailabilityName(pending)">
+                        <partial name="_AnimeDetailIcon" model="AnimeDetailView.AvailabilityName(pending)" />
+                        @ui[AnimeDetailView.AvailabilityKey(pending)]
+                    </span>
                 }
             </div>
-        </details>
-    }
-}
-else
-{
-    <div class="episode-list">
-        @foreach (var episode in Model.Episodes)
-        {
-            @renderEpisode(episode)
         }
-    </div>
-}
+        else
+        {
+            <ul class="ad-episode-list@(Model.Layout == AnimeEpisodeLayout.List ? " is-list" : " is-grid")">
+                @foreach (var episode in Model.SelectedEpisodes)
+                {
+                    <li><partial name="_AnimeEpisodeCard" model="(Model, episode)" /></li>
+                }
+            </ul>
+        }
+    </section>
+
+    @if (hasSide)
+    {
+    <aside class="ad-side">
+        @if (Model.Related.Count > 0 || Model.Franchises.Count > 0)
+        {
+            <section class="ad-related" aria-labelledby="ad-related-title">
+                <h2 id="ad-related-title">@ui["library.anime.relatedHeading"]</h2>
+                @if (Model.Related.Count > 0)
+                {
+                    <ul>
+                        @foreach (var related in Model.Related)
+                        {
+                            var kind = related.MediaType == WatchlistMediaType.Anime
+                                ? (related.FormatKey is null ? null : ui[related.FormatKey])
+                                : ui[$"watchlist.type.{WatchlistMediaTypeNames.ToCategory(related.MediaType)}"];
+                            var detail = string.Join(" · ", new[] { ui[related.GroupKey], kind, related.Year?.ToString(System.Globalization.CultureInfo.InvariantCulture) }.Where(x => !string.IsNullOrEmpty(x)));
+                            <li>
+                                <a href="@related.Href">
+                                    <span class="ad-related-art" aria-hidden="true">
+                                        @if (!string.IsNullOrWhiteSpace(related.CoverImageUrl))
+                                        {
+                                            <img src="@related.CoverImageUrl" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+                                        }
+                                        else
+                                        {
+                                            <span>@WatchlistLabels.Initial(related.Title)</span>
+                                        }
+                                    </span>
+                                    <span class="ad-related-copy">
+                                        <strong>@related.Title</strong>
+                                        <small>@detail</small>
+                                    </span>
+                                    <partial name="_AnimeDetailIcon" model='"chevron"' />
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (Model.Franchises.Count > 0)
+                {
+                    <div class="ad-franchises">
+                        @if (Model.RelatedMore > 0)
+                        {
+                            <a href="/Franchises/@Model.Franchises[0].Id">@ui.Format("library.anime.relatedMore", ("count", Model.RelatedMore))</a>
+                        }
+                        @foreach (var franchise in Model.Franchises)
+                        {
+                            <a href="/Franchises/@franchise.Id">
+                                <span>@FranchiseLabels.Title(ui, franchise.Title)</span>
+                                <small>@ui.Format("franchise.memberCount", ("count", franchise.MemberCount))</small>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        @upcoming
+
+        @if (Model.ExternalProgress is { } externalProgress)
+        {
+            var externalPanel = new ExternalProgressPanel(
+                externalProgress,
+                Url.Page(null, "ExternalProgress", new { id = Model.AnimeId })!,
+                // Range mappings can point at another AniList part; only reuse the
+                // matched cover when the resolved entry is the metadata match itself.
+                Model.Metadata is { } matchedMetadata &&
+                matchedMetadata.ExternalId == externalProgress.MatchedMediaId?.ToString()
+                    ? matchedMetadata.CoverImageUrl
+                    : null,
+                Ui: ui);
+            <partial name="_ExternalProgress" model="externalPanel" />
+        }
+    </aside>
+    }
+</div>
+</div>

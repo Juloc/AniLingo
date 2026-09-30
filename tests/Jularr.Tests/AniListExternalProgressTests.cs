@@ -358,7 +358,7 @@ public sealed class AniListExternalProgressTests
         var remote = FakeAniList.FailIfCalled();
         var page = fixture.AnimePage(Owner, remote);
 
-        var result = await page.OnGetAsync(anime.Id, null, CancellationToken.None);
+        var result = await page.OnGetAsync(anime.Id, null, null, null, null, CancellationToken.None);
 
         Assert.IsInstanceOfType<PageResult>(result);
         Assert.IsNotNull(page.ExternalProgress);
@@ -614,6 +614,12 @@ public sealed class AniListExternalProgressTests
                 Service(profileId, remote),
                 new FranchiseStore(Db),
                 CreateFranchiseService(),
+                new WatchlistStore(Db),
+                new WatchlistLibraryResolver(Db),
+                new Jularr.Web.Features.Acquisition.Access.AcquisitionAccessStore(Db),
+                new Jularr.Web.Features.Auth.MediaCapabilityService(
+                    new Jularr.Web.Features.Auth.MediaCapabilityStore(
+                        Path.Combine(Path.GetTempPath(), $"jularr-anime-page-caps-{Guid.NewGuid():N}"))),
                 NullLogger<AnimeModel>.Instance);
             Attach(page);
             return page;
