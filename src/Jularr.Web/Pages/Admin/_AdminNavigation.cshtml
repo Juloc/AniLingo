@@ -8,6 +8,7 @@
     <a class="admin-nav-item @(path == "/Admin" ? "active" : "")" asp-page="/Admin/Index">@ui["admin.nav.overview"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Users") || path.StartsWithSegments("/Admin/User") ? "active" : "")" asp-page="/Admin/Users">@ui["admin.nav.users"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Requests") ? "active" : "")" asp-page="/Admin/Requests">@ui["admin.nav.requests"]</a>
+    <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Wanted") ? "active" : "")" asp-page="/Admin/Wanted">@ui["admin.nav.wanted"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Usenet") || path.StartsWithSegments("/Settings/Indexers") || path.StartsWithSegments("/Settings/DownloadClients") ? "active" : "")" asp-page="/Admin/Usenet">@ui["admin.nav.usenet"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Operations") || path.StartsWithSegments("/Admin/Operation") ? "active" : "")" asp-page="/Admin/Operations">@ui["admin.nav.operations"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/History") ? "active" : "")" asp-page="/Admin/History">@ui["admin.nav.history"]</a>
