@@ -4,46 +4,52 @@ Approved and work-in-progress UX mockups live here.
 
 ## Canonical structure
 
-Use one folder per substantial screen:
+Use one folder per substantial screen. `SPEC.md` is the binding screen-specific behavior/information hierarchy/state contract; images are visual references once approved. If text and image conflict, the text spec wins. Light and Dark are always first-class. `docs/UX.md` owns global/shared rules.
 
-```text
-docs/
-  UX.md
-  mockups/
-    README.md
-    home/
-      SPEC.md
-      desktop.png
-      mobile.png
-      tablet.png
-      tv.png
-    admin-dashboard/
-      SPEC.md
-      desktop.png
-    admin-media-detail/
-      SPEC.md
-      ...
-```
+Agents must not redesign an approved screen during implementation without updating its spec and approval.
 
-Only add platform images that are actually needed.
+## User screen contracts
 
-- `SPEC.md` = binding screen-specific behavior, information architecture, states and acceptance criteria.
-- images = binding visual references once approved.
-- Light and Dark are always first-class. A platform image may show both variants side-by-side.
-- `docs/UX.md` = global/shared UX rules, navigation, responsive principles and the master mockup checklist.
+- `home/SPEC.md`
+- `library/README.md` — current binding draft; normalize to `SPEC.md` after approval
+- `discover/SPEC.md`
+- `anime-series-detail/SPEC.md`
+- `movie-detail/SPEC.md`
+- `book-light-novel-detail/SPEC.md`
+- `manga-detail/SPEC.md`
+- `audiobook-detail/SPEC.md`
+- `player/SPEC.md`
+- `reader/SPEC.md`
+- `calendar/SPEC.md`
+- `learning-home/SPEC.md`
+- `lesson-review/SPEC.md`
+- `user-settings/SPEC.md`
+- `profile-activity/SPEC.md`
+- `add-request-flow/SPEC.md`
 
-Agents must not redesign an approved screen during implementation without updating its spec and obtaining a new approved mockup.
+## Admin screen contracts
 
-## Current screen specs
+- `admin-dashboard/SPEC.md`
+- `admin-media-detail/SPEC.md`
+- `admin-wanted/SPEC.md`
+- `admin-requests/SPEC.md`
+- `admin-activity/SPEC.md`
+- `admin-history/SPEC.md`
+- `admin-manual-search/SPEC.md`
+- `admin-imports/SPEC.md`
+- `admin-storage/SPEC.md`
+- `admin-providers/SPEC.md`
+- `admin-ai/SPEC.md`
+- `admin-users-permissions/SPEC.md`
+- `admin-backup-restore/SPEC.md`
+- `admin-migration/SPEC.md`
+- `admin-acquisition-settings/SPEC.md`
+- `admin-system-diagnostics/SPEC.md`
+- `setup-wizard/SPEC.md`
 
-- `home/SPEC.md` — approved clean Home UX baseline.
-- `admin-dashboard/SPEC.md` — Admin Dashboard live operations/health contract.
-- `admin-media-detail/SPEC.md` — Admin media monitoring/acquisition hierarchy V1.
-- `admin-wanted/SPEC.md` — Admin acquisition worklist.
-- `admin-requests/SPEC.md` — Admin user request moderation.
-- `admin-activity/SPEC.md` — Admin live To-Do/running/failed jobs.
-- `admin-history/SPEC.md` — Admin operational history.
+## Planning references
 
-## Existing image assets
+- `../PLANNING-AUDIT.md` — coverage, architecture consistency and open-issue audit.
+- `../IMPLEMENTATION-ROADMAP.md` — dependency-ordered implementation sequence.
 
-Older root-level mockup binaries may remain temporarily until replaced by the canonical platform files inside their screen folders.
+Only create platform images that are actually needed. Important screens should receive approved Desktop/Mobile/Tablet/TV references according to their SPEC before their implementation is considered complete.
