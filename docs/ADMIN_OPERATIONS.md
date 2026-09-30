@@ -161,6 +161,14 @@ Each library root (`/Admin/System`) can enable Wake-on-LAN with a MAC address an
 - **Diagnostics.** Every send attempt logs the library root id, MAC address and the resolved destination endpoint. A library root in `Error` state distinguishes a send failure (`StorageDiagnosticCodes.WakeSendFailed`, for example `SocketException: Network is unreachable`, which can itself indicate the configured address is unroutable from the container) from a timeout waiting for the storage after a packet was sent (`StorageDiagnosticCodes.WakeTimeout`).
 - **Host networking remains a documented fallback**, not a requirement: `network_mode: host` (or a macvlan network) gives the container a real LAN-facing interface, after which the default `255.255.255.255` broadcast works like it would on any other LAN host. This trades away Docker's network isolation for the `jularr` service and needs the owner's own `compose.yaml` change; Jularr does not switch this automatically.
 
+## Storage insights and safe cleanup
+
+`/Admin/Storage` (linked from the `/Admin` overview) shows where disk space goes (#414).
+
+- **Usage** comes from the library inventory (`MediaFile.SizeBytes` from the last reconciliation, audiobook and book file sizes), never from a filesystem scan of the library roots. A root's state is read from the cached availability; a root that could be a sleeping Wake-on-LAN NAS and was never observed is shown as "Not checked" and is not probed. A root that is not online keeps its last-scan figures, marked "As of the last scan", without free space.
+- **Jularr cache** lists the rebuildable data Jularr keeps on the `/data` volume: prepared playback files, streaming sessions, seek previews, artwork, audio fingerprints and manga pages.
+- **Safe cleanup** previews before it removes anything and only covers entries Jularr can prove unusable: prepared playback files and seek previews whose media file is gone or changed in the database, work files left by interrupted jobs, and streaming sessions idle for over an hour. Artwork, fingerprints and manga pages are measured only. The cleanup recomputes the list when it runs, refuses anything outside its cache area or at, above or inside a library root or known media path, and never opens a library root. Library media is never deleted by Jularr automatically.
+
 ## Lossless playback optimization
 
 `MediaContainerOptimizer` (`Features/Media/Optimization`) rewraps a video into MP4 when that widens browser Direct Play without losing or changing anything. It never re-encodes: the only ffmpeg call is a stream copy of every stream (`-map 0 -c copy`, HEVC tagged `hvc1` for Safari, track names kept as MP4 handler names, chapters and metadata mapped).

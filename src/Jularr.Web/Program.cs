@@ -46,6 +46,7 @@ using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Storage;
 using Jularr.Web.Features.Storage.FolderBrowse;
+using Jularr.Web.Features.Storage.Insights;
 using Jularr.Web.Features.StoryContext;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Tracking;
@@ -337,6 +338,10 @@ builder.Services.AddSingleton<IWakeOnLanPacketSender, UdpWakeOnLanPacketSender>(
 builder.Services.AddSingleton(new StorageWakeOptions());
 builder.Services.AddSingleton<StorageWakeCoordinator>();
 builder.Services.AddScoped<StorageIntegrityService>();
+builder.Services.AddSingleton(StorageCacheLayout.Default);
+builder.Services.AddScoped<StorageUsageService>();
+builder.Services.AddScoped<StorageCacheScanner>();
+builder.Services.AddScoped<StorageCleanupService>();
 builder.Services.AddScoped<LibraryRootAvailabilityService>();
 builder.Services.AddScoped<MediaAvailabilityService>();
 builder.Services.AddScoped<WakeOnLanService>();
