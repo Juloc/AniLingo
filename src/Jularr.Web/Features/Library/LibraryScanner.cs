@@ -642,9 +642,14 @@ public sealed class LibraryScanner(
             foreach (var candidate in mediaCandidates)
             {
                 var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
+
+                // Stored stamps keep microseconds while file timestamps carry 100 ns ticks (see
+                // SubtitleImportService), so compare at the stored precision.
+                var candidateStamp = candidate.SourceUpdatedAt.AddTicks(
+                    -(candidate.SourceUpdatedAt.Ticks % TimeSpan.TicksPerMicrosecond));
                 var freshEmbeddedCount = embeddedTracks.Count(x =>
                     x.EpisodeId == episodeId &&
-                    x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
+                    x.SourceUpdatedAt == candidateStamp &&
                     x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
 
                 if (freshEmbeddedCount > 0)

@@ -184,60 +184,29 @@ public sealed class SubtitleImportService
         }
 
         var sourceKey = BuildProviderSourceKey(providerId, resultToken);
-        var track = await db.SubtitleTracks.SingleOrDefaultAsync(
-            x => x.EpisodeId == episodeId &&
-                 x.Language == normalizedLanguage &&
-                 x.Forced == forced &&
-                 x.Sdh == sdh,
-            cancellationToken);
-
-        if (track is null)
-        {
-            track = new SubtitleTrack
-            {
-                EpisodeId = episodeId,
-                Path = sourceKey,
-                Language = normalizedLanguage,
-                Forced = forced,
-                Sdh = sdh,
-                Format = normalizedFormat,
-                SourceUpdatedAt = sourceUpdatedAt
-            };
-            db.SubtitleTracks.Add(track);
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        else
-        {
-            track.Path = sourceKey;
-            track.Format = normalizedFormat;
-            track.SourceUpdatedAt = sourceUpdatedAt;
-            track.ImportedAt = DateTime.UtcNow;
-
-            await db.SubtitleCues
-                .Where(x => x.SubtitleTrackId == track.Id)
-                .ExecuteDeleteAsync(cancellationToken);
-        }
-
-        db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
-        {
-            SubtitleTrackId = track.Id,
-            StartMs = cue.StartMs,
-            EndMs = cue.EndMs,
-            Text = cue.Text
-        }));
-        await db.SaveChangesAsync(cancellationToken);
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
 
         // A normal (non-forced, non-SDH) track in the resolved learning language is also the
-        // learning-text source: rebuild vocabulary the same way the automatic pipeline would.
-        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
-        if (!forced && !sdh && normalizedLanguage.Equals(targetLanguage, StringComparison.OrdinalIgnoreCase))
-        {
-            await RemoveOtherTracksAsync(episodeId, track.Id, targetLanguage, cancellationToken);
-            await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
-            MarkPreparationReady(episodeId, LearningTextSourceKind.LocalSubtitle, "Using a manually searched subtitle.");
-        }
+        // learning-text source: importing it rebuilds vocabulary the same way the automatic pipeline
+        // would. Every other combination is an independent track.
+        var slot = new TrackSlot(
+            normalizedLanguage,
+            forced,
+            sdh,
+            !forced && !sdh && normalizedLanguage.Equals(targetLanguage, StringComparison.OrdinalIgnoreCase),
+            "Using a manually searched subtitle.");
 
-        return track.Id;
+        // The same idempotent, per-Path serialized upsert the automatic sources use: importing a
+        // provider result again (or for another episode) updates the one row that owns its Path.
+        return await ImportCuesAsync(
+            episodeId,
+            sourceKey,
+            normalizedFormat,
+            sourceUpdatedAt,
+            cues,
+            targetLanguage,
+            cancellationToken,
+            slot);
     }
 
     private static string BuildProviderSourceKey(string providerId, string resultToken)
@@ -255,17 +224,20 @@ public sealed class SubtitleImportService
     // 23505) or replace the cues of an existing track twice and leave it with two copies. The
     // importer that waits on the lock re-reads the winner's committed row, so importing a source
     // that is already current degrades to a no-op instead of failing.
-    private async Task ImportCuesAsync(
+    private async Task<Guid> ImportCuesAsync(
         Guid episodeId,
         string sourceKey,
         string normalizedFormat,
         DateTime sourceUpdatedAt,
         IReadOnlyList<SubtitleCueData> cues,
         string targetLanguage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TrackSlot? requestedSlot = null)
     {
+        var slot = requestedSlot ?? new TrackSlot(targetLanguage, false, false, true);
         sourceUpdatedAt = ToStoredPrecision(sourceUpdatedAt);
         string readyMessage;
+        Guid trackId;
         Guid? previousEpisodeId = null;
 
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
@@ -275,21 +247,27 @@ public sealed class SubtitleImportService
 
             if (current is not null && IsCurrent(current, episodeId, sourceUpdatedAt))
             {
-                await PruneOtherTracksAsync(episodeId, current.Id, targetLanguage, cancellationToken);
-                readyMessage = "Learning text is ready.";
+                trackId = current.Id;
+                if (slot.IsLearningSource)
+                {
+                    await PruneOtherTracksAsync(episodeId, current.Id, targetLanguage, cancellationToken);
+                }
+
+                readyMessage = slot.ReadyMessage ?? "Learning text is ready.";
             }
             else
             {
-                previousEpisodeId = await ReplaceTrackAsync(
+                (trackId, previousEpisodeId) = await ReplaceTrackAsync(
                     current,
                     episodeId,
                     sourceKey,
                     normalizedFormat,
                     sourceUpdatedAt,
                     cues,
+                    slot,
                     targetLanguage,
                     cancellationToken);
-                readyMessage = $"Learning text is ready ({cues.Count} cues).";
+                readyMessage = slot.ReadyMessage ?? $"Learning text is ready ({cues.Count} cues).";
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -300,19 +278,26 @@ public sealed class SubtitleImportService
             ForgetReadyState(previous);
         }
 
-        MarkPreparationReady(episodeId, DetectSourceKind(sourceKey), readyMessage);
+        if (slot.IsLearningSource)
+        {
+            MarkPreparationReady(episodeId, DetectSourceKind(sourceKey), readyMessage);
+        }
+
+        return trackId;
     }
 
     // Upserts the track for the source key and swaps in the new cues. An existing row is matched by
     // Path and updated in place (episode, language, format, timestamps), so a source that moved to
-    // another episode keeps its single row. Returns the episode the track left, if it moved.
-    private async Task<Guid?> ReplaceTrackAsync(
+    // another episode keeps its single row. Returns the track id and the episode the track left, if
+    // it moved.
+    private async Task<(Guid TrackId, Guid? PreviousEpisodeId)> ReplaceTrackAsync(
         TrackStamp? current,
         Guid episodeId,
         string sourceKey,
         string normalizedFormat,
         DateTime sourceUpdatedAt,
         IReadOnlyList<SubtitleCueData> cues,
+        TrackSlot slot,
         string targetLanguage,
         CancellationToken cancellationToken)
     {
@@ -323,7 +308,9 @@ public sealed class SubtitleImportService
             {
                 EpisodeId = episodeId,
                 Path = sourceKey,
-                Language = targetLanguage,
+                Language = slot.Language,
+                Forced = slot.Forced,
+                Sdh = slot.Sdh,
                 Format = normalizedFormat,
                 SourceUpdatedAt = sourceUpdatedAt
             };
@@ -339,7 +326,9 @@ public sealed class SubtitleImportService
                 .ExecuteUpdateAsync(
                     setters => setters
                         .SetProperty(x => x.EpisodeId, episodeId)
-                        .SetProperty(x => x.Language, targetLanguage)
+                        .SetProperty(x => x.Language, slot.Language)
+                        .SetProperty(x => x.Forced, slot.Forced)
+                        .SetProperty(x => x.Sdh, slot.Sdh)
                         .SetProperty(x => x.Format, normalizedFormat)
                         .SetProperty(x => x.SourceUpdatedAt, sourceUpdatedAt)
                         .SetProperty(x => x.ImportedAt, importedAt),
@@ -359,7 +348,20 @@ public sealed class SubtitleImportService
                 .ExecuteDeleteAsync(cancellationToken);
         }
 
-        await RemoveOtherTracksAsync(episodeId, trackId, targetLanguage, cancellationToken);
+        // A newer result for the same (episode, language, forced, SDH) slot supersedes the older one;
+        // the learning-text source additionally keeps just one normal track in the learning language.
+        await db.SubtitleTracks
+            .Where(x =>
+                x.EpisodeId == episodeId &&
+                x.Language == slot.Language &&
+                x.Forced == slot.Forced &&
+                x.Sdh == slot.Sdh &&
+                x.Id != trackId)
+            .ExecuteDeleteAsync(cancellationToken);
+        if (slot.IsLearningSource)
+        {
+            await RemoveOtherTracksAsync(episodeId, trackId, targetLanguage, cancellationToken);
+        }
 
         db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
         {
@@ -380,8 +382,12 @@ public sealed class SubtitleImportService
             await vocabularyService.RebuildEpisodeAsync(previous, cancellationToken);
         }
 
-        await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
-        return previousEpisodeId;
+        if (slot.IsLearningSource)
+        {
+            await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
+        }
+
+        return (trackId, previousEpisodeId);
     }
 
     // A transaction-scoped advisory lock on the source key: it needs no row (so it also orders two
@@ -1662,6 +1668,16 @@ public sealed class SubtitleImportService
         {
         }
     }
+
+    // Which (language, forced, SDH) combination a track fills. IsLearningSource marks the single
+    // normal track in the learning language that feeds vocabulary; ReadyMessage overrides the
+    // preparation message for imports that are not part of the automatic pipeline.
+    private sealed record TrackSlot(
+        string Language,
+        bool Forced,
+        bool Sdh,
+        bool IsLearningSource,
+        string? ReadyMessage = null);
 
     private sealed record TrackStamp(Guid Id, Guid EpisodeId, DateTime SourceUpdatedAt);
 
