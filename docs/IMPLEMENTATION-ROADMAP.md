@@ -39,7 +39,7 @@ Implement approved specs using canonical reads only:
 1. Home.
 2. Library + Collections.
 3. Discover/Search.
-4. Anime/Series, Movie, Book/LN, Manga and Audiobook detail.
+4. Anime/Series, Movie, shared Reading Detail (Book/LN/Manga), and Audiobook detail.
 5. Calendar.
 6. Profile/Activity and User Settings.
 

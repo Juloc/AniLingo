@@ -136,16 +136,14 @@ Movie:
 - single primary playback action
 - available versions/languages
 
-Book/Light Novel:
-- volumes/chapters or publication structure
+Book / Light Novel / Manga:
+- one shared Reading Detail page family
+- Parts/Volumes/Chapter structure where meaningful
+- context-sensitive labels: Book may use Parts, Light Novel/Manga usually Volumes
 - edition/language selector
 - Read/Continue
 - translation state where applicable
-
-Manga:
-- volume/chapter structure
-- Read/Continue
-- edition/language selector
+- format-specific behavior moves to the Reader rather than creating separate detail-page designs
 
 Audiobook:
 - chapters/tracks
@@ -616,11 +614,10 @@ Approve at minimum:
 3. Search/Discover — desktop/mobile
 4. Anime/Series detail — user
 5. Movie detail — user
-6. Book/LN detail — user
-7. Manga detail — user
-8. Audiobook detail — user
-9. Player — mobile/desktop/tablet/TV
-10. Reader — mobile/desktop
+6. Reading detail (Book / Light Novel / Manga) — user
+7. Audiobook detail — user
+8. Player — mobile/desktop/tablet/TV
+9. Reader — mobile/desktop
 11. Calendar — desktop/mobile
 12. Learning home + lesson/review
 13. Settings — desktop/mobile
