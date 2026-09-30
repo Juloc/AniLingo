@@ -1166,6 +1166,18 @@ public static class UiTranslationResources
         M("settings.offline.wifiOnly", "Download only over Wi-Fi (best-effort, when the browser can detect it)", "Settings", "Checkbox", "Label of the Wi-Fi-only offline download toggle.", "clear checkbox label", 90),
         M("settings.offline.degraded", "This browser does not support persistent offline storage (OPFS). Downloads still work, but the browser may remove them under storage pressure.", "Settings", "Body", "Explains degraded mode when OPFS/persistent storage is unavailable.", "clear, reassuring copy", 170, null, ["OPFS"]),
         M("settings.offline.booksTitle", "Downloaded books", "Settings", "Heading", "Section heading listing downloaded books/novels.", "short section heading", 24),
+        M("settings.offline.prefetchManage", "Smart prefetch", "Settings", "Button", "Link from the Downloads settings page to the smart prefetch policy page.", "concise settings action", 24),
+        M("settings.prefetch.title", "Smart prefetch", "Settings", "Heading", "Title of the smart offline prefetch settings page.", "clear settings label", 24),
+        M("settings.prefetch.pageDescription", "Keep the next episodes and chapters ready on your devices within a storage limit. Downloads you start yourself are never removed.", "Settings", "Body", "Subtitle of the smart prefetch settings page.", "clear concise copy", 150),
+        M("settings.prefetch.enabled", "Prefetch what I am likely to watch or read next", "Settings", "Checkbox", "Master switch of smart offline prefetch (off by default).", "clear checkbox label", 60),
+        M("settings.prefetch.cap", "Storage limit for prefetched content", "Settings", "Label", "Hard cap for prefetched offline content per device.", "clear field label", 40),
+        M("settings.prefetch.episodes", "Next unwatched episodes", "Settings", "Checkbox", "Include the next unwatched episodes of series in progress.", "clear checkbox label", 40),
+        M("settings.prefetch.episodesAhead", "Episodes per series", "Settings", "Label", "How many episodes per series are kept ready.", "clear field label", 30),
+        M("settings.prefetch.chapters", "Next unread chapters", "Settings", "Checkbox", "Include the next unread chapters of books and novels in progress.", "clear checkbox label", 40),
+        M("settings.prefetch.chaptersAhead", "Chapters per book", "Settings", "Label", "How many chapters per book or novel are kept ready.", "clear field label", 30),
+        M("settings.prefetch.saved", "Prefetch settings saved.", "Settings", "Status", "Confirmation after saving the smart prefetch settings.", "compact confirmation", 30),
+        M("settings.prefetch.saveFailed", "The prefetch settings were not saved. Check the storage limit, the number of items per series or book, and that at least one kind of content is selected.", "Settings", "Error", "Shown when the smart prefetch settings fail validation and were not saved.", "clear administrative error", 170),
+        M("settings.prefetch.allowMetered","Also prefetch on metered connections such as mobile data", "Settings", "Checkbox", "Allow smart prefetch to download over metered connections (off by default).", "clear checkbox label", 70),
 
         // JS-rendered offline library strings (#221 part 2): read at runtime from a JSON catalog
         // script element (offline-library-ui.js, mirroring pwa.js's shellText), not through Razor's

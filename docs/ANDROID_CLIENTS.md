@@ -207,6 +207,14 @@ GET  /api/client/v1/offline-library/assets/{volumeId}/{asset}    content-address
 POST /api/client/v1/offline-library/sync                         batched progress + bookmark reconciliation
 ```
 
+Smart offline prefetch (additive v1, #415; details in [OFFLINE_LIBRARY.md](OFFLINE_LIBRARY.md)). The server owns the per-profile policy and the next-up selection; the client reports its inventory and executes the plan with the download endpoints above:
+
+```text
+GET  /api/client/v1/offline/prefetch/policy   { enabled, capBytes, includeEpisodes, includeChapters, episodesAhead, chaptersAhead, allowMetered }
+POST /api/client/v1/offline/prefetch/plan     { connection: "unmetered"|"metered", deviceLimitBytes?, inventory: [{ kind: "episode"|"chapter", itemId, sizeBytes, origin: "explicit"|"prefetched", lastUsedUtc, active }] }
+                                              -> { reason, policy, budgetBytes, prefetchedBytesAfter, downloads: [{ kind, itemId, containerId, title, sizeBytes, url }], evictions: [{ kind, itemId, sizeBytes }] }
+```
+
 Device-code pairing and LAN discovery (additive v1, advertised by `devicePairing`; §9.3, #489):
 
 ```text
