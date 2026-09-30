@@ -80,6 +80,7 @@ public sealed class AdminWantedPageRenderTests
         StringAssert.Contains(html, "search=frieren");
         StringAssert.Contains(html, "#search-results");
         StringAssert.Contains(html, $"href=\"/Library/Anime/{animeId:D}\"");
+        StringAssert.Contains(html, $"href=\"/Admin/Media/{animeId:D}\"");
         StringAssert.Contains(html, "name=\"returnUrl\" value=\"/Admin/Wanted\"");
 
         Assert.IsTrue(
