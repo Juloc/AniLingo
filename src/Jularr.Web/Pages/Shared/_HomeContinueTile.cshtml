@@ -1,0 +1,29 @@
+@model Jularr.Web.Pages.IndexModel.HomeContinueTile
+@* Home "Continue" tile (docs/mockups/home): landscape 16:9 artwork with a thin progress bar along its
+   bottom edge, then the title and one caption line. A poster/cover is not cropped into the landscape
+   frame; it sits sharp over a background blurred from the same image. Styles: wwwroot/css/home.css. *@
+@{
+    var hasImage = !string.IsNullOrWhiteSpace(Model.ImageUrl);
+}
+<a class="home-continue-tile" href="@Model.Href">
+    <span class="home-continue-art@(hasImage && !Model.ImageIsBackdrop ? " home-continue-art-poster" : "")">
+        @if (hasImage)
+        {
+            <img class="home-continue-backdrop" src="@Model.ImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+            @if (!Model.ImageIsBackdrop)
+            {
+                <img class="home-continue-cover" src="@Model.ImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+            }
+        }
+        else
+        {
+            <span class="home-continue-initial" aria-hidden="true">@(Model.Title.Length > 0 ? Model.Title[..1].ToUpperInvariant() : "·")</span>
+        }
+        @if (Model.ProgressPercent is int percent)
+        {
+            <span class="home-continue-progress" role="img" aria-label="@Model.ProgressAria"><span style="width:@percent%"></span></span>
+        }
+    </span>
+    <strong>@Model.Title</strong>
+    <span class="home-continue-caption">@Model.Caption</span>
+</a>

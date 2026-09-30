@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Http;
 namespace Jularr.Tests;
 
 /// <summary>
-/// #338: Home renders Continue Reading directly after Continue Watching, only
-/// when the profile has resumable reading progress, without Learning data.
+/// #338: Home shows the profile's resumable reading progress — merged into the one Continue row
+/// of the approved mockup — only when it exists, without Learning data.
 /// </summary>
 [TestClass]
 public sealed class HomePageContinueReadingTests
@@ -50,28 +50,37 @@ public sealed class HomePageContinueReadingTests
     }
 
     [TestMethod]
-    public void ContinueReadingRendersAfterContinueWatchingOnlyWhenItemsExist()
+    public async Task ReadingJoinsTheContinueRowAtItsResumePosition()
+    {
+        await using var fixture = await ContinueReadingQueryTests.ContinueReadingFixture.CreateAsync();
+        var novel = await fixture.SeedNovelAsync("Novel", chapters: 2);
+        await fixture.SetNovelProgressAsync(Profile, novel, 0, 300, DateTime.UtcNow);
+
+        var home = Home(fixture);
+        await home.OnGetAsync(CancellationToken.None);
+
+        var tile = Assert.ContainsSingle(home.ContinueTiles);
+        Assert.AreEqual(home.ContinueReading[0].ResumeUrl, tile.Href);
+        Assert.AreEqual(home.Ui["home.continueReading"], home.ContinueHeading, "A reading-only row keeps the Continue Reading heading.");
+        Assert.AreEqual(home.ContinueReadingDiscoverUrl, home.ContinueDiscoverUrl);
+    }
+
+    [TestMethod]
+    public void ContinueRowRendersOnlyWhenItemsExistWithoutLearningData()
     {
         var view = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "Pages", "Index.cshtml"));
 
-        var continueWatching = view.IndexOf("data-continue-watching", StringComparison.Ordinal);
-        var guard = view.IndexOf("@if (Model.ContinueReading.Count > 0)", StringComparison.Ordinal);
-        var continueReading = view.IndexOf("data-continue-reading", StringComparison.Ordinal);
-        var metrics = view.IndexOf("class=\"metric-grid\"", StringComparison.Ordinal);
+        // Watching and reading share one Continue row (docs/mockups/home), rendered only with items.
+        var guard = view.IndexOf("@if (Model.ContinueTiles.Count > 0)", StringComparison.Ordinal);
+        var row = view.IndexOf("data-home-continue", StringComparison.Ordinal);
+        var next = view.IndexOf("data-home-for-you", StringComparison.Ordinal);
+        Assert.IsTrue(guard > 0 && row > guard, "The row is rendered only when items exist.");
+        Assert.IsTrue(next > row);
 
-        Assert.IsTrue(continueWatching > 0);
-        Assert.IsTrue(guard > continueWatching, "Continue Reading follows Continue Watching.");
-        Assert.IsTrue(continueReading > guard, "The section is rendered only when items exist.");
-        Assert.IsTrue(continueReading < metrics, "Continue Reading renders before the metric grid.");
-
-        // The section ends where the (learning-gated) stat block begins; that gate is not part of it.
-        var statGate = view.IndexOf("@if (Model.ShowLearningHomeWidget)", continueReading, StringComparison.Ordinal);
-        Assert.IsTrue(statGate > continueReading && statGate < metrics, "The stat grid is gated by the learning widget.");
-        var section = view[guard..statGate];
-        StringAssert.Contains(section, "<partial name=\"_MediaCard\"");
-        StringAssert.Contains(section, "item.ResumeUrl");
-        StringAssert.Contains(section, "Model.Ui[\"home.continueReading\"]");
+        var section = view[guard..next];
+        StringAssert.Contains(section, "<partial name=\"_HomeContinueTile\"");
+        StringAssert.Contains(section, "Model.ContinueHeading");
         Assert.IsFalse(section.Contains("/Learn", StringComparison.Ordinal), "No Learning prompts.");
         Assert.IsFalse(section.Contains("Learning", StringComparison.Ordinal), "No Learning data.");
     }
