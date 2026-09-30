@@ -80,7 +80,11 @@ public sealed class MediaInboxImportService(
         MediaAcquisitionKind.Manga => "Manga",
         MediaAcquisitionKind.LightNovel => "Light Novels",
         MediaAcquisitionKind.Book => "Books",
-        _ => kind.ToString()
+        MediaAcquisitionKind.Anime => "Anime",
+        MediaAcquisitionKind.Movie => "Movies",
+        MediaAcquisitionKind.Tv => "TV",
+        MediaAcquisitionKind.Audiobook => "Audiobooks",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
     public static bool IsBelow(string path, string root)

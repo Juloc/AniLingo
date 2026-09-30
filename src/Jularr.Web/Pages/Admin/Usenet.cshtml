@@ -27,13 +27,7 @@
         _ => $"{bytes.Value / 1024d:0} KB"
     };
     var picked = Model.TestResult?.Picked;
-    string ClientCategoryLabel(MediaAcquisitionKind kind) => kind switch
-    {
-        MediaAcquisitionKind.Anime => ui["admin.usenet.animeCategory"],
-        MediaAcquisitionKind.Book => ui["admin.usenet.booksCategory"],
-        MediaAcquisitionKind.Manga => ui["settings.downloadClients.field.mangaCategory"],
-        _ => ui["settings.downloadClients.field.lightNovelCategory"]
-    };
+    string ClientCategoryLabel(MediaAcquisitionKind kind) => ui[MediaKindLabelKeys.ClientCategory(kind)];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
