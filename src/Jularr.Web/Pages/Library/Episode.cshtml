@@ -382,7 +382,7 @@ else if (Model.Playback.Media is { } media)
             }, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
         }
         <script type="application/json" data-player-icons>@Html.Raw(JsonSerializer.Serialize(new[] { "play", "pause", "volume", "volumeMuted", "fullscreen", "fullscreenExit" }.ToDictionary(name => name, name => new { viewBox = PlayerDesign.Icon(name).ViewBox, path = PlayerDesign.Icon(name).Path })))</script>
-        <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+        <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Controls is { HasLearningCues: true } ? Model.Playback.Cues : [], new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
         <script type="application/json" data-player-text>@Html.Raw(JsonSerializer.Serialize(ui.WithPrefix("playback.")))</script>
     </section>
     <partial name="_LanguageInspector" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, "ja")' />

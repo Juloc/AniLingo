@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
+using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Playback;
@@ -284,6 +285,17 @@ public sealed class ClientApiService(
         var trickplay = ClientApiMappings.ToClientTrickplay(episodeId, navigation.Trickplay);
 
         var preferences = await progressService.GetPreferencesAsync(cancellationToken);
+        var learningSettings = await new LearningConfigurationStore(db).ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Anime,
+                WorkKey: episode.AnimeId.ToString(),
+                ContentKey: episodeId.ToString()),
+            cancellationToken);
+        // Learning is opt-in: the learning subtitle is only a default when the
+        // profile enabled player language tools.
+        var learningSubtitleDefault = activeLearningTrackId is not null
+            && LanguageAssistanceAvailability.AllowsLearningSubtitle(learningSettings);
         var controls = new ClientPlayerControls(
             PlaybackPreferenceRules.Speeds,
             PlaybackQuality.Names);
@@ -292,7 +304,7 @@ public sealed class ClientApiService(
         {
             var noMediaSubtitle = PlaybackTrackSelection.ResolveSubtitle(
                 null,
-                activeLearningTrackId is not null,
+                learningSubtitleDefault,
                 preferences.PreferredSubtitleLanguage);
 
             return new ClientPlayerBootstrap(
@@ -339,7 +351,7 @@ public sealed class ClientApiService(
             preferences.PreferredAudioLanguage);
         var preferredSubtitle = PlaybackTrackSelection.ResolveSubtitle(
             tracks,
-            activeLearningTrackId is not null,
+            learningSubtitleDefault,
             preferences.PreferredSubtitleLanguage);
 
         var fallbackAvailable = media.Server.IsReady;
