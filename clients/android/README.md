@@ -11,6 +11,9 @@ This directory contains the first-party Android phone and Android TV clients def
 - `core-player`: Media3 player/session foundation and deterministic direct/fallback selection.
 - `core-session`: shared playback-session/companion command models for the later pairing slice.
 - `core-design`: packages the canonical JSON under `design/player` as Android assets. Those JSON files remain the source of truth.
+- `core-tts`: voice-reading runtime abstraction, model management, and system/model speech synthesis.
+- `core-update`: in-app GitHub release update check, download, checksum verification, and APK installation flow.
+- `core-tts-sherpa`: optional offline neural TTS runtime using sherpa-onnx (opt-in via `-PjularrNeuralTtsEnabled=true`).
 
 ## Baseline
 
@@ -33,7 +36,7 @@ From this directory with Android SDK 36 available:
 
 ```bash
 gradle :core-api:testDebugUnitTest :core-player:testDebugUnitTest :core-tts:testDebugUnitTest \
-  :app-mobile:testDebugUnitTest :app-tv:testDebugUnitTest
+  :core-update:testDebugUnitTest :app-mobile:testDebugUnitTest :app-tv:testDebugUnitTest
 gradle :app-mobile:assembleDebug :app-tv:assembleDebug
 ```
 
@@ -45,7 +48,7 @@ Phone and TV are intentionally developed in parallel after this foundation is me
 
 - **Agent A / phone** owns `app-mobile/**`.
 - **Agent B / TV** owns `app-tv/**`.
-- `core-api/**`, `core-model/**`, `core-player/**`, `core-session/**`, `core-design/**`, Gradle root files, and `.github/workflows/android.yml` are shared infrastructure. An app agent must claim/coordinate a shared-path change before editing it.
+- `core-api/**`, `core-model/**`, `core-player/**`, `core-session/**`, `core-design/**`, `core-tts/**`, `core-update/**`, Gradle root files, and `.github/workflows/android.yml` are shared infrastructure. An app agent must claim/coordinate a shared-path change before editing it.
 - Neither app agent edits server/web paths as part of its app slice unless a separate non-overlapping claim is recorded.
 
 This keeps phone and TV changes independently reviewable while both consume one server contract and one player model.
