@@ -1,294 +1,606 @@
-/* Home dashboard: spotlight banner + type chips + media carousels + stat row.
-   Colours come from the accent palette tokens, so every theme and accent work unchanged.
-   State is shown with tinted backgrounds and soft shadows only — never a coloured left edge. */
+/* Home (docs/mockups/home/SPEC.md): hero carousel, landscape Continue row, poster rows.
+   Row surfaces use the accent palette tokens, so light, dark and every accent work unchanged. The hero
+   copy always sits on a dark scrim over artwork, so its white text stays legible in both themes.
+   State is shown with tints and soft shadows only — never a coloured left edge. */
 
-/* Spotlight banner -------------------------------------------------------- */
-/* Only the profile's own media (Continue Watching or a new watchlist release). The cover art is
-   the backdrop; a left-to-right darkening keeps the copy legible on any artwork. */
-.home-spotlight {
+/* Hero carousel ------------------------------------------------------------------------------- */
+.home-hero {
     position: relative;
-    margin: 4px 0 22px;
-}
-
-.home-spotlight-track {
-    position: relative;
-    display: flex;
-    overflow-x: auto;
-    border-radius: calc(var(--radius-card) + 6px);
+    margin: 4px 0 28px;
+    border-radius: calc(var(--radius-card) + 4px);
+    overflow: hidden;
     box-shadow: var(--shadow-card);
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
+    background: #120f1a;
 }
 
-.home-spotlight-track::-webkit-scrollbar {
-    display: none;
+/* The track is moved with a transform (home-spotlight.js): drag/swipe follows the pointer 1:1 and
+   releases snap to a slide. pan-y keeps vertical page scrolling native on touch screens. */
+.home-hero-track {
+    display: flex;
+    touch-action: pan-y;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform .45s cubic-bezier(.22, .61, .36, 1);
+    will-change: transform;
 }
 
-.home-spotlight-slide {
+.home-hero.is-dragging .home-hero-track {
+    cursor: grabbing;
+    transition: none;
+}
+
+.home-hero.is-instant .home-hero-track {
+    transition: none;
+}
+
+.home-hero-track img {
+    -webkit-user-drag: none;
+}
+
+.home-hero-slide {
     position: relative;
     isolation: isolate;
     flex: 0 0 100%;
     display: flex;
     align-items: center;
-    min-height: 280px;
+    gap: 32px;
+    min-height: clamp(300px, 30vw, 400px);
+    padding: 36px 88px 44px 72px;
     overflow: hidden;
-    scroll-snap-align: start;
-    background: #15121f;
     color: #fff;
 }
 
-.home-spotlight-plain {
-    background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 55%, #120e20) 0%, #161222 70%);
+.home-hero-slide :is(a, button) {
+    cursor: pointer;
 }
 
-.home-spotlight-art {
+.home-hero-slide-plain {
+    background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 50%, #120f1a) 0%, #120f1a 75%);
+}
+
+.home-hero-art {
     position: absolute;
     inset: 0;
     z-index: -2;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center 30%;
+    object-position: center 28%;
 }
 
-/* No wide backdrop: the poster becomes a calm blurred background, and is shown sharp on the right. */
-.home-spotlight-art-derived {
-    filter: blur(32px) saturate(1.1);
-    transform: scale(1.2);
-    opacity: .8;
+/* No wide backdrop: the poster becomes a calm background (SPEC artwork priority 2). */
+.home-hero-art-derived {
+    filter: blur(40px) saturate(1.15) brightness(.8);
+    transform: scale(1.3);
 }
 
-.home-spotlight-poster {
-    flex: none;
-    width: auto;
-    height: 228px;
-    aspect-ratio: 2 / 3;
-    margin: 26px 44px 26px auto;
-    border-radius: 14px;
-    object-fit: cover;
-    box-shadow: 0 18px 40px rgb(0 0 0 / .45);
-}
-
-.home-spotlight-slide::before {
+/* Scrim: darkest behind the copy on the left and along the bottom (progress, segments). */
+.home-hero-slide::before {
     content: "";
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(
-        90deg,
-        rgb(10 8 18 / .88) 0%,
-        rgb(10 8 18 / .66) 38%,
-        rgb(10 8 18 / .12) 72%,
-        transparent 100%);
+    background:
+        linear-gradient(0deg, rgb(8 7 14 / .62) 0%, transparent 38%),
+        linear-gradient(90deg, rgb(8 7 14 / .86) 0%, rgb(8 7 14 / .62) 40%, rgb(8 7 14 / .14) 76%, transparent 100%);
 }
 
-.home-spotlight-copy {
+.home-hero-slide-poster::before {
+    background:
+        linear-gradient(0deg, rgb(8 7 14 / .5) 0%, transparent 40%),
+        linear-gradient(90deg, rgb(8 7 14 / .55) 0%, rgb(8 7 14 / .45) 55%, rgb(8 7 14 / .25) 100%);
+}
+
+.home-hero-poster {
+    flex: none;
+    width: auto;
+    height: clamp(210px, 22vw, 300px);
+    aspect-ratio: 2 / 3;
+    border-radius: 12px;
+    object-fit: cover;
+    box-shadow: 0 20px 44px rgb(0 0 0 / .5);
+}
+
+.home-hero-copy {
     display: grid;
     justify-items: start;
     gap: 6px;
-    max-width: min(560px, 62%);
-    padding: 34px 40px;
+    min-width: 0;
+    max-width: 560px;
 }
 
-.home-spotlight-label {
-    color: rgb(255 255 255 / .78);
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .12em;
-    text-transform: uppercase;
+.home-hero-label {
+    color: rgb(255 255 255 / .82);
+    font-size: 12px;
+    font-weight: 600;
 }
 
-.home-spotlight-copy h2 {
-    margin: 2px 0;
-    font-size: clamp(26px, 3.6vw, 42px);
-    line-height: 1.06;
-    letter-spacing: -.03em;
-    text-shadow: 0 2px 18px rgb(0 0 0 / .35);
-}
-
-.home-spotlight-copy p {
+.home-hero-copy h2 {
     margin: 0;
-    color: rgb(255 255 255 / .84);
-    font-size: 15px;
+    font-size: clamp(26px, 3.1vw, 40px);
+    line-height: 1.08;
+    letter-spacing: -.025em;
+    text-shadow: 0 2px 18px rgb(0 0 0 / .3);
 }
 
-.home-spotlight-progress {
-    width: min(320px, 100%);
-    height: 4px;
-    margin-top: 8px;
-    background: rgb(255 255 255 / .22);
+.home-hero-meta,
+.home-hero-subtitle,
+.home-hero-description {
+    margin: 0;
 }
 
-.home-spotlight-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 14px;
-}
-
-.home-spotlight-actions .button {
-    border-radius: 999px;
-    padding: 10px 22px;
+.home-hero-meta {
+    color: rgb(255 255 255 / .86);
     font-size: 14px;
-    text-decoration: none;
+    font-weight: 600;
 }
 
-/* Specific enough to win over the clean themes' shared .button surface (theme-catalog.css). */
-.home-spotlight .home-spotlight-actions .home-spotlight-secondary {
-    border-color: rgb(255 255 255 / .34);
-    background: rgb(255 255 255 / .12);
+.home-hero-subtitle {
     color: #fff;
-    backdrop-filter: blur(6px);
+    font-size: 15px;
+    font-weight: 600;
 }
 
-.home-spotlight .home-spotlight-actions .home-spotlight-secondary:hover {
-    border-color: rgb(255 255 255 / .5);
-    background: rgb(255 255 255 / .2);
+.home-hero-description {
+    display: -webkit-box;
+    max-width: 50ch;
+    overflow: hidden;
+    color: rgb(255 255 255 / .82);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
-.home-spotlight-dots {
-    position: absolute;
-    right: 22px;
-    bottom: 18px;
+.home-hero-actions {
     display: flex;
-    gap: 7px;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
 }
 
-.home-spotlight-dots a {
-    width: 8px;
-    height: 8px;
+.home-hero-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 22px;
     border-radius: 999px;
-    background: rgb(255 255 255 / .45);
-    transition: width .2s ease, background-color .2s ease;
+    background: #fff;
+    color: #15121c;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 8px 22px rgb(0 0 0 / .28);
+    transition: background-color .16s ease;
 }
 
-.home-spotlight-dots a[aria-current="true"] {
-    width: 22px;
+.home-hero-primary:hover {
+    background: #ece9f4;
+}
+
+.home-hero-secondary {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgb(255 255 255 / .34);
+    border-radius: 10px;
+    background: rgb(255 255 255 / .14);
+    color: #fff;
+    backdrop-filter: blur(8px);
+    transition: background-color .16s ease;
+}
+
+.home-hero-secondary:hover {
+    background: rgb(255 255 255 / .24);
+}
+
+.home-hero-progress {
+    position: absolute;
+    right: 32px;
+    bottom: 28px;
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    width: min(220px, 34%);
+    color: rgb(255 255 255 / .9);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.home-hero-progress-track {
+    display: block;
+    width: 100%;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .28);
+}
+
+.home-hero-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
     background: #fff;
 }
 
-.home-spotlight-dots a:focus-visible,
-.home-spotlight-actions .button:focus-visible {
+.home-hero-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid rgb(255 255 255 / .28);
+    border-radius: 999px;
+    background: rgb(10 8 16 / .42);
+    color: #fff;
+    cursor: pointer;
+    transform: translateY(-50%);
+    backdrop-filter: blur(6px);
+}
+
+.home-hero-arrow:hover {
+    background: rgb(10 8 16 / .62);
+}
+
+.home-hero-prev { left: 16px; }
+.home-hero-next { right: 16px; }
+
+/* Progress segments: one thin bar per slide near the bottom centre. The active one fills with the
+   accent over data-interval-ms (driven by --fill from the script); earlier ones are full. */
+.home-hero-segments {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transform: translateX(-50%);
+}
+
+.home-hero-segment {
+    --fill: 0;
+    display: grid;
+    align-items: center;
+    width: 34px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.home-hero-segment-track {
+    display: block;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .34);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .12);
+}
+
+.home-hero-segment-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--accent) 78%, #fff);
+    transform: scaleX(var(--fill));
+    transform-origin: left center;
+}
+
+.home-hero-segment[aria-current="true"] .home-hero-segment-track {
+    background: rgb(255 255 255 / .5);
+}
+
+.home-hero-segment:hover .home-hero-segment-track {
+    background: rgb(255 255 255 / .6);
+}
+
+.home-hero-rotation {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-inline-start: 4px;
+    padding: 0;
+    border: 1px solid rgb(255 255 255 / .3);
+    border-radius: 999px;
+    background: rgb(10 8 16 / .35);
+    color: #fff;
+    cursor: pointer;
+}
+
+.home-hero-rotation[hidden] { display: none; }
+.home-hero-rotation .home-hero-rotation-play { display: none; }
+.home-hero-rotation.is-paused .home-hero-rotation-pause { display: none; }
+.home-hero-rotation.is-paused .home-hero-rotation-play { display: block; }
+
+.home-hero :is(a, button):focus-visible {
     outline: 2px solid #fff;
     outline-offset: 3px;
 }
 
-/* Media-type filter chips (kept from #520). ------------------------------- */
-.home-filter-chips {
+/* Rows ---------------------------------------------------------------------------------------- */
+.home-row {
+    margin: 0 0 30px;
+}
+
+.home-row-heading {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0 0 22px;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
 }
 
-.home-filter-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 34px;
-    padding: 6px 14px;
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    background: var(--surface-2);
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 700;
-    text-decoration: none;
-    white-space: nowrap;
+.home-row-heading h2 {
+    margin: 0;
+    font-size: 20px;
+    letter-spacing: -.01em;
 }
 
-.home-filter-chip:hover {
-    color: var(--text);
-    background: var(--surface);
-}
-
-.home-filter-chip.active {
-    color: var(--accent-text);
-    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
-}
-
-/* Row headings double as Discover links; keep the heading's own size/weight. */
-.section-heading h2 a {
+.home-row-heading h2 a {
     color: inherit;
     text-decoration: none;
 }
 
-.section-heading h2 a:hover,
-.section-heading h2 a:focus-visible {
+.home-row-heading h2 a:hover,
+.home-row-heading h2 a:focus-visible {
     text-decoration: underline;
 }
 
-/* Recently added is a secondary row: below Continue Watching/Reading, quieter heading. */
-.section-secondary .section-heading h2 {
+.home-row-secondary .home-row-heading h2 {
     font-size: 18px;
 }
 
-/* Opt-in due-reviews card: a compact card, never stretched across the page. */
-.metric-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
+.home-row-scroller {
+    position: relative;
 }
 
-/* Media carousels --------------------------------------------------------- */
-.home-carousel {
+.home-row-track {
     display: flex;
-    gap: 16px;
-    grid-template-columns: none;
+    gap: 14px;
     overflow-x: auto;
-    padding-bottom: 6px;
+    padding: 2px 2px 8px;
     scroll-snap-type: x proximity;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
+    scrollbar-width: none;
 }
 
-.home-carousel > .media-card {
-    flex: 0 0 clamp(140px, 22vw, 168px);
+.home-row-track::-webkit-scrollbar {
+    display: none;
+}
+
+.home-row-track > * {
+    flex: none;
     scroll-snap-align: start;
 }
 
-.home-carousel::-webkit-scrollbar {
-    height: 8px;
-}
-
-.home-carousel::-webkit-scrollbar-thumb {
+.home-row-arrow {
+    position: absolute;
+    top: calc(50% - 22px);
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 34%, transparent);
+    background: var(--surface-raised);
+    color: var(--text);
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
 }
 
+.home-row-arrow[hidden] { display: none; }
+.home-row-arrow:hover { background: var(--surface); }
+.home-row-arrow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.home-row-prev { left: -12px; }
+.home-row-next { right: -12px; }
+
+/* Continue tiles: landscape artwork, thin progress along its bottom edge, two caption lines. */
+.home-continue-tile {
+    display: grid;
+    gap: 3px;
+    width: clamp(220px, 21vw, 290px);
+    color: inherit;
+    text-decoration: none;
+}
+
+.home-continue-art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 16 / 9;
+    margin-bottom: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+}
+
+.home-continue-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .25s ease;
+}
+
+.home-continue-tile:hover .home-continue-backdrop { transform: scale(1.03); }
+
+.home-continue-art-poster .home-continue-backdrop {
+    filter: blur(22px) saturate(1.15) brightness(.85);
+    transform: scale(1.35);
+}
+
+.home-continue-tile:hover .home-continue-art-poster .home-continue-backdrop { transform: scale(1.35); }
+
+/* Absolutely sized against the 16:9 frame, so the percentage height is definite. */
+.home-continue-cover {
+    position: absolute;
+    top: 8%;
+    left: 50%;
+    width: auto;
+    height: 84%;
+    aspect-ratio: 2 / 3;
+    transform: translateX(-50%);
+    border-radius: 6px;
+    object-fit: cover;
+    box-shadow: 0 8px 20px rgb(0 0 0 / .35);
+}
+
+.home-continue-initial {
+    font-size: 34px;
+    font-weight: 900;
+    color: var(--muted);
+}
+
+.home-continue-progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: rgb(0 0 0 / .35);
+}
+
+.home-continue-progress > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+
+.home-continue-tile strong {
+    overflow: hidden;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-continue-caption {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* "For you": text-free portrait posters; the title is each poster's accessible name. */
+.home-poster {
+    display: grid;
+    place-items: center;
+    width: clamp(118px, 11vw, 150px);
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+    color: var(--muted);
+    font-size: 30px;
+    font-weight: 900;
+    text-decoration: none;
+}
+
+.home-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .25s ease;
+}
+
+.home-poster:hover img { transform: scale(1.04); }
+
+.home-media-track > .media-card {
+    width: clamp(140px, 13vw, 168px);
+}
+
+.home-continue-tile:focus-visible,
+.home-poster:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+    border-radius: 10px;
+}
+
+.playback-history {
+    margin-top: 36px;
+}
+
+/* Phones: compact hero, swipe rows, no side arrows (SPEC: no hover-only controls). ------------ */
 @media (max-width: 720px) {
-    .home-spotlight-slide {
-        align-items: flex-end;
-        min-height: 300px;
+    .home-hero-slide {
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: 12px;
+        min-height: 280px;
+        padding: 20px 20px 62px;
     }
 
-    /* On phones the copy spans the width, so the darkening runs bottom-up instead. */
-    .home-spotlight-slide::before {
-        background: linear-gradient(0deg, rgb(10 8 18 / .9) 0%, rgb(10 8 18 / .55) 55%, transparent 100%);
+    .home-hero-slide::before {
+        background: linear-gradient(0deg, rgb(8 7 14 / .9) 0%, rgb(8 7 14 / .55) 55%, rgb(8 7 14 / .1) 100%);
     }
 
-    .home-spotlight-copy {
-        max-width: 100%;
-        padding: 22px 20px 40px;
+    .home-hero-poster {
+        height: 104px;
+        border-radius: 8px;
     }
 
-    /* The copy spans the phone width; the blurred poster background carries the artwork. */
-    .home-spotlight-poster {
+    /* SPEC mobile: compact hero, no dense metadata — title, episode line, actions, progress. */
+    .home-hero-meta,
+    .home-hero-description {
         display: none;
     }
 
-    .home-spotlight-dots {
-        right: 50%;
-        bottom: 14px;
-        transform: translateX(50%);
+    .home-hero-copy h2 {
+        font-size: 24px;
+    }
+
+    .home-hero-arrow {
+        display: none;
+    }
+
+    .home-hero-progress {
+        left: 20px;
+        right: 20px;
+        bottom: 38px;
+        width: auto;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+    }
+
+    .home-row-arrow {
+        display: none;
+    }
+
+    .home-continue-tile {
+        width: 70vw;
+        max-width: 280px;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .home-spotlight-track,
-    .home-carousel {
-        scroll-behavior: auto;
+    .home-hero-track,
+    .home-continue-backdrop,
+    .home-poster img {
+        transition: none;
     }
 
-    .home-spotlight-dots a {
-        transition: none;
+    .home-continue-tile:hover .home-continue-backdrop,
+    .home-poster:hover img {
+        transform: none;
+    }
+
+    .home-continue-tile:hover .home-continue-art-poster .home-continue-backdrop {
+        transform: scale(1.35);
     }
 }

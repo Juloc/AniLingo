@@ -93,7 +93,7 @@ public sealed class LearningSurfaceTests
             Assert.IsNull(preparation.Terms.Single(x => x.TermId == sky.Id).State);
             Assert.AreEqual(90, preparation.PreparedPercent);
 
-            // Home learning widget and coverage.
+            // Home coverage (Home has no due-review widget; the Learning hub below counts reviews).
             var configuration = new LearningConfigurationStore(db);
             await configuration.SetModeAsync(Profile, LearningScopeRef.Profile, LearningMode.Study, CancellationToken.None);
             await configuration.SetCapabilityOverrideAsync(
@@ -110,7 +110,6 @@ public sealed class LearningSurfaceTests
                 CancellationToken.None);
             var home =new Jularr.Web.Pages.IndexModel(db, account);
             await home.OnGetAsync(CancellationToken.None);
-            Assert.AreEqual(1, home.DueReviews);
             Assert.AreEqual(9, home.RecentEpisodes.Single().PreparedOccurrences);
 
             // Learning hub counters.

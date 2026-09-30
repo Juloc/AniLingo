@@ -162,6 +162,21 @@ public sealed class LocalFirstPageGetTests
     }
 
     [TestMethod]
+    public async Task HomeGetWithRecommendationsRendersWithoutExternalCallsAsync()
+    {
+        await using var fixture = await LocalFirstFixture.CreateAsync();
+        await fixture.ConnectAniListAsync();
+        await fixture.AddAnimeAsync("Local Anime", episodes: 2);
+        var page = fixture.Attach(fixture.HomePage());
+
+        await page.OnGetAsync(CancellationToken.None);
+
+        // Hero, Continue, For you and recently discovered come from local state only.
+        Assert.AreEqual(2, page.RecentEpisodes.Count);
+        fixture.Guard.AssertNotCalled();
+    }
+
+    [TestMethod]
     public async Task DiscoverMangaImportGetRendersWithoutExternalCallsAsync()
     {
         await using var fixture = await LocalFirstFixture.CreateAsync();
@@ -385,6 +400,34 @@ public sealed class LocalFirstPageGetTests
                 new AniListRequestLimiter(new AniListRateLimitGate(), TimeProvider.System),
                 new FranchiseRefreshSignal(),
                 NullLogger<FranchiseService>.Instance);
+
+        /// <summary>Home with the real local recommendation service; its relation source is guarded.</summary>
+        public Jularr.Web.Pages.IndexModel HomePage()
+        {
+            var animeProvider = new AniListMetadataProvider(
+                Guard.CreateClient(),
+                NullLogger<AniListMetadataProvider>.Instance);
+            var readingProvider = new NovelAniListProvider(
+                Guard.CreateClient(),
+                NullLogger<NovelAniListProvider>.Instance);
+            var watchlistStore = new WatchlistStore(Db);
+            var franchiseService = new FranchiseService(
+                new FranchiseStore(Db),
+                new MediaRelationStore(Db),
+                new AniListFranchiseRelationSource(animeProvider, readingProvider),
+                new AniListRequestLimiter(new AniListRateLimitGate(), TimeProvider.System),
+                new FranchiseRefreshSignal(),
+                NullLogger<FranchiseService>.Instance);
+            var recommendations = new Jularr.Web.Features.Recommendations.MediaRecommendationService(
+                Db,
+                watchlistStore,
+                new WatchlistLibraryResolver(Db),
+                franchiseService,
+                new Jularr.Web.Features.Shell.AppShellService(
+                    new MediaCapabilityService(new MediaCapabilityStore(root))));
+
+            return new Jularr.Web.Pages.IndexModel(Db, OwnerAccount, recommendations);
+        }
 
         public DiscoverIndexModel DiscoverPage()
         {

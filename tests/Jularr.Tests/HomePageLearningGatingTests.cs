@@ -11,9 +11,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Jularr.Tests;
 
 /// <summary>
-/// Verifies #230/#232 on Home: no due-review prompt, no coverage percentages
-/// and no learning queries unless the resolved scope opts in. Home leads with
-/// Continue Watching.
+/// Verifies #230/#232 on Home: no coverage percentages and no learning queries unless the resolved
+/// Anime scope opts in, and — per docs/mockups/home/SPEC.md ("no stat tiles") — no Learning widgets,
+/// prompts or links on Home at all; Learning is its own navigation destination.
 /// </summary>
 [TestClass]
 public sealed class HomePageLearningGatingTests
@@ -21,7 +21,7 @@ public sealed class HomePageLearningGatingTests
     private const string Profile = "home-user";
 
     [TestMethod]
-    public async Task OffShowsNoLearningWidgetsOrCoverage()
+    public async Task OffShowsNoCoverage()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SeedEpisodeWithDueVocabularyAsync();
@@ -29,16 +29,14 @@ public sealed class HomePageLearningGatingTests
         var home = fixture.Home();
         await home.OnGetAsync(CancellationToken.None);
 
-        Assert.IsFalse(home.ShowLearningHomeWidget);
         Assert.IsFalse(home.ShowContentMetrics);
-        Assert.AreEqual(0, home.DueReviews);
         Assert.AreEqual(1, home.RecentEpisodes.Count);
         Assert.AreEqual(0, home.RecentEpisodes[0].TotalOccurrences, "Coverage must not be loaded.");
         Assert.AreEqual(0, home.RecentEpisodes[0].PreparationPercent);
     }
 
     [TestMethod]
-    public async Task StudyKeepsHomeQuietUntilWidgetsAreOptedIn()
+    public async Task StudyKeepsHomeQuietUntilMetricsAreOptedIn()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SeedEpisodeWithDueVocabularyAsync();
@@ -47,19 +45,19 @@ public sealed class HomePageLearningGatingTests
         var home = fixture.Home();
         await home.OnGetAsync(CancellationToken.None);
 
-        Assert.IsFalse(home.ShowLearningHomeWidget, "HomeWidget is opt-in even in Study.");
         Assert.IsFalse(home.ShowContentMetrics, "ContentMetrics is opt-in even in Study.");
-        Assert.AreEqual(0, home.DueReviews);
         Assert.AreEqual(0, home.RecentEpisodes[0].TotalOccurrences);
     }
 
     [TestMethod]
-    public async Task OptedInWidgetsResolveThroughTheHierarchy()
+    public async Task OptedInMetricsResolveThroughTheHierarchy()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SeedEpisodeWithDueVocabularyAsync();
         await fixture.SetModeAsync(LearningMode.Study);
         var store = new LearningConfigurationStore(fixture.Db);
+        // An opted-in HomeWidget no longer adds anything to Home (no stat tiles); only the
+        // ContentMetrics capability changes what Home shows.
         await store.SetCapabilityOverrideAsync(
             Profile,
             LearningScopeRef.Profile,
@@ -76,38 +74,14 @@ public sealed class HomePageLearningGatingTests
         var home = fixture.Home();
         await home.OnGetAsync(CancellationToken.None);
 
-        Assert.IsTrue(home.ShowLearningHomeWidget);
         Assert.IsTrue(home.ShowContentMetrics);
-        Assert.AreEqual(1, home.DueReviews);
         Assert.AreEqual(3, home.RecentEpisodes[0].TotalOccurrences);
         Assert.AreEqual(2, home.RecentEpisodes[0].PreparedOccurrences);
         Assert.AreEqual(66, home.RecentEpisodes[0].PreparationPercent);
     }
 
     [TestMethod]
-    public async Task HomeWidgetWithoutReviewsShowsNoDuePrompt()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        await fixture.SeedEpisodeWithDueVocabularyAsync();
-        await fixture.SetModeAsync(LearningMode.Custom);
-        await new LearningConfigurationStore(fixture.Db).SetCapabilityOverrideAsync(
-            Profile,
-            LearningScopeRef.Profile,
-            LearningCapability.HomeWidget,
-            true,
-            CancellationToken.None);
-
-        var home = fixture.Home();
-        await home.OnGetAsync(CancellationToken.None);
-
-        Assert.IsFalse(
-            home.ShowLearningHomeWidget,
-            "The due-review widget needs both HomeWidget and Reviews.");
-        Assert.AreEqual(0, home.DueReviews);
-    }
-
-    [TestMethod]
-    public async Task LanguageToolsShowsNoLearningWidgets()
+    public async Task LanguageToolsShowsNoCoverage()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SeedEpisodeWithDueVocabularyAsync();
@@ -116,42 +90,32 @@ public sealed class HomePageLearningGatingTests
         var home = fixture.Home();
         await home.OnGetAsync(CancellationToken.None);
 
-        Assert.IsFalse(home.ShowLearningHomeWidget);
         Assert.IsFalse(home.ShowContentMetrics);
-        Assert.AreEqual(0, home.DueReviews);
+        Assert.AreEqual(0, home.RecentEpisodes[0].TotalOccurrences);
     }
 
     [TestMethod]
-    public void HomeLeadsWithContinueWatchingAndGatesEveryLearningLink()
+    public void HomeLeadsWithTheHeroAndContinueRowAndHasNoLearningWidgets()
     {
         var view = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "Pages", "Index.cshtml"));
 
-        // Order when the widget is on: continue rows → due-reviews card → recently discovered.
-        var continueWatching = view.IndexOf("data-continue-watching", StringComparison.Ordinal);
-        var metrics = view.IndexOf("class=\"metric-grid\"", StringComparison.Ordinal);
+        // Order (SPEC content hierarchy): hero → Continue → For you → recently discovered.
+        var hero = view.IndexOf("data-home-hero", StringComparison.Ordinal);
+        var continueRow = view.IndexOf("data-home-continue", StringComparison.Ordinal);
+        var forYou = view.IndexOf("data-home-for-you", StringComparison.Ordinal);
         var library = view.IndexOf("home.library.recent", StringComparison.Ordinal);
-        Assert.IsTrue(continueWatching > 0);
-        Assert.IsTrue(continueWatching < metrics, "Continue Watching renders before the due-reviews card.");
-        Assert.IsTrue(metrics < library);
+        Assert.IsTrue(hero > 0);
+        Assert.IsTrue(hero < continueRow, "The hero leads Home.");
+        Assert.IsTrue(continueRow < forYou, "Continue follows the hero.");
+        Assert.IsTrue(forYou < library);
 
-        // The due-reviews card is Home's only stat: the grid itself sits inside the widget gate,
-        // so with the widget off no empty grid is rendered.
-        Assert.IsTrue(
-            System.Text.RegularExpressions.Regex.IsMatch(
-                view,
-                @"@if \(Model\.ShowLearningHomeWidget\)\s*\{\s*<section class=""metric-grid"">"),
-            "The stat grid renders only with the opt-in learning widget.");
-        Assert.IsFalse(view.Contains("_MetricCard", StringComparison.Ordinal), "Home shows no library count cards.");
-
-        var learningLinks = CountOccurrences(view, "href=\"/Learn");
-        var gatedWidgets = CountOccurrences(view, "data-home-learning-widget");
-        Assert.IsTrue(learningLinks > 0);
-        Assert.AreEqual(learningLinks, gatedWidgets, "Every Learning link on Home is a gated widget.");
-        Assert.AreEqual(
-            gatedWidgets,
-            CountOccurrences(view, "Model.ShowLearningHomeWidget"),
-            "Every gated widget checks the resolved HomeWidget capability.");
+        // SPEC "Explicit exclusions": no stat tiles; Home carries no Learning links, due-review
+        // prompts or widgets at all.
+        Assert.AreEqual(0, CountOccurrences(view, "href=\"/Learn"), "Home has no Learning links.");
+        Assert.IsFalse(view.Contains("metric-grid", StringComparison.Ordinal), "Home shows no stat grid.");
+        Assert.IsFalse(view.Contains("_MetricCard", StringComparison.Ordinal), "Home shows no count cards.");
+        Assert.IsFalse(view.Contains("data-home-learning-widget", StringComparison.Ordinal));
     }
 
     private static int CountOccurrences(string text, string value)
