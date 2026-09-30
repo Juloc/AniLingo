@@ -62,15 +62,15 @@
 <partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="status-list admin-overview-list" aria-label="@ui["admin.overview.title"]">
-    <a asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Failed">
+    <a asp-page="/Admin/Operations" asp-route-tab="failed" asp-route-status="failed">
         <span>@ui["admin.overview.broken.label"]</span>
         <strong class="status-pill @Pill(overview.FailedOperations, "status-error")">@CountValue(overview.FailedOperations)</strong>
     </a>
-    <a asp-page="/Admin/Operations" asp-route-view="downloads">
+    <a asp-page="/Admin/Operations" asp-route-type="acquisition">
         <span>@ui["admin.overview.downloading.label"]</span>
         <strong class="status-pill @Pill(overview.ActiveDownloads, "status-info")">@CountValue(overview.ActiveDownloads)</strong>
     </a>
-    <a asp-page="/Admin/Operations" asp-route-view="active">
+    <a asp-page="/Admin/Operations" asp-route-tab="todo">
         <span>@ui["admin.overview.processing.label"]</span>
         <strong class="status-pill @Pill(overview.ActiveProcessing, "status-info")">@CountValue(overview.ActiveProcessing)</strong>
     </a>
@@ -90,7 +90,7 @@
         <span>@ui["admin.overview.storage.label"]</span>
         <strong class="status-pill @Pill(overview.StorageRootsOffline, "status-error")">@CountValue(overview.StorageRootsOffline)</strong>
     </a>
-    <a asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Interrupted">
+    <a asp-page="/Admin/Operations" asp-route-tab="failed" asp-route-status="interrupted">
         <span>@ui["admin.overview.blocked.label"]</span>
         <strong class="status-pill @Pill(overview.BlockedJobs, "status-error")">@CountValue(overview.BlockedJobs)</strong>
     </a>
