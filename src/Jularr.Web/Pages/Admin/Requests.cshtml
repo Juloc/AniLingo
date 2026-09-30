@@ -10,6 +10,7 @@
 @section Head {
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/requests.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/admin-requests.css" asp-append-version="true" />
 }
 
 <header class="page-header">
@@ -26,6 +27,265 @@
 </header>
 
 <partial name="_AdminNavigation" model="Model.Ui" />
+
+@{
+    var queue = Model.Queue;
+    var filter = queue.Filter;
+    var returnUrl = RequestsModel.Href(filter);
+    var tabs = new (AdminRequestTab Tab, string Label)[]
+    {
+        (AdminRequestTab.All, ui["admin.requests.tab.all"]),
+        (AdminRequestTab.Open, ui["admin.requests.tab.open"]),
+        (AdminRequestTab.Approved, ui["admin.requests.tab.approved"]),
+        (AdminRequestTab.InProgress, ui["admin.requests.tab.progress"]),
+        (AdminRequestTab.Done, ui["admin.requests.tab.done"]),
+        (AdminRequestTab.Rejected, ui["admin.requests.tab.rejected"])
+    };
+    static string Iso(DateTime value) => value.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+    static string Day(DateTime value) => value.ToString("yyyy-MM-dd");
+    static string Clock(DateTime value) => value.ToString("HH:mm") + " UTC";
+}
+
+<section class="admreq" aria-label="@ui["admin.requests.title"]">
+    <nav class="library-type-tabs admreq-tabs" aria-label="@ui["admin.requests.tabsAria"]">
+        @foreach (var (tab, label) in tabs)
+        {
+            var active = tab == filter.Tab;
+            <a class="library-type-tab @(active ? "active" : "")"
+               href="@RequestsModel.Href(filter with { Tab = tab, Page = 1 })"
+               aria-current="@(active ? "page" : null)">@label <span class="admreq-count">@queue.TabCounts[tab]</span></a>
+        }
+    </nav>
+
+    <form method="get" action="/Admin/Requests" class="admreq-filters">
+        @if (filter.Tab != AdminRequestTab.All)
+        {
+            <input type="hidden" name="tab" value="@AdminRequestQuery.TabName(filter.Tab)" />
+        }
+        <div class="admreq-search">
+            <input type="search" name="q" value="@filter.Search" maxlength="120"
+                   placeholder="@ui["admin.requests.searchPlaceholder"]" aria-label="@ui["admin.requests.searchPlaceholder"]" />
+            <button class="button" type="submit">@ui["common.search"]</button>
+        </div>
+        <div class="admreq-selects">
+            <select name="type" aria-label="@ui["admin.requests.filter.type"]">
+                <option value="">@ui["admin.requests.filter.type"]</option>
+                @foreach (var kind in Enum.GetValues<MediaAcquisitionKind>())
+                {
+                    var kindName = AcquisitionAccessNames.Kind(kind);
+                    <option value="@kindName" selected="@(filter.Kind == kind)">@ui["admin.requests.kind." + kindName]</option>
+                }
+            </select>
+            <select name="lang" aria-label="@ui["admin.requests.filter.language"]">
+                <option value="">@ui["admin.requests.filter.language"]</option>
+                @foreach (var tag in queue.Languages)
+                {
+                    <option value="@tag" selected="@(filter.Language == tag)">@RequestLanguages.Name(tag)</option>
+                }
+            </select>
+            <select name="status" aria-label="@ui["admin.requests.filter.status"]">
+                <option value="">@ui["admin.requests.filter.status"]</option>
+                @foreach (var value in Enum.GetValues<AcquisitionRequestStatus>())
+                {
+                    var valueName = AcquisitionAccessNames.Status(value);
+                    <option value="@valueName" selected="@(filter.Status == value)">@ui["requests.status." + valueName]</option>
+                }
+            </select>
+            <select name="by" aria-label="@ui["admin.requests.filter.requester"]">
+                <option value="">@ui["admin.requests.filter.requester"]</option>
+                @foreach (var (requesterId, requesterName) in Model.Requesters)
+                {
+                    <option value="@requesterId" selected="@(filter.RequesterProfileId == requesterId)">@requesterName</option>
+                }
+            </select>
+            @if (filter.HasNarrowing)
+            {
+                <a class="text-link" href="@RequestsModel.Href(new AdminRequestFilter(filter.Tab))">@ui["admin.requests.filter.reset"]</a>
+            }
+        </div>
+    </form>
+
+    @if (Model.QueueFailed)
+    {
+        <div class="admreq-message" role="alert">
+            <p>@ui["admin.requests.loadFailed"]</p>
+            <a class="button" href="@returnUrl">@ui["admin.requests.retry"]</a>
+        </div>
+    }
+    else if (queue.Items.Count == 0)
+    {
+        <p class="admreq-message muted" data-admin-requests-empty>
+            @(Model.AnyRequests ? ui["admin.requests.noMatch"] : ui["admin.requests.empty"])
+        </p>
+    }
+    else
+    {
+        <div class="admreq-table-wrap">
+            <table class="admreq-table" data-admin-requests>
+                <thead>
+                    <tr>
+                        <th scope="col">@ui["admin.requests.col.title"]</th>
+                        <th scope="col">@ui["admin.requests.col.requester"]</th>
+                        <th scope="col">@ui["admin.requests.col.language"]</th>
+                        <th scope="col">@ui["admin.requests.col.requested"]</th>
+                        <th scope="col">@ui["admin.requests.col.status"]</th>
+                        <th scope="col">@ui["admin.requests.col.actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var request in queue.Items)
+                    {
+                        var status = AcquisitionAccessNames.Status(request.Status);
+                        var options = Model.OptionsOf(request);
+                        var language = AdminRequestQuery.LanguageOf(request);
+                        var requester = Model.ProfileNames.GetValueOrDefault(request.RequestedByProfileId) ?? request.RequestedByProfileId;
+                        var isBookLike = request.Kind is MediaAcquisitionKind.Book or MediaAcquisitionKind.Manga or MediaAcquisitionKind.LightNovel;
+                        <tr class="admreq-row">
+                            <td class="admreq-cell-title">
+                              <div class="admreq-title-wrap">
+                                <span class="admreq-cover">
+                                    @if (!string.IsNullOrWhiteSpace(request.CoverImageUrl))
+                                    {
+                                        <img src="@request.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                    }
+                                </span>
+                                <span class="admreq-copy">
+                                    @if (request.ResultUrl is { } resultUrl)
+                                    {
+                                        <a class="admreq-title" href="@resultUrl">@request.Title</a>
+                                    }
+                                    else
+                                    {
+                                        <strong class="admreq-title">@request.Title</strong>
+                                    }
+                                    <span class="admreq-kind">@ui["admin.requests.kind." + AcquisitionAccessNames.Kind(request.Kind)]</span>
+                                    @if (!string.IsNullOrWhiteSpace(request.Subtitle))
+                                    {
+                                        <small>@request.Subtitle</small>
+                                    }
+                                    @if (request.WasAutoApproved)
+                                    {
+                                        <small>@ui["requests.autoApproved"]</small>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
+                                    {
+                                        <small>@request.StatusMessage</small>
+                                    }
+                                </span>
+                              </div>
+                            </td>
+                            <td class="admreq-cell-who">@requester</td>
+                            <td class="admreq-cell-lang">
+                              <div class="admreq-stack">
+                                @if (language is not null)
+                                {
+                                    <span>@RequestLanguages.Name(language)</span>
+                                }
+                                else if (request.Kind == MediaAcquisitionKind.Anime)
+                                {
+                                    <span>@ui["requests.new.anyLanguage"]</span>
+                                }
+                                else
+                                {
+                                    <span aria-hidden="true">&mdash;</span>
+                                }
+                                @if (options.Count > 0)
+                                {
+                                    <small>@string.Join(" · ", options)</small>
+                                }
+                              </div>
+                            </td>
+                            <td class="admreq-cell-when">
+                                <time datetime="@Iso(request.CreatedAt)">
+                                    <span>@Day(request.CreatedAt)</span>
+                                    <small>@Clock(request.CreatedAt)</small>
+                                </time>
+                            </td>
+                            <td class="admreq-cell-state">
+                                <span class="admreq-state admreq-state-@status">
+                                    <partial name="_RequestStatusIcon" model="status" />
+                                    @ui["requests.status." + status]
+                                </span>
+                            </td>
+                            <td class="admreq-cell-actions">
+                                <div class="admreq-actions">
+                                    @if (request.Status is AcquisitionRequestStatus.Pending or AcquisitionRequestStatus.Failed)
+                                    {
+                                        <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
+                                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                            <button class="button button-primary" type="submit">
+                                                @(request.Status == AcquisitionRequestStatus.Failed ? ui["admin.requests.retry"] : ui["admin.requests.approve"])
+                                            </button>
+                                        </form>
+                                    }
+                                    @if (request.Status == AcquisitionRequestStatus.Pending)
+                                    {
+                                        <form method="post" asp-page-handler="Reject" asp-route-id="@request.Id">
+                                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                            <button class="button button-danger" type="submit">@ui["admin.requests.reject"]</button>
+                                        </form>
+                                    }
+                                    @if (request.Status == AcquisitionRequestStatus.Approved && isBookLike)
+                                    {
+                                        <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
+                                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                            <button class="button" type="submit">@ui["admin.requests.searchNow"]</button>
+                                        </form>
+                                    }
+                                    @if (request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Searching
+                                        or AcquisitionRequestStatus.Downloading or AcquisitionRequestStatus.Importing
+                                        && request.Kind == MediaAcquisitionKind.Anime)
+                                    {
+                                        <a class="button" href="/Acquisition#wanted">@ui["admin.requests.wanted"]</a>
+                                    }
+                                    @if (request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed)
+                                    {
+                                        <form method="post" asp-page-handler="Complete" asp-route-id="@request.Id">
+                                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                            <button class="button" type="submit">@ui["admin.requests.markDone"]</button>
+                                        </form>
+                                    }
+                                    @if (request.Status == AcquisitionRequestStatus.Rejected)
+                                    {
+                                        <form method="post" asp-page-handler="Reopen" asp-route-id="@request.Id">
+                                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                            <button class="button" type="submit">@ui["admin.requests.reopen"]</button>
+                                        </form>
+                                    }
+                                    @if (request.ResultUrl is { } viewUrl && request.Status != AcquisitionRequestStatus.Pending)
+                                    {
+                                        <a class="button" href="@viewUrl">@ui["admin.requests.viewMedia"]</a>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="admreq-footer">
+            <span>@ui.Format("admin.requests.showing", ("from", (queue.Page - 1) * AdminRequestQuery.PageSize + 1), ("to", (queue.Page - 1) * AdminRequestQuery.PageSize + queue.Items.Count), ("total", queue.Total))</span>
+            @if (queue.PageCount > 1)
+            {
+                <nav class="admreq-pager" aria-label="@ui["admin.requests.title"]">
+                    @if (queue.HasPrevious)
+                    {
+                        <a class="button" href="@RequestsModel.Href(filter with { Page = queue.Page - 1 })">@ui["requests.page.previous"]</a>
+                    }
+                    <span>@ui.Format("requests.page.of", ("page", queue.Page), ("pages", queue.PageCount))</span>
+                    @if (queue.HasNext)
+                    {
+                        <a class="button" href="@RequestsModel.Href(filter with { Page = queue.Page + 1 })">@ui["requests.page.next"]</a>
+                    }
+                </nav>
+            }
+        </div>
+    }
+</section>
+
+<details class="admreq-settings" id="rules">
+    <summary>@ui["admin.requests.settingsSummary"]</summary>
 
 <section class="panel access-policies">
     <div class="panel-heading">
@@ -178,90 +438,4 @@
     }
 </section>
 
-<section class="panel access-requests">
-    <div class="panel-heading">
-        <h2>@ui["admin.requests.queueHeading"]</h2>
-        <a class="text-link" href="@(Model.ShowAll ? "/Admin/Requests" : "/Admin/Requests?all=true")">
-            @(Model.ShowAll ? ui["admin.requests.showOpen"] : ui["admin.requests.showAll"])
-        </a>
-    </div>
-    @if (Model.Requests.Count == 0)
-    {
-        <p class="muted">@ui["admin.requests.empty"]</p>
-    }
-    else
-    {
-        <ul class="request-list">
-            @foreach (var request in Model.Requests)
-            {
-                var status = AcquisitionAccessNames.Status(request.Status);
-                var options = Model.OptionsOf(request);
-                <li class="request-row">
-                    <div class="request-cover">
-                        @if (!string.IsNullOrWhiteSpace(request.CoverImageUrl))
-                        {
-                            <img src="@request.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
-                        }
-                    </div>
-                    <div class="request-copy">
-                        <strong>@request.Title</strong>
-                        <span>
-                            @ui["admin.requests.kind." + AcquisitionAccessNames.Kind(request.Kind)]
-                            @if (!string.IsNullOrWhiteSpace(request.Subtitle))
-                            {
-                                <text> · @request.Subtitle</text>
-                            }
-                            · @ui.Format("admin.requests.requestedBy", ("user", Model.ProfileNames.GetValueOrDefault(request.RequestedByProfileId) ?? request.RequestedByProfileId))
-                        </span>
-                        @if (options.Count > 0)
-                        {
-                            <span>@string.Join(" · ", options)</span>
-                        }
-                        @if (request.WasAutoApproved)
-                        {
-                            <span>@ui["requests.autoApproved"]</span>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
-                        {
-                            <small>@request.StatusMessage</small>
-                        }
-                    </div>
-                    <span class="status-pill request-status-@status">@ui["requests.status." + status]</span>
-                    <div class="request-actions">
-                        @if (request.ResultUrl is { } resultUrl)
-                        {
-                            <a class="button" href="@resultUrl">@ui["requests.open"]</a>
-                        }
-                        @if (request.Status is AcquisitionRequestStatus.Pending or AcquisitionRequestStatus.Failed)
-                        {
-                            <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
-                                <button class="button button-primary" type="submit">
-                                    @(request.Status == AcquisitionRequestStatus.Failed ? ui["admin.requests.retry"] : ui["admin.requests.approve"])
-                                </button>
-                            </form>
-                        }
-                        @if (request.Status == AcquisitionRequestStatus.Approved &&
-                             request.Kind is MediaAcquisitionKind.Book or MediaAcquisitionKind.Manga or MediaAcquisitionKind.LightNovel)
-                        {
-                            <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
-                                <button class="button button-primary" type="submit">@ui["admin.requests.searchNow"]</button>
-                            </form>
-                        }
-                        @if (request.Status == AcquisitionRequestStatus.Pending)
-                        {
-                            <form method="post" asp-page-handler="Reject" asp-route-id="@request.Id">
-                                <button class="button" type="submit">@ui["admin.requests.reject"]</button>
-                            </form>
-                        }
-                        @if (request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed)
-                        {
-                            <form method="post" asp-page-handler="Complete" asp-route-id="@request.Id">
-                                <button class="button" type="submit">@ui["admin.requests.markDone"]</button>
-                            </form>
-                        }
-                    </div>
-                </li>
-            }
-        </ul>
-    }
-</section>
+</details>
