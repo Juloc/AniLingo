@@ -1,153 +1,244 @@
 @page "/Discover"
+@using Jularr.Web.Features.Discovery
+@using Jularr.Web.Ui
 @model Jularr.Web.Pages.Discover.IndexModel
+@* Layout and hierarchy follow docs/mockups/discover (binding): the search field with the compact Filters
+   control, the media-type switch and the rows below it. The address is the only state; the titles are
+   fetched from the Body handler after first paint so this GET stays local (#186). *@
 @{
     var ui = Model.Ui;
+    var query = Model.Query;
+    var active = query.ActiveFilterCount;
     ViewData["Title"] = ui["discover.index.title"];
+
+    var thisYear = DateTime.UtcNow.Year;
+    var years = Enumerable.Range(thisYear - 24, 25).Reverse().ToList();
+    if (query.Year is { } selectedYear && !years.Contains(selectedYear))
+    {
+        years.Add(selectedYear);
+    }
+
+    var browseModes = new List<(DiscoveryMode Mode, string LabelKey)>
+    {
+        (DiscoveryMode.Trending, "discover.tabs.trending"),
+        (DiscoveryMode.Top, "discover.tabs.top")
+    };
+    if (query.Category == DiscoveryCategory.Book)
+    {
+        browseModes.Add((DiscoveryMode.New, "discover.tabs.new"));
+    }
+
+    browseModes.Add((DiscoveryMode.MyList, "discover.tabs.myAniList"));
+
+    var availabilities = new[]
+    {
+        (DiscoverAvailabilityFilter.InLibrary, "discover.filter.availabilityLibrary"),
+        (DiscoverAvailabilityFilter.Requested, "discover.filter.availabilityRequested"),
+        (DiscoverAvailabilityFilter.NotInLibrary, "discover.filter.availabilityNew")
+    };
 }
 
 @section Head {
-    <link rel="stylesheet" href="~/css/media-card.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/discover.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/discover-shelves.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/discover-browse.css" asp-append-version="true" />
 }
 
-<div class="discover-shell"
+<div class="dc-page"
      data-discover
      data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()"
-     data-shelves-url="@Url.Page("/Discover/Index", "Shelves")"
      data-add-url="@Url.Page("/Discover/Index", "Add")"
      data-watchlist-url="@Url.Page("/Discover/Index", "Watchlist")"
      data-franchise-url="@Url.Page("/Discover/Index", "FollowFranchise")"
-     data-add-anime="@Model.AddActions.GetValueOrDefault("anime")"
-     data-add-manga="@Model.AddActions.GetValueOrDefault("manga")"
-     data-add-light-novel="@Model.AddActions.GetValueOrDefault("light-novel")"
-     data-text-add="@ui["discover.card.add"]"
-     data-text-request="@ui["discover.card.request"]"
      data-text-add-failed="@ui["discover.card.addFailed"]"
      data-text-follow="@ui["discover.card.follow"]"
      data-text-followed="@ui["discover.card.followed"]"
      data-text-unfollow="@ui["discover.card.unfollow"]"
-     data-text-follow-franchise="@ui["discover.card.followFranchise"]"
-     data-text-follow-options="@ui["discover.card.followOptions"]"
      data-text-franchise-followed="@ui["discover.card.franchiseFollowed"]"
-     data-text-in-library="@ui["discover.card.inLibrary"]"
-     data-text-open-local="@ui["watchlist.open"]"
      data-text-open="@ui["requests.open"]"
+     data-text-source-for="@ui["discover.import.sourceFor"]"
+     data-text-source-url="@ui["discover.import.sourceUrlHeading"]"
      data-status-pending="@ui["requests.status.pending"]"
      data-status-approved="@ui["requests.status.approved"]"
      data-status-searching="@ui["requests.status.searching"]"
      data-status-downloading="@ui["requests.status.downloading"]"
-     data-status-completed="@ui["discover.card.inLibrary"]"
+     data-status-importing="@ui["requests.status.importing"]"
+     data-status-completed="@ui["requests.status.completed"]"
      data-status-failed="@ui["requests.status.failed"]"
      data-status-rejected="@ui["requests.status.rejected"]">
     @Html.AntiForgeryToken()
-    <header class="discover-header">
+
+    <header class="dc-head">
         <h1>@ui["discover.index.title"]</h1>
-        <a class="discover-collections-link" href="@Url.Page("/Collections/Index")">@ui["collections.nav.title"]</a>
     </header>
 
-    <section class="discover-controls" aria-label="@ui["discover.index.controlsAria"]">
-        <div class="discover-search-row">
-            <label class="discover-search">
-                <span class="sr-only">@ui["discover.search.srLabel"]</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" />
-                </svg>
-                <input type="search"
-                       data-discover-search
-                       autocomplete="off"
-                       spellcheck="false"
-                       placeholder="@ui["discover.search.placeholder"]" />
-                <kbd>/</kbd>
-            </label>
-        </div>
+    <form class="dc-searchbar" method="get" action="@DiscoverBrowseQuery.BasePath" role="search" data-dc-form>
+        @if (query.Category != DiscoveryCategory.All)
+        {
+            <input type="hidden" name="category" value="@DiscoverBrowseQuery.CategoryName(query.Category)" />
+        }
 
-        <div class="discover-filter-row">
-            <div class="discover-tabs" role="tablist" aria-label="@ui["discover.tabs.browseModeAria"]">
-                <button type="button" data-discover-mode="trending">@ui["discover.tabs.trending"]</button>
-                <button type="button" data-discover-mode="top">@ui["discover.tabs.top"]</button>
-                <button type="button" data-discover-mode="new" data-discover-mode-books-only hidden>@ui["discover.tabs.new"]</button>
-                <button type="button" data-discover-mode="my-list">@ui["discover.tabs.myAniList"]</button>
-            </div>
+        <label class="dc-search">
+            <span class="sr-only">@ui["discover.search.srLabel"]</span>
+            <partial name="_DiscoverIcon" model='"compass"' />
+            <input type="search"
+                   name="q"
+                   value="@query.Text"
+                   maxlength="120"
+                   autocomplete="off"
+                   spellcheck="false"
+                   data-dc-search
+                   placeholder="@ui["discover.search.placeholder"]" />
+            <kbd aria-hidden="true">/</kbd>
+        </label>
 
-            <div class="discover-categories" aria-label="@ui["discover.categories.aria"]">
-                <button type="button" data-discover-category="all">@ui["discover.categories.all"]</button>
-                <button type="button" data-discover-category="anime">@ui["discover.categories.anime"]</button>
-                <button type="button" data-discover-category="light-novel">@ui["discover.categories.lightNovel"]</button>
-                <button type="button" data-discover-category="manga">@ui["reading.manga.title"]</button>
-                <button type="button" data-discover-category="book">@ui["nav.books"]</button>
-            </div>
-        </div>
-
-        <div class="discover-genre-row" data-discover-genre-chip hidden>
-            <span class="discover-genre-chip">
-                <span data-discover-genre-label></span>
-                <button type="button"
-                        data-discover-genre-clear
-                        aria-label="@ui["discover.genre.clear"]">×</button>
-            </span>
-        </div>
-    </section>
-
-    @* Provider-driven shelf board (#595): the browse landing, fetched after first paint. The grid below
-       takes over for search and drill-down; only one of the two shows at a time. *@
-    <section class="discover-shelves-board"
-             data-discover-shelves
-             aria-label="@ui["discover.shelf.boardAria"]"
-             aria-live="polite"
-             hidden></section>
-
-    <div class="discover-grid-wrap" data-discover-grid hidden>
-        <div class="discover-summary">
-            <strong data-discover-title>@ui["discover.tabs.trending"]</strong>
-            <span data-discover-count>@ui["discover.results.loading"]</span>
-        </div>
-
-        <div class="discover-warning" data-discover-warning hidden></div>
-
-        <section class="discover-grid"
-                 data-discover-results
-                 aria-live="polite"
-                 aria-busy="true">
-            @for (var i = 0; i < 10; i++)
-            {
-                <div class="discover-card discover-card-skeleton" aria-hidden="true">
-                    <div class="discover-cover"></div>
-                    <div class="discover-card-copy">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
+        <details class="dc-pop" data-dc-pop>
+            <summary class="dc-btn@(active > 0 ? " is-active" : "")"
+                     aria-label="@(active > 0 ? ui.Format("library.browse.filtersActiveAria", ("count", active)) : ui["library.browse.filters"])">
+                <partial name="_DiscoverIcon" model='"filter"' />
+                <span class="dc-btn-label">@ui["library.browse.filters"]</span>
+                @if (active > 0)
+                {
+                    <span class="dc-badge">@active</span>
+                }
+            </summary>
+            <span class="dc-pop-backdrop" data-dc-close></span>
+            <div class="dc-pop-panel" role="dialog" aria-label="@ui["library.browse.filters"]">
+                <div class="dc-pop-head">
+                    <h2>@ui["library.browse.filters"]</h2>
+                    @if (active > 0)
+                    {
+                        <a class="dc-reset" href="@query.WithoutFilters().Href">@ui["library.browse.filter.reset"]</a>
+                    }
+                    <button type="button" class="dc-icon-btn" data-dc-close aria-label="@ui["library.browse.close"]">
+                        <partial name="_DiscoverIcon" model='"close"' />
+                    </button>
                 </div>
-            }
-        </section>
 
-        <div class="discover-empty" data-discover-empty hidden>
-            <strong>@ui["discover.results.emptyTitle"]</strong>
-            <span>@ui["discover.results.emptyBody"]</span>
+                <div class="dc-groups">
+                    <fieldset class="dc-group" data-dc-browse-group hidden="@query.IsSearch">
+                        <legend>@ui["discover.filter.groupBrowse"]</legend>
+                        @foreach (var (mode, labelKey) in browseModes)
+                        {
+                            <label class="dc-check">
+                                <input type="radio" name="mode" value="@DiscoverBrowseQuery.ModeName(mode)" checked="@(query.Mode == mode)" />
+                                <span>@ui[labelKey]</span>
+                            </label>
+                        }
+                    </fieldset>
+
+                    <fieldset class="dc-group">
+                        <legend>@ui["library.browse.filter.groupMetadata"]</legend>
+                        <label class="dc-select">
+                            <span>@ui["discover.filter.genre"]</span>
+                            <select name="genre">
+                                <option value="">@ui["library.browse.filter.any"]</option>
+                                @foreach (var genre in DiscoveryRequest.KnownGenres)
+                                {
+                                    <option value="@genre" selected="@(query.Genre == genre)">@ui[DiscoverGenres.Key(genre)!]</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="dc-select">
+                            <span>@ui["library.browse.filter.year"]</span>
+                            <select name="year">
+                                <option value="">@ui["library.browse.filter.any"]</option>
+                                @foreach (var year in years)
+                                {
+                                    <option value="@year" selected="@(query.Year == year)">@year</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="dc-select">
+                            <span>@ui["library.browse.filter.status"]</span>
+                            <select name="status">
+                                <option value="">@ui["library.browse.filter.any"]</option>
+                                @foreach (var status in Enum.GetValues<MediaReleaseStatus>())
+                                {
+                                    <option value="@DiscoverBrowseQuery.StatusName(status)" selected="@(query.Status == status)">@ui[MediaBannerCardModel.StatusKey(status)]</option>
+                                }
+                            </select>
+                        </label>
+                    </fieldset>
+
+                    <fieldset class="dc-group">
+                        <legend>@ui["library.browse.filter.groupAvailability"]</legend>
+                        <label class="dc-select">
+                            <span class="sr-only">@ui["library.browse.filter.groupAvailability"]</span>
+                            <select name="avail">
+                                <option value="">@ui["library.browse.filter.any"]</option>
+                                @foreach (var (availability, labelKey) in availabilities)
+                                {
+                                    <option value="@DiscoverBrowseQuery.AvailabilityName(availability)" selected="@(query.Availability == availability)">@ui[labelKey]</option>
+                                }
+                            </select>
+                        </label>
+                        @if (Model.Preference.IsSet || query.PreferredLanguage)
+                        {
+                            <label class="dc-check">
+                                <input type="checkbox" name="pref" value="1" checked="@query.PreferredLanguage" />
+                                <span>@ui.Format("library.browse.filter.preferred", ("languages", string.Join(" · ", Model.Preference.Codes)))</span>
+                            </label>
+                        }
+                    </fieldset>
+                </div>
+
+                <div class="dc-pop-foot">
+                    <button type="submit" class="button button-primary">@ui["library.browse.filter.apply"]</button>
+                </div>
+            </div>
+        </details>
+    </form>
+
+    <nav class="dc-tabs" aria-label="@ui["discover.categories.aria"]">
+        @foreach (var (category, labelKey) in DiscoverScopes.Tabs)
+        {
+            var selected = DiscoverScopes.IsActive(category, query.Category);
+            <a class="dc-tab@(selected ? " is-active" : "")"
+               href="@((query with { Category = category }).Href)"
+               aria-current="@(selected ? "page" : null)"
+               data-dc-tab>@ui[labelKey]</a>
+        }
+    </nav>
+
+    <p class="dc-notice" data-dc-offline hidden role="status">
+        <partial name="_DiscoverIcon" model='"offline"' />
+        <span>@ui["discover.offline"]</span>
+    </p>
+
+    <div class="dc-results" data-dc-body aria-busy="true">
+        <p class="sr-only">@ui["discover.results.loading"]</p>
+        <div class="dc-skeleton" aria-hidden="true">
+            <span class="dc-skeleton-head"></span>
+            <ul class="dc-track">
+                @for (var i = 0; i < 8; i++)
+                {
+                    <li class="dc-track-item"><span class="dc-skeleton-card"></span></li>
+                }
+            </ul>
         </div>
+    </div>
+
+    <div class="dc-message" role="alert" data-dc-error hidden>
+        <div>
+            <p><strong>@ui["discover.results.unavailableTitle"]</strong></p>
+            <p>@ui["discover.results.unavailableBody"]</p>
+        </div>
+        <button type="button" class="button" data-dc-retry>@ui["library.browse.error.retry"]</button>
     </div>
 
     @if (Model.IsOwner)
     {
-        <details class="discover-import" data-discover-import>
+        <details class="dc-import" data-dc-import hidden>
             <summary>@ui["discover.import.toggle"]</summary>
             <form method="post"
                   asp-page-handler="ImportSource"
-                  class="discover-import-form"
-                  data-discover-import-form>
+                  class="dc-import-form"
+                  data-dc-import-form>
                 <div>
                     <strong data-import-title>@ui["discover.import.sourceUrlHeading"]</strong>
-                    <span>
-                        @ui["discover.import.sourceHint"]
-                    </span>
+                    <span>@ui["discover.import.sourceHint"]</span>
                 </div>
-                <input type="hidden"
-                       name="metadataProvider"
-                       data-import-provider />
-                <input type="hidden"
-                       name="metadataExternalId"
-                       data-import-external-id />
+                <input type="hidden" name="metadataProvider" data-import-provider />
+                <input type="hidden" name="metadataExternalId" data-import-external-id />
                 <label>
                     <span>@ui["discover.import.sourceUrlHeading"]</span>
                     <input type="url"
@@ -158,17 +249,25 @@
                            data-import-url
                            placeholder="https://ncode.syosetu.com/…" />
                 </label>
-                <div class="discover-import-actions">
+                <div class="dc-import-actions">
                     <button class="button button-primary" type="submit">@ui["discover.import.submit"]</button>
-                    <button class="button"
-                            type="button"
-                            data-import-clear>@ui["discover.import.clearMatch"]</button>
+                    <button class="button" type="button" data-import-clear>@ui["discover.import.clearMatch"]</button>
                 </div>
             </form>
         </details>
     }
+
+    @* The rich preview: a popover next to the hovered card on a pointer, a modal sheet on touch and from the
+       preview button. Its content is cloned from the card's template when it opens. *@
+    <div class="dc-hover" data-dc-hover role="dialog" hidden></div>
+    <dialog class="dc-sheet" data-dc-sheet>
+        <button type="button" class="dc-icon-btn dc-sheet-close" data-dc-sheet-close aria-label="@ui["library.browse.close"]">
+            <partial name="_DiscoverIcon" model='"close"' />
+        </button>
+        <div class="dc-sheet-content" data-dc-sheet-content></div>
+    </dialog>
 </div>
 
 @section Scripts {
-    <script src="~/js/discover.js" asp-append-version="true"></script>
+    <script src="~/js/discover.js" asp-append-version="true" defer></script>
 }

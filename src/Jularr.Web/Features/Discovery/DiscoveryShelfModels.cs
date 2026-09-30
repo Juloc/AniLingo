@@ -118,6 +118,7 @@ public static class DiscoveryShelfLinks
         DiscoveryCategory.LightNovel => "light-novel",
         DiscoveryCategory.Manga => "manga",
         DiscoveryCategory.Book => "book",
+        DiscoveryCategory.BooksAndLightNovels => "books-light-novels",
         _ => "all"
     };
 

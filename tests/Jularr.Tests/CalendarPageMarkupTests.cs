@@ -53,12 +53,12 @@ public sealed class CalendarPageMarkupTests
     public void DiscoverCardsKeepOneFollowControlNextToThePrimaryAction()
     {
         var script = Read("src", "Jularr.Web", "wwwroot", "js", "discover.js");
-        Assert.AreEqual(1, Count(script, "renderFollowControl(item, actions);"));
-        Assert.IsFalse(script.Contains("renderFranchiseAction", StringComparison.Ordinal), "Follow franchise lives in the follow menu.");
-        StringAssert.Contains(script, "aria-haspopup");
-        StringAssert.Contains(script, "discover-provider-link");
+        var card = Read("src", "Jularr.Web", "Pages", "Discover", "_DiscoverCard.cshtml");
+        Assert.AreEqual(1, Count(card, "data-dc-follow "), "One follow control per preview.");
+        Assert.AreEqual(1, Count(card, "data-dc-follow-franchise"), "Follow franchise sits next to it, once.");
+        Assert.AreEqual(1, Count(script, "root.dataset.watchlistUrl,"), "The script posts one follow request.");
         Assert.IsFalse(script.Contains("localMediaId", StringComparison.Ordinal), "Library state is never posted from the browser.");
-        Assert.IsFalse(script.Contains("\"detailsUrl\"", StringComparison.Ordinal));
+        Assert.IsFalse(script.Contains("detailsUrl", StringComparison.Ordinal), "Links are never posted from the browser.");
     }
 
     [TestMethod]

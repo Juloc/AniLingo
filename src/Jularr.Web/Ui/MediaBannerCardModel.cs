@@ -261,7 +261,7 @@ public sealed record MediaBannerCardModel(
             : ui.Format(plainKey, ("number", number));
     }
 
-    private static string KindKey(MediaBannerKind kind) => kind switch
+    public static string KindKey(MediaBannerKind kind) => kind switch
     {
         MediaBannerKind.Manga => "library.mediaCard.kind.manga",
         MediaBannerKind.LightNovel => "library.mediaCard.kind.lightNovel",
@@ -269,7 +269,7 @@ public sealed record MediaBannerCardModel(
         _ => "library.mediaCard.kind.anime"
     };
 
-    private static string StatusKey(MediaReleaseStatus status) => status switch
+    public static string StatusKey(MediaReleaseStatus status) => status switch
     {
         MediaReleaseStatus.Ongoing => "library.mediaCard.status.ongoing",
         MediaReleaseStatus.Finished => "library.mediaCard.status.finished",

@@ -123,18 +123,17 @@ public sealed class DiscoveryMangaHandoffTests
     public void DiscoveryClientOffersMangaImportAction()
     {
         var root = FindRepositoryRoot();
-        var script = File.ReadAllText(Path.Combine(
+        var card = File.ReadAllText(Path.Combine(
             root,
             "src",
             "Jularr.Web",
-            "wwwroot",
-            "js",
-            "discover.js"));
+            "Pages",
+            "Discover",
+            "_DiscoverCard.cshtml"));
 
-        StringAssert.Contains(
-            script,
-            "item.detailsUrl?.startsWith(\"/Discover/MangaImport\")");
-        StringAssert.Contains(script, "\"Add manga\"");
+        // The owner's manga import link is decided on the server and localized; the card only renders it.
+        StringAssert.Contains(card, "card.ImportMangaUrl is { } importUrl");
+        StringAssert.Contains(card, "discover.preview.addManga");
     }
 
     private static async Task<AppDbContext> CreateDatabaseAsync(string path)

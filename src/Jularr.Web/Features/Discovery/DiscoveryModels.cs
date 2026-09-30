@@ -6,7 +6,9 @@ public enum DiscoveryCategory
     Anime,
     LightNovel,
     Manga,
-    Book
+    Book,
+    /// <summary>The combined "Books and Light Novels" scope of the Discover media-type switch.</summary>
+    BooksAndLightNovels
 }
 
 public enum DiscoveryMode
@@ -71,9 +73,16 @@ public sealed record DiscoveryRequest(
         }
 
         var trimmed = value.Trim().Truncate(40);
-        return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
-            trimmed.ToLowerInvariant());
+        return KnownGenres.FirstOrDefault(genre => string.Equals(genre, trimmed, StringComparison.OrdinalIgnoreCase))
+            ?? System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(trimmed.ToLowerInvariant());
     }
+
+    /// <summary>The genres Discover offers, spelled the way AniList spells them (its genre filter is case-sensitive).</summary>
+    public static IReadOnlyList<string> KnownGenres { get; } =
+    [
+        "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+        "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural"
+    ];
 
     public static string NormalizeQuery(string? value)
     {
@@ -100,6 +109,7 @@ public sealed record DiscoveryRequest(
                 DiscoveryCategory.LightNovel,
             "manga" => DiscoveryCategory.Manga,
             "book" or "books" => DiscoveryCategory.Book,
+            "books-light-novels" => DiscoveryCategory.BooksAndLightNovels,
             _ => DiscoveryCategory.All
         };
 
