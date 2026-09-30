@@ -49,14 +49,14 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                         "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                         "ExternalProvider", "ExternalId",
                         "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details",
-                        "ActorProfileId")
+                        "ActorProfileId", "Priority")
                     VALUES (
                         @id, @kind, @category, @lane, @status, @profileId, @title, @subject,
                         NULL, NULL, NULL, @isDownload, @bytesTotal,
                         NULL, NULL, NULL, 1, @retryable,
                         @externalProvider, @externalId,
                         @createdAt, NULL, NULL, @updatedAt, @details,
-                        @actorProfileId);
+                        @actorProfileId, @priority);
                     """;
                 Add(command, "@id", id.ToString("D"));
                 Add(command, "@kind", Trim(descriptor.Kind, 100) ?? "background");
@@ -75,6 +75,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                 Add(command, "@updatedAt", Format(now));
                 Add(command, "@details", Trim(descriptor.Details, MaxDetailsLength));
                 Add(command, "@actorProfileId", Trim(descriptor.ActorProfileId ?? OperationActor.Current, MaxActorLength));
+                Add(command, "@priority", (int)descriptor.Priority);
                 await command.ExecuteNonQueryAsync(cancellationToken);
             },
             cancellationToken);
@@ -102,7 +103,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId", "Priority"
                     FROM "Operations"
                     WHERE "Id" = @id
                     LIMIT 1;
@@ -180,7 +181,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId", "Priority"
                     FROM "Operations"
                     {where}
                     ORDER BY
@@ -253,7 +254,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                                "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                                "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                                "ExternalProvider", "ExternalId",
-                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId", "Priority"
                         FROM "Operations"
                         {where}
                         ORDER BY {HistoryTime} {direction}, "Id" {direction}
@@ -407,8 +408,9 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
 
     /// <summary>
     /// One page of the work queue (Admin → Activity): operations in the given statuses and kinds that
-    /// match the text, running first, then queued, failed and interrupted, then the rest by recency,
-    /// with how many operations match in total.
+    /// match the text, running first, then queued, failed and interrupted, then the rest by recency
+    /// (within the unfinished ones the higher priority comes first), with how many operations match
+    /// in total.
     /// </summary>
     public async Task<OperationActivityPage> QueryActivityAsync(
         OperationActivityFilter filter,
@@ -420,7 +422,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
             return new OperationActivityPage([], 0);
         }
 
-        var (where, parameters) = ActivityWhere(filter.Statuses, filter.Kinds, filter.Search);
+        var (where, parameters) = ActivityWhere(filter.Statuses, filter.Kinds, filter.Search, filter.Priority);
         var limit = Math.Clamp(filter.Limit, 1, 200);
         var offset = Math.Max(filter.Offset, 0);
 
@@ -451,11 +453,12 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                                "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                                "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                                "ExternalProvider", "ExternalId",
-                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId", "Priority"
                         FROM "Operations"
                         {where}
                         ORDER BY
                             CASE "Status" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 4 THEN 2 WHEN 6 THEN 3 ELSE 4 END,
+                            CASE WHEN "Status" IN (1, 2, 4, 6) THEN "Priority" ELSE 0 END DESC,
                             "UpdatedAtUtc" DESC, "Id" DESC
                         LIMIT {limit} OFFSET {offset};
                         """;
@@ -484,7 +487,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
         string? search,
         CancellationToken cancellationToken = default)
     {
-        var (where, parameters) = ActivityWhere(null, null, search);
+        var (where, parameters) = ActivityWhere(null, null, search, null);
 
         return await WithConnectionAsync(
             async connection =>
@@ -492,10 +495,10 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    SELECT "Kind", "Category", "Status", COUNT(*)
+                    SELECT "Kind", "Category", "Status", COUNT(*), "Priority"
                     FROM "Operations"
                     {where}
-                    GROUP BY "Kind", "Category", "Status";
+                    GROUP BY "Kind", "Category", "Status", "Priority";
                     """;
                 foreach (var parameter in parameters)
                 {
@@ -509,7 +512,8 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                     rows.Add(new OperationActivityCount(
                         new OperationKindKey(reader.GetString(0), reader.GetString(1)),
                         (OperationStatus)Convert.ToInt32(reader.GetValue(2), CultureInfo.InvariantCulture),
-                        ReadCount(reader, 3)));
+                        ReadCount(reader, 3),
+                        ReadPriority(reader, 4)));
                 }
 
                 return (IReadOnlyList<OperationActivityCount>)rows;
@@ -520,7 +524,8 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
     private static (string Where, List<(string Name, object? Value)> Parameters) ActivityWhere(
         IReadOnlyCollection<OperationStatus>? statuses,
         IReadOnlyCollection<OperationKindKey>? kinds,
-        string? search)
+        string? search,
+        OperationPriority? priority)
     {
         var conditions = new List<string>();
         var parameters = new List<(string Name, object? Value)>();
@@ -528,6 +533,12 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
         if (statuses is { Count: > 0 })
         {
             conditions.Add($"\"Status\" IN ({string.Join(", ", statuses.Select(status => (int)status))})");
+        }
+
+        if (priority is { } only)
+        {
+            conditions.Add("\"Priority\" = @priority");
+            parameters.Add(("@priority", (int)only));
         }
 
         if (kinds is { Count: > 0 })
@@ -888,6 +899,91 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
             cancellationToken);
     }
 
+    /// <summary>
+    /// Changes the priority of an operation that is still queued or running; false when it is unknown or
+    /// already finished. Queued work is picked up in the new order by the worker of its queue; work that
+    /// is already running keeps running.
+    /// </summary>
+    public async Task<bool> SetPriorityAsync(
+        Guid id,
+        OperationPriority priority,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(priority))
+        {
+            throw new ArgumentOutOfRangeException(nameof(priority));
+        }
+
+        var rows = await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    UPDATE "Operations"
+                    SET "Priority" = @priority
+                    WHERE "Id" = @id
+                      AND "Status" IN (@queued, @running);
+                    """;
+                Add(command, "@priority", (int)priority);
+                Add(command, "@id", id.ToString("D"));
+                Add(command, "@queued", (int)OperationStatus.Queued);
+                Add(command, "@running", (int)OperationStatus.Running);
+                return await command.ExecuteNonQueryAsync(cancellationToken);
+            },
+            cancellationToken);
+
+        if (rows > 0)
+        {
+            await AppendLogAsync(
+                id,
+                OperationLogLevel.Information,
+                "Queue",
+                $"Priority set to {OperationPriorities.Name(priority)}.",
+                cancellationToken);
+        }
+
+        return rows > 0;
+    }
+
+    /// <summary>The current priority of each of the given operations; unknown ones are left out.</summary>
+    public async Task<IReadOnlyDictionary<Guid, OperationPriority>> GetPrioritiesAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        if (ids.Count == 0)
+        {
+            return new Dictionary<Guid, OperationPriority>();
+        }
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                var names = new List<string>();
+                foreach (var id in ids)
+                {
+                    var name = $"@id{names.Count}";
+                    names.Add(name);
+                    Add(command, name, id.ToString("D"));
+                }
+
+                command.CommandText =
+                    $"""SELECT "Id", "Priority" FROM "Operations" WHERE "Id" IN ({string.Join(", ", names)});""";
+
+                var result = new Dictionary<Guid, OperationPriority>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    result[Guid.Parse(reader.GetString(0))] = ReadPriority(reader, 1);
+                }
+
+                return (IReadOnlyDictionary<Guid, OperationPriority>)result;
+            },
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<OperationSnapshot>> ListActiveExternalAsync(
         string provider,
         CancellationToken cancellationToken = default)
@@ -904,7 +1000,7 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
                            "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
                            "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
                            "ExternalProvider", "ExternalId",
-                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId", "Priority"
                     FROM "Operations"
                     WHERE "ExternalProvider" = @provider
                       AND "ExternalId" IS NOT NULL
@@ -1248,7 +1344,13 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
             ReadNullableDate(reader, 22),
             ParseDate(reader.GetString(23)),
             ReadNullableString(reader, 24),
-            ReadNullableString(reader, 25));
+            ReadNullableString(reader, 25),
+            ReadPriority(reader, 26));
+
+    private static OperationPriority ReadPriority(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal)
+            ? OperationPriority.Normal
+            : (OperationPriority)Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
 
     private static int ReadCount(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)

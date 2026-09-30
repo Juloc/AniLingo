@@ -43,7 +43,7 @@ public sealed class MediaOptimizationQueue(
 
         return await jobs.QueueAsync(
             new OperationDescriptor(
-                MediaContainerOptimizer.OperationKind,
+                MediaContainerOptimizer.RecoveryOperationKind,
                 OperationCategory,
                 "Recover interrupted media optimization",
                 Lane: OperationLane.Maintenance,

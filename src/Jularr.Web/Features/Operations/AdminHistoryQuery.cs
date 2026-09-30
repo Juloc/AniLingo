@@ -9,6 +9,9 @@ public enum AdminHistoryCategory
     Acquisition,
     Imports,
     Remux,
+
+    /// <summary>Swapping a media file for a rebuilt one, and finishing or undoing such a swap that was interrupted.</summary>
+    Repack,
     Subtitle,
     Translation,
     Metadata,
@@ -91,6 +94,14 @@ public static class AdminHistoryQuery
             return AdminHistoryCategory.Subtitle;
         }
 
+        // Media optimization (Features/Media/Optimization): the run that rewrites a file into a
+        // direct-play container is a remux; the run that finishes or undoes an interrupted file swap
+        // after a crash is the replace/repack side of it. Both keep the "media-optimization" prefix.
+        if (k == "media-optimization-recovery")
+        {
+            return AdminHistoryCategory.Repack;
+        }
+
         if (k == "media-optimization")
         {
             return AdminHistoryCategory.Remux;
@@ -143,6 +154,7 @@ public static class AdminHistoryQuery
         AdminHistoryCategory.Acquisition => "acquisition",
         AdminHistoryCategory.Imports => "imports",
         AdminHistoryCategory.Remux => "remux",
+        AdminHistoryCategory.Repack => "repack",
         AdminHistoryCategory.Subtitle => "subtitle",
         AdminHistoryCategory.Translation => "translation",
         AdminHistoryCategory.Metadata => "metadata",

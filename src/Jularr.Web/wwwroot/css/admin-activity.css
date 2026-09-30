@@ -70,7 +70,7 @@
     color: var(--admact-tone); font-size: 12px; font-weight: 700; white-space: nowrap;
 }
 .admact-tag { --admact-tone: var(--accent-text); }
-.admact-tag-acquisition, .admact-tag-remux { --admact-tone: var(--info-text); }
+.admact-tag-acquisition, .admact-tag-remux, .admact-tag-repack { --admact-tone: var(--info-text); }
 .admact-tag-metadata, .admact-tag-maintenance { --admact-tone: var(--muted); }
 .admact-state-running { --admact-tone: var(--info-text); }
 .admact-state-queued, .admact-state-cancelled { --admact-tone: var(--muted); }
@@ -79,6 +79,16 @@
 .admact-state-succeeded { --admact-tone: var(--success-text); }
 .admact-cell-status { white-space: nowrap; }
 .admact-when { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+.admact-cell-priority { white-space: nowrap; }
+.admact-priority { color: var(--muted); font-size: 12px; }
+.admact-priority-high { color: var(--accent-text); font-weight: 700; }
+.admact-priority-form { display: flex; align-items: center; gap: 6px; margin: 0; }
+.admact-priority-form select {
+    min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--field-bg); color: var(--text); font: inherit; font-size: 12px;
+}
+.admact-priority-form .button { min-height: 0; padding: 5px 12px; font-size: 12px; white-space: nowrap; }
 
 .admact-cell-actions { text-align: end; }
 .admact-actions { display: flex; justify-content: flex-end; gap: 6px; }
@@ -120,7 +130,11 @@ a.admact-page:hover { background: var(--surface-2); }
     .admact-cell-step:not(:has(.admact-copy)) { display: none; }
     .admact-cell-progress { grid-column: 1 / -1; grid-row: 4; }
     .admact-cell-progress:not(:has(.admact-progress)) { display: none; }
-    .admact-cell-actions { grid-column: 1 / -1; grid-row: 5; text-align: start; }
+    .admact-cell-priority { grid-column: 1 / -1; grid-row: 5; }
+    .admact-cell-priority:not(:has(form, .admact-priority-high, .admact-priority-low)) { display: none; }
+    .admact-priority-form select { flex: 1; min-height: 46px; }
+    .admact-priority-form .button { min-height: 46px; }
+    .admact-cell-actions { grid-column: 1 / -1; grid-row: 6; text-align: start; }
     .admact-actions { flex-wrap: wrap; justify-content: stretch; gap: 8px; }
     .admact-actions > form, .admact-actions > a.button { flex: 1 1 100px; }
     .admact-actions .button { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: center; }

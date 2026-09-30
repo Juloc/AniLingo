@@ -22,10 +22,14 @@ public sealed record AdminActivityFilter(
     AdminHistoryCategory Category = AdminHistoryCategory.All,
     OperationStatus? Status = null,
     string? Search = null,
-    int Page = 1)
+    int Page = 1,
+    OperationPriority? Priority = null)
 {
     public bool HasNarrowing =>
-        Category != AdminHistoryCategory.All || Status is not null || !string.IsNullOrWhiteSpace(Search);
+        Category != AdminHistoryCategory.All
+        || Status is not null
+        || Priority is not null
+        || !string.IsNullOrWhiteSpace(Search);
 }
 
 /// <summary>Which operations to read for a page of the activity, and the numbers the tabs and pager need.</summary>
@@ -132,6 +136,7 @@ public static class AdminActivityQuery
         var inCategory = counts
             .Where(row => filter.Category == AdminHistoryCategory.All
                 || AdminHistoryQuery.CategoryOf(row.Key.Kind, row.Key.Category) == filter.Category)
+            .Where(row => filter.Priority is null || row.Priority == filter.Priority)
             .ToArray();
 
         var tabCounts = Enum.GetValues<AdminActivityTab>().ToDictionary(
@@ -156,7 +161,8 @@ public static class AdminActivityQuery
             plan.Filter.Category == AdminHistoryCategory.All ? null : plan.Kinds,
             string.IsNullOrWhiteSpace(plan.Filter.Search) ? null : plan.Filter.Search.Trim(),
             plan.Offset,
-            PageSize);
+            PageSize,
+            plan.Filter.Priority);
 
     /// <summary>What to say about where an operation is: the error of a failed one, otherwise its latest message.</summary>
     public static string? NoteOf(OperationSnapshot operation)
@@ -183,6 +189,7 @@ public static class AdminActivityQuery
         Add("tab", filter.Tab == AdminActivityTab.Todo ? null : TabName(filter.Tab));
         Add("type", filter.Category == AdminHistoryCategory.All ? null : AdminHistoryQuery.CategoryName(filter.Category));
         Add("status", filter.Status is { } status ? StatusName(status) : null);
+        Add("priority", filter.Priority is { } priority ? OperationPriorities.Name(priority) : null);
         Add("q", filter.Search?.Trim());
         Add("p", filter.Page > 1 ? filter.Page.ToString(CultureInfo.InvariantCulture) : null);
         return parts.Count == 0 ? path : $"{path}?{string.Join('&', parts)}";

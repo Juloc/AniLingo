@@ -135,4 +135,89 @@ public sealed class OperationActivityStoreTests
         Assert.AreEqual(2, dungeon.Sum(row => row.Count));
         Assert.IsFalse(dungeon.Any(row => row.Key.Kind == "library-scan"));
     }
+
+    private static Task<Guid> CreateWithPriorityAsync(OperationStore store, string title, OperationPriority priority) =>
+        store.CreateAsync(new OperationDescriptor("library-scan", "Library", title, Priority: priority));
+
+    [TestMethod]
+    public async Task NewWorkIsNormalAndAPriorityGivenAtCreationIsKept()
+    {
+        await using var db = await CreateDatabaseAsync();
+        var store = new OperationStore(db);
+        var plain = await store.CreateAsync(new OperationDescriptor("library-scan", "Library", "Plain"));
+        var urgent = await CreateWithPriorityAsync(store, "Urgent", OperationPriority.High);
+
+        Assert.AreEqual(OperationPriority.Normal, (await store.GetAsync(plain))!.Priority);
+        Assert.AreEqual(OperationPriority.High, (await store.GetAsync(urgent))!.Priority);
+    }
+
+    [TestMethod]
+    public async Task ThePriorityOfQueuedAndRunningWorkCanBeChangedButNotOfFinishedWork()
+    {
+        await using var db = await CreateDatabaseAsync();
+        var store = new OperationStore(db);
+        var queued = await CreateAsync(store, "Queued", OperationStatus.Queued);
+        var running = await CreateAsync(store, "Running", OperationStatus.Running);
+        var done = await CreateAsync(store, "Done", OperationStatus.Succeeded);
+        var failed = await CreateAsync(store, "Failed", OperationStatus.Failed);
+
+        Assert.IsTrue(await store.SetPriorityAsync(queued, OperationPriority.High));
+        Assert.IsTrue(await store.SetPriorityAsync(running, OperationPriority.Low));
+        Assert.IsFalse(await store.SetPriorityAsync(done, OperationPriority.High));
+        Assert.IsFalse(await store.SetPriorityAsync(failed, OperationPriority.High));
+        Assert.IsFalse(await store.SetPriorityAsync(Guid.NewGuid(), OperationPriority.High));
+
+        Assert.AreEqual(OperationPriority.High, (await store.GetAsync(queued))!.Priority);
+        Assert.AreEqual(OperationPriority.Low, (await store.GetAsync(running))!.Priority);
+        Assert.AreEqual(OperationPriority.Normal, (await store.GetAsync(done))!.Priority);
+        Assert.AreEqual(OperationPriority.Normal, (await store.GetAsync(failed))!.Priority);
+
+        var logs = await store.ListLogsAsync(new OperationLogFilter(OperationId: queued));
+        Assert.IsTrue(logs.Any(entry => entry.Message == "Priority set to high."));
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
+            () => store.SetPriorityAsync(queued, (OperationPriority)99));
+    }
+
+    [TestMethod]
+    public async Task ThePrioritiesOfSeveralOperationsAreReadInOneGo()
+    {
+        await using var db = await CreateDatabaseAsync();
+        var store = new OperationStore(db);
+        var low = await CreateWithPriorityAsync(store, "Low", OperationPriority.Low);
+        var high = await CreateWithPriorityAsync(store, "High", OperationPriority.High);
+
+        var priorities = await store.GetPrioritiesAsync([low, high, Guid.NewGuid()]);
+
+        Assert.AreEqual(2, priorities.Count);
+        Assert.AreEqual(OperationPriority.Low, priorities[low]);
+        Assert.AreEqual(OperationPriority.High, priorities[high]);
+        Assert.AreEqual(0, (await store.GetPrioritiesAsync([])).Count);
+    }
+
+    [TestMethod]
+    public async Task ActivityFiltersByPriorityAndPutsHigherPriorityFirstWithinAStatus()
+    {
+        await using var db = await CreateDatabaseAsync();
+        var store = new OperationStore(db);
+        await CreateWithPriorityAsync(store, "Queued low", OperationPriority.Low);
+        await CreateWithPriorityAsync(store, "Queued normal", OperationPriority.Normal);
+        await CreateWithPriorityAsync(store, "Queued high", OperationPriority.High);
+        var running = await CreateWithPriorityAsync(store, "Running low", OperationPriority.Low);
+        await store.MarkRunningAsync(running);
+
+        var page = await store.QueryActivityAsync(new OperationActivityFilter());
+        CollectionAssert.AreEqual(
+            new[] { "Running low", "Queued high", "Queued normal", "Queued low" },
+            page.Items.Select(item => item.Title).ToArray(),
+            "Status still comes first; priority orders the work within it.");
+
+        var high = await store.QueryActivityAsync(new OperationActivityFilter(Priority: OperationPriority.High));
+        Assert.AreEqual(1, high.Total);
+        Assert.AreEqual("Queued high", high.Items.Single().Title);
+
+        var counts = await store.CountActivityAsync(null);
+        Assert.AreEqual(1, counts.Single(row => row.Status == OperationStatus.Queued && row.Priority == OperationPriority.Low).Count);
+        Assert.AreEqual(1, counts.Single(row => row.Status == OperationStatus.Running).Count);
+    }
 }

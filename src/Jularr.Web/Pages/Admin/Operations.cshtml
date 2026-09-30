@@ -19,6 +19,8 @@
 
     string StatusLabel(OperationStatus status) => ui["admin.operations.status." + AdminActivityQuery.StatusName(status)];
 
+    string PriorityLabel(OperationPriority priority) => ui["admin.operations.priority." + OperationPriorities.Name(priority)];
+
     string StatusIcon(OperationStatus status) => status switch
     {
         OperationStatus.Succeeded => "success",
@@ -94,6 +96,13 @@
                     }
                 </select>
             }
+            <select name="priority" aria-label="@ui["admin.activity.filter.priority"]">
+                <option value="">@ui["admin.activity.filter.priority"]</option>
+                @foreach (var level in Enum.GetValues<OperationPriority>())
+                {
+                    <option value="@OperationPriorities.Name(level)" selected="@(filter.Priority == level)">@PriorityLabel(level)</option>
+                }
+            </select>
             @if (filter.HasNarrowing)
             {
                 <a class="text-link" href="@OperationsModel.Href(new AdminActivityFilter(filter.Tab))">@ui["admin.activity.filter.reset"]</a>
@@ -123,6 +132,7 @@
                         <th scope="col">@ui["admin.activity.col.step"]</th>
                         <th scope="col">@ui["admin.activity.col.progress"]</th>
                         <th scope="col">@ui["admin.activity.col.status"]</th>
+                        <th scope="col">@ui["admin.activity.col.priority"]</th>
                         <th scope="col"><span class="admact-visually-hidden">@ui["admin.activity.col.actions"]</span></th>
                     </tr>
                 </thead>
@@ -189,6 +199,30 @@
                                 @if (ended)
                                 {
                                     <time class="admact-when" datetime="@Iso(when)">@Stamp(when)</time>
+                                }
+                            </td>
+                            <td class="admact-cell-priority">
+                                @if (Model.CanChangePriority(operation))
+                                {
+                                    <form method="post" asp-page-handler="Priority" class="admact-priority-form">
+                                        <input type="hidden" name="id" value="@operation.Id" />
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <select name="priority" aria-label="@ui["admin.activity.priority.change"]">
+                                            @foreach (var level in Enum.GetValues<OperationPriority>())
+                                            {
+                                                <option value="@OperationPriorities.Name(level)" selected="@(operation.Priority == level)">@PriorityLabel(level)</option>
+                                            }
+                                        </select>
+                                        <button class="button" type="submit">@ui["admin.activity.priority.apply"]</button>
+                                    </form>
+                                }
+                                else if (operation.Status is OperationStatus.Succeeded or OperationStatus.Cancelled)
+                                {
+                                    <span class="muted" aria-hidden="true">&mdash;</span>
+                                }
+                                else
+                                {
+                                    <span class="admact-priority admact-priority-@OperationPriorities.Name(operation.Priority)">@PriorityLabel(operation.Priority)</span>
                                 }
                             </td>
                             <td class="admact-cell-actions">

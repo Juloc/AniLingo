@@ -17,6 +17,17 @@ public enum OperationLane
     Maintenance = 3
 }
 
+/// <summary>
+/// How soon queued work should run. The worker of a queue takes the highest priority first and the
+/// oldest first among equals; work that is already running is never interrupted by it.
+/// </summary>
+public enum OperationPriority
+{
+    Low = 1,
+    Normal = 2,
+    High = 3
+}
+
 public enum OperationLogLevel
 {
     Information = 1,
@@ -37,7 +48,8 @@ public sealed record OperationDescriptor(
     string? ExternalProvider = null,
     string? ExternalId = null,
     string? Details = null,
-    string? ActorProfileId = null)
+    string? ActorProfileId = null,
+    OperationPriority Priority = OperationPriority.Normal)
 {
     public static OperationDescriptor Background(string title = "Background task") =>
         new("background", "Task", title, Retryable: true);
@@ -77,7 +89,8 @@ public sealed record OperationSnapshot(
     DateTime? FinishedAtUtc,
     DateTime UpdatedAtUtc,
     string? Details = null,
-    string? ActorProfileId = null)
+    string? ActorProfileId = null,
+    OperationPriority Priority = OperationPriority.Normal)
 {
     public bool IsActive =>
         Status is OperationStatus.Queued or OperationStatus.Running;
@@ -157,9 +170,50 @@ public sealed record OperationActivityFilter(
     IReadOnlyCollection<OperationKindKey>? Kinds = null,
     string? Search = null,
     int Offset = 0,
-    int Limit = 20);
+    int Limit = 20,
+    OperationPriority? Priority = null);
 
 public sealed record OperationActivityPage(IReadOnlyList<OperationSnapshot> Items, int Total);
 
-/// <summary>How many operations one <see cref="OperationKindKey"/> has in one status.</summary>
-public sealed record OperationActivityCount(OperationKindKey Key, OperationStatus Status, int Count);
+/// <summary>How many operations one <see cref="OperationKindKey"/> has in one status and at one priority.</summary>
+public sealed record OperationActivityCount(
+    OperationKindKey Key,
+    OperationStatus Status,
+    int Count,
+    OperationPriority Priority = OperationPriority.Normal);
+
+/// <summary>Names, address values and the run order of <see cref="OperationPriority"/>.</summary>
+public static class OperationPriorities
+{
+    public static string Name(OperationPriority priority) => priority.ToString().ToLowerInvariant();
+
+    /// <summary>Reads a priority from the address or a form; an unknown value means none.</summary>
+    public static OperationPriority? TryParse(string? value)
+    {
+        foreach (var priority in Enum.GetValues<OperationPriority>())
+        {
+            if (string.Equals(Name(priority), value?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return priority;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The index of the work to run next: the highest priority, the earliest among equals; -1 when nothing waits.</summary>
+    public static int PickNext(IReadOnlyList<OperationPriority> waiting)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        var best = -1;
+        for (var index = 0; index < waiting.Count; index++)
+        {
+            if (best < 0 || waiting[index] > waiting[best])
+            {
+                best = index;
+            }
+        }
+
+        return best;
+    }
+}

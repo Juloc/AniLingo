@@ -21,7 +21,7 @@ namespace Jularr.Tests;
 public sealed class AdminActivityPageRenderTests
 {
     [TestMethod]
-    public async Task TheToDoTabShowsRunningQueuedAndFailedWorkWithTabCountsAndNoPriorityOrPauseControls()
+    public async Task TheToDoTabShowsRunningQueuedAndFailedWorkWithTabCountsAndNoPauseControl()
     {
         await using var host = await ActivityHost.CreateAsync();
         await host.CreateAsync("Frieren import", OperationStatus.Running, "anime-import", progress: 68, message: "Importing episodes");
@@ -51,7 +51,6 @@ public sealed class AdminActivityPageRenderTests
         Assert.AreEqual("3", Regex.Match(html, "To-Do <span class=\"admact-count\">(\\d+)</span>").Groups[1].Value);
         Assert.AreEqual("4", Regex.Match(html, "All <span class=\"admact-count\">(\\d+)</span>").Groups[1].Value);
         var section = html[html.IndexOf("<section class=\"admact\"", StringComparison.Ordinal)..];
-        Assert.IsFalse(section.Contains("Priority", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(section.Contains("Pause", StringComparison.OrdinalIgnoreCase));
         StringAssert.Contains(html, "href=\"/Admin/History\"");
     }
@@ -112,6 +111,77 @@ public sealed class AdminActivityPageRenderTests
         Assert.AreEqual(1, Regex.Matches(html, "handler=Cancel").Count);
         Assert.AreEqual(1, Regex.Matches(html, "handler=Retry").Count);
         Assert.AreEqual(3, Regex.Matches(html, "/Admin/Operation/").Count, "Every job links to its details.");
+    }
+
+    [TestMethod]
+    public async Task PriorityIsShownAndOnlyWaitingWorkOfTheServerCanBeChanged()
+    {
+        await using var host = await ActivityHost.CreateAsync();
+        var waiting = await host.CreateAsync("Waiting job", OperationStatus.Queued, priority: OperationPriority.Low);
+        await host.CreateAsync("Held elsewhere", OperationStatus.Queued, priority: OperationPriority.High);
+        await host.CreateAsync("Running job", OperationStatus.Running);
+        host.Actions.Reprioritizable.Add(waiting);
+
+        var html = await host.GetHtmlAsync("/Admin/Operations");
+
+        Assert.AreEqual(1, Regex.Matches(html, "handler=Priority").Count, "Only the job the worker still holds offers the change.");
+        StringAssert.Contains(html, ">Priority</th>");
+        StringAssert.Contains(html, "admact-priority-high");
+        Assert.IsTrue(Regex.IsMatch(html, "<option value=\"low\" selected[^>]*>Low</option>"), "The form starts at the current priority.");
+        Assert.AreEqual(6, Regex.Matches(html, "<option value=\"(?:low|normal|high)\"").Count, "Three levels in the change form and three in the filter.");
+
+        var high = await host.GetHtmlAsync("/Admin/Operations?priority=high");
+        StringAssert.Contains(high, "Held elsewhere");
+        Assert.IsFalse(high.Contains("Waiting job", StringComparison.Ordinal));
+        Assert.AreEqual("1", Regex.Match(high, "To-Do <span class=\"admact-count\">(\\d+)</span>").Groups[1].Value);
+    }
+
+    [TestMethod]
+    public async Task ChangingThePriorityStoresItAndReturnsToTheFilteredList()
+    {
+        await using var host = await ActivityHost.CreateAsync();
+        var waiting = await host.CreateAsync("Waiting job", OperationStatus.Queued);
+        var refused = await host.CreateAsync("Held elsewhere", OperationStatus.Queued);
+        host.Actions.Reprioritizable.Add(waiting);
+
+        var page = await host.GetAsync("/Admin/Operations");
+        var html = WebUtility.HtmlDecode(await page.Content.ReadAsStringAsync());
+        var token = Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value;
+        var cookie = string.Join("; ", page.Headers.GetValues("Set-Cookie").Select(value => value.Split(';')[0]));
+
+        Dictionary<string, string> Form(Guid id, string priority) => new()
+        {
+            ["id"] = id.ToString("D"),
+            ["priority"] = priority,
+            ["returnUrl"] = "/Admin/Operations?tab=all",
+            ["__RequestVerificationToken"] = token
+        };
+
+        var changed = await host.PostAsync("/Admin/Operations?handler=Priority", cookie, Form(waiting, "high"));
+        Assert.AreEqual(HttpStatusCode.Redirect, changed.StatusCode);
+        Assert.AreEqual("/Admin/Operations?tab=all", changed.Headers.Location?.OriginalString);
+        Assert.AreEqual(OperationPriority.High, (await new OperationStore(host.Db).GetAsync(waiting))!.Priority);
+
+        var declined = await host.PostAsync("/Admin/Operations?handler=Priority", cookie, Form(refused, "high"));
+        Assert.AreEqual(HttpStatusCode.Redirect, declined.StatusCode);
+        Assert.AreEqual(OperationPriority.Normal, (await new OperationStore(host.Db).GetAsync(refused))!.Priority);
+
+        var unknown = await host.PostAsync("/Admin/Operations?handler=Priority", cookie, Form(waiting, "urgent"));
+        Assert.AreEqual(HttpStatusCode.BadRequest, unknown.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task RepackWorkIsAJobTypeOfItsOwn()
+    {
+        await using var host = await ActivityHost.CreateAsync();
+        await host.CreateAsync("Recover swap", OperationStatus.Queued, "media-optimization-recovery");
+        await host.CreateAsync("Remux episode", OperationStatus.Queued, "media-optimization");
+
+        var repack = await host.GetHtmlAsync("/Admin/Operations?type=repack");
+
+        StringAssert.Contains(repack, "Recover swap");
+        StringAssert.Contains(repack, "admact-tag-repack");
+        Assert.IsFalse(repack.Contains("Remux episode", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -198,6 +268,10 @@ public sealed class AdminActivityPageRenderTests
         public bool CanCancel(OperationSnapshot operation) => Cancellable.Contains(operation.Id);
 
         public bool CanRetry(OperationSnapshot operation) => Retryable.Contains(operation.Id);
+
+        public HashSet<Guid> Reprioritizable { get; } = [];
+
+        public bool CanChangePriority(OperationSnapshot operation) => Reprioritizable.Contains(operation.Id);
 
         public bool HasRuntime(OperationSnapshot operation) => Retryable.Contains(operation.Id);
 
@@ -288,10 +362,11 @@ public sealed class AdminActivityPageRenderTests
             string kind = "library-scan",
             string category = "Library",
             int? progress = null,
-            string? message = null)
+            string? message = null,
+            OperationPriority priority = OperationPriority.Normal)
         {
             var store = new OperationStore(Db);
-            var id = await store.CreateAsync(new OperationDescriptor(kind, category, title));
+            var id = await store.CreateAsync(new OperationDescriptor(kind, category, title, Priority: priority));
             switch (status)
             {
                 case OperationStatus.Running:
