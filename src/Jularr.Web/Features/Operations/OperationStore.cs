@@ -359,38 +359,193 @@ public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? event
             conditions.Add("(" + string.Join(" OR ", alternatives) + ")");
         }
 
-        if (!string.IsNullOrWhiteSpace(filter.Search))
+        AddSearch(conditions, parameters, filter.Search, filter.SearchActorIds);
+
+        return ("WHERE " + string.Join(" AND ", conditions), parameters);
+    }
+
+    // Free text over what an operation says about itself (and, in the history, the people who started it).
+    private static void AddSearch(
+        List<string> conditions,
+        List<(string Name, object? Value)> parameters,
+        string? text,
+        IReadOnlyCollection<string>? actorIds)
+    {
+        if (string.IsNullOrWhiteSpace(text))
         {
-            var search = "%" + filter.Search.Trim()
-                .Replace("\\", "\\\\", StringComparison.Ordinal)
-                .Replace("%", "\\%", StringComparison.Ordinal)
-                .Replace("_", "\\_", StringComparison.Ordinal) + "%";
-            parameters.Add(("@search", search));
-            var alternatives = new List<string>
+            return;
+        }
+
+        var search = "%" + text.Trim()
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal) + "%";
+        parameters.Add(("@search", search));
+        var alternatives = new List<string>
+        {
+            "\"Title\" ILIKE @search",
+            "\"Subject\" ILIKE @search",
+            "\"Message\" ILIKE @search",
+            "\"Error\" ILIKE @search",
+            "\"Kind\" ILIKE @search"
+        };
+        if (actorIds is { Count: > 0 })
+        {
+            var names = new List<string>();
+            foreach (var actor in actorIds)
             {
-                "\"Title\" ILIKE @search",
-                "\"Subject\" ILIKE @search",
-                "\"Message\" ILIKE @search",
-                "\"Error\" ILIKE @search",
-                "\"Kind\" ILIKE @search"
-            };
-            if (filter.SearchActorIds is { Count: > 0 } actors)
+                var name = $"@actor{parameters.Count}";
+                names.Add(name);
+                parameters.Add((name, actor));
+            }
+
+            alternatives.Add($"\"ActorProfileId\" IN ({string.Join(", ", names)})");
+        }
+
+        conditions.Add("(" + string.Join(" OR ", alternatives) + ")");
+    }
+
+    /// <summary>
+    /// One page of the work queue (Admin → Activity): operations in the given statuses and kinds that
+    /// match the text, running first, then queued, failed and interrupted, then the rest by recency,
+    /// with how many operations match in total.
+    /// </summary>
+    public async Task<OperationActivityPage> QueryActivityAsync(
+        OperationActivityFilter filter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        if (filter.Kinds is { Count: 0 } || filter.Statuses is { Count: 0 })
+        {
+            return new OperationActivityPage([], 0);
+        }
+
+        var (where, parameters) = ActivityWhere(filter.Statuses, filter.Kinds, filter.Search);
+        var limit = Math.Clamp(filter.Limit, 1, 200);
+        var offset = Math.Max(filter.Offset, 0);
+
+        return await WithConnectionAsync(
+            async connection =>
             {
-                var names = new List<string>();
-                foreach (var actor in actors)
+                int total;
+                await using (var count = connection.CreateCommand())
                 {
-                    var name = $"@actor{parameters.Count}";
-                    names.Add(name);
-                    parameters.Add((name, actor));
+                    count.CommandText = $"""SELECT COUNT(*) FROM "Operations" {where};""";
+                    foreach (var parameter in parameters)
+                    {
+                        Add(count, parameter.Name, parameter.Value);
+                    }
+
+                    total = Convert.ToInt32(
+                        await count.ExecuteScalarAsync(cancellationToken),
+                        CultureInfo.InvariantCulture);
                 }
 
-                alternatives.Add($"\"ActorProfileId\" IN ({string.Join(", ", names)})");
+                var items = new List<OperationSnapshot>();
+                if (total > 0)
+                {
+                    await using var command = connection.CreateCommand();
+                    command.CommandText =
+                        $"""
+                        SELECT "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                               "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                               "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                               "ExternalProvider", "ExternalId",
+                               "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details", "ActorProfileId"
+                        FROM "Operations"
+                        {where}
+                        ORDER BY
+                            CASE "Status" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 4 THEN 2 WHEN 6 THEN 3 ELSE 4 END,
+                            "UpdatedAtUtc" DESC, "Id" DESC
+                        LIMIT {limit} OFFSET {offset};
+                        """;
+                    foreach (var parameter in parameters)
+                    {
+                        Add(command, parameter.Name, parameter.Value);
+                    }
+
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                    {
+                        items.Add(ReadOperation(reader));
+                    }
+                }
+
+                return new OperationActivityPage(items, total);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// How many operations each kind has in each status among those matching the text; the activity page
+    /// turns them into its tab and category counts and works out which page to read.
+    /// </summary>
+    public async Task<IReadOnlyList<OperationActivityCount>> CountActivityAsync(
+        string? search,
+        CancellationToken cancellationToken = default)
+    {
+        var (where, parameters) = ActivityWhere(null, null, search);
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    $"""
+                    SELECT "Kind", "Category", "Status", COUNT(*)
+                    FROM "Operations"
+                    {where}
+                    GROUP BY "Kind", "Category", "Status";
+                    """;
+                foreach (var parameter in parameters)
+                {
+                    Add(command, parameter.Name, parameter.Value);
+                }
+
+                var rows = new List<OperationActivityCount>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    rows.Add(new OperationActivityCount(
+                        new OperationKindKey(reader.GetString(0), reader.GetString(1)),
+                        (OperationStatus)Convert.ToInt32(reader.GetValue(2), CultureInfo.InvariantCulture),
+                        ReadCount(reader, 3)));
+                }
+
+                return (IReadOnlyList<OperationActivityCount>)rows;
+            },
+            cancellationToken);
+    }
+
+    private static (string Where, List<(string Name, object? Value)> Parameters) ActivityWhere(
+        IReadOnlyCollection<OperationStatus>? statuses,
+        IReadOnlyCollection<OperationKindKey>? kinds,
+        string? search)
+    {
+        var conditions = new List<string>();
+        var parameters = new List<(string Name, object? Value)>();
+
+        if (statuses is { Count: > 0 })
+        {
+            conditions.Add($"\"Status\" IN ({string.Join(", ", statuses.Select(status => (int)status))})");
+        }
+
+        if (kinds is { Count: > 0 })
+        {
+            var alternatives = new List<string>();
+            foreach (var key in kinds)
+            {
+                var index = parameters.Count;
+                alternatives.Add($"(\"Kind\" = @kind{index} AND \"Category\" = @category{index})");
+                parameters.Add(($"@kind{index}", key.Kind));
+                parameters.Add(($"@category{index}", key.Category));
             }
 
             conditions.Add("(" + string.Join(" OR ", alternatives) + ")");
         }
 
-        return ("WHERE " + string.Join(" AND ", conditions), parameters);
+        AddSearch(conditions, parameters, search, null);
+        return (conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions), parameters);
     }
 
     public async Task<OperationSummary> GetSummaryAsync(

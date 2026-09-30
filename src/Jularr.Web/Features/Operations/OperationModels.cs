@@ -150,3 +150,16 @@ public sealed record OperationHistoryFilter(
     int Limit = 20);
 
 public sealed record OperationHistoryPage(IReadOnlyList<OperationSnapshot> Items, int Total);
+
+/// <summary>Narrows the work queue (Admin → Activity) to some statuses, kinds and a text; a null list means no limit.</summary>
+public sealed record OperationActivityFilter(
+    IReadOnlyCollection<OperationStatus>? Statuses = null,
+    IReadOnlyCollection<OperationKindKey>? Kinds = null,
+    string? Search = null,
+    int Offset = 0,
+    int Limit = 20);
+
+public sealed record OperationActivityPage(IReadOnlyList<OperationSnapshot> Items, int Total);
+
+/// <summary>How many operations one <see cref="OperationKindKey"/> has in one status.</summary>
+public sealed record OperationActivityCount(OperationKindKey Key, OperationStatus Status, int Count);

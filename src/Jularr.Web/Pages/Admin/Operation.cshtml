@@ -67,7 +67,7 @@
     }
     else
     {
-        <a class="button" asp-page="/Admin/Operations">@ui["admin.operation.backToOperations"]</a>
+        <a class="button" href="@(Model.BackToActivity ?? "/Admin/Operations")">@ui["admin.operation.backToOperations"]</a>
     }
 </header>
 

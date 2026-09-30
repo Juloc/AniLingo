@@ -553,6 +553,7 @@ builder.Services.AddSingleton<AcquisitionHealthStore>();
 builder.Services.AddHostedService<AcquisitionHealthCheckService>();
 
 builder.Services.AddScoped<SabnzbdDownloadService>();
+builder.Services.AddScoped<IOperationActions, OperationActions>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedAcquisitionService>();

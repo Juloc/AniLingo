@@ -15,9 +15,7 @@ namespace Jularr.Web.Pages.Admin;
 [Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class OperationModel(
     AppDbContext db,
-    BackgroundJobQueue backgroundJobs,
-    PlaybackJobQueue playbackJobs,
-    SabnzbdDownloadService sabnzbd,
+    IOperationActions actions,
     SabnzbdAcquisitionStore acquisitions) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -34,17 +32,15 @@ public sealed class OperationModel(
     public bool IsSabnzbdJob =>
         SabnzbdDownloadService.IsSabnzbdOperation(Operation);
 
-    public bool CanCancel =>
-        Operation.CanCancel || (IsSabnzbdJob && Operation.IsActive);
+    public bool CanCancel => actions.CanCancel(Operation);
 
-    public bool RuntimeAvailable =>
-        IsSabnzbdJob
-        || (Operation.Lane == OperationLane.Interactive
-            ? playbackJobs.HasRuntimeWork(Operation.Id)
-            : backgroundJobs.HasRuntimeWork(Operation.Id));
+    public bool RuntimeAvailable => actions.HasRuntime(Operation);
 
     /// <summary>The history the visitor came from (with its filters and page), when they came from it.</summary>
     public string? BackToHistory { get; private set; }
+
+    /// <summary>The activity list the visitor came from (with its tab and filters), when they came from it.</summary>
+    public string? BackToActivity { get; private set; }
 
     /// <summary>The name of the account that started the operation; null when the server did.</summary>
     public string? ActorName { get; private set; }
@@ -55,12 +51,13 @@ public sealed class OperationModel(
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        if (!string.IsNullOrEmpty(returnUrl)
-            && Url.IsLocalUrl(returnUrl)
-            && (returnUrl == HistoryModel.PagePath
-                || returnUrl.StartsWith(HistoryModel.PagePath + "?", StringComparison.Ordinal)))
+        if (IsPageAddress(returnUrl, HistoryModel.PagePath))
         {
             BackToHistory = returnUrl;
+        }
+        else if (IsPageAddress(returnUrl, OperationsModel.PagePath))
+        {
+            BackToActivity = returnUrl;
         }
 
         return await LoadAsync(id, cancellationToken)
@@ -80,20 +77,11 @@ public sealed class OperationModel(
             return NotFound();
         }
 
-        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
-        {
-            TempData["Status"] = (await RunSabnzbdActionAsync(
-                () => sabnzbd.CancelAsync(id, cancellationToken))).Message;
-            return RedirectToPage(new { id });
-        }
-
-        var cancelled = operation.Lane == OperationLane.Interactive
-            ? await playbackJobs.CancelAsync(id, cancellationToken)
-            : await backgroundJobs.CancelAsync(id, cancellationToken);
-
-        TempData["Status"] = cancelled
-            ? Ui["admin.operation.cancelRequested"]
-            : Ui["admin.operation.cancelUnavailable"];
+        var outcome = await actions.CancelAsync(operation, cancellationToken);
+        TempData["Status"] = outcome.Message
+            ?? (outcome.Succeeded
+                ? Ui["admin.operation.cancelRequested"]
+                : Ui["admin.operation.cancelUnavailable"]);
         return RedirectToPage(new { id });
     }
 
@@ -109,35 +97,19 @@ public sealed class OperationModel(
             return NotFound();
         }
 
-        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
-        {
-            TempData["Status"] = (await RunSabnzbdActionAsync(
-                () => sabnzbd.RetryAsync(id, cancellationToken))).Message;
-            return RedirectToPage(new { id });
-        }
-
-        var retried = operation.Lane == OperationLane.Interactive
-            ? await playbackJobs.RetryAsync(id, cancellationToken)
-            : await backgroundJobs.RetryAsync(id, cancellationToken);
-
-        TempData["Status"] = retried
-            ? Ui["admin.operation.retryQueued"]
-            : Ui["admin.operation.retryUnavailable"];
+        var outcome = await actions.RetryAsync(operation, cancellationToken);
+        TempData["Status"] = outcome.Message
+            ?? (outcome.Succeeded
+                ? Ui["admin.operation.retryQueued"]
+                : Ui["admin.operation.retryUnavailable"]);
         return RedirectToPage(new { id });
     }
 
-    private static async Task<SabnzbdActionOutcome> RunSabnzbdActionAsync(
-        Func<Task<SabnzbdActionOutcome>> action)
-    {
-        try
-        {
-            return await action();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return new SabnzbdActionOutcome(false, exception.Message);
-        }
-    }
+    /// <summary>Whether the address is the given admin page, with or without its filters (and stays on this server).</summary>
+    private bool IsPageAddress(string? address, string path) =>
+        !string.IsNullOrEmpty(address)
+        && Url.IsLocalUrl(address)
+        && (address == path || address.StartsWith(path + "?", StringComparison.Ordinal));
 
     private async Task<bool> LoadAsync(
         Guid id,

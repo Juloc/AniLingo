@@ -1,5 +1,5 @@
 @model string
-@* Small decorative glyph of a history category, result or actor; the name always sits next to it. *@
+@* Small decorative glyph of a history or activity category, result, status or actor; the name always sits next to it. *@
 <svg class="admhist-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"
      fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     @switch (Model)
@@ -45,6 +45,13 @@
         case "cancelled":
             <circle cx="8" cy="8" r="5.75" />
             <path d="m4 12 8-8" />
+            break;
+        case "queued":
+            <circle cx="8" cy="8" r="5.75" />
+            <path d="M8 4.75V8l2.25 1.5" />
+            break;
+        case "running":
+            <path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.75v2.75h-2.75" />
             break;
         case "user":
             <circle cx="8" cy="5.5" r="2.5" />
