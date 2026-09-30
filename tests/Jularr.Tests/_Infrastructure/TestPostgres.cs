@@ -212,10 +212,15 @@ public static class TestPostgres
         return names;
     }
 
-    private static void DropRunDatabases()
+    internal static void DropRunDatabases()
     {
         try
         {
+            if (!_initialized)
+            {
+                return;
+            }
+
             NpgsqlConnection.ClearAllPools();
             var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
                 .ConnectionString;
