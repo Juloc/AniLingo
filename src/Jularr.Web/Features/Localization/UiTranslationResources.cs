@@ -1175,7 +1175,9 @@ public static class UiTranslationResources
         M("settings.prefetch.episodesAhead", "Episodes per series", "Settings", "Label", "How many episodes per series are kept ready.", "clear field label", 30),
         M("settings.prefetch.chapters", "Next unread chapters", "Settings", "Checkbox", "Include the next unread chapters of books and novels in progress.", "clear checkbox label", 40),
         M("settings.prefetch.chaptersAhead", "Chapters per book", "Settings", "Label", "How many chapters per book or novel are kept ready.", "clear field label", 30),
-        M("settings.prefetch.allowMetered", "Also prefetch on metered connections such as mobile data", "Settings", "Checkbox", "Allow smart prefetch to download over metered connections (off by default).", "clear checkbox label", 70),
+        M("settings.prefetch.saved", "Prefetch settings saved.", "Settings", "Status", "Confirmation after saving the smart prefetch settings.", "compact confirmation", 30),
+        M("settings.prefetch.saveFailed", "The prefetch settings were not saved. Check the storage limit, the number of items per series or book, and that at least one kind of content is selected.", "Settings", "Error", "Shown when the smart prefetch settings fail validation and were not saved.", "clear administrative error", 170),
+        M("settings.prefetch.allowMetered","Also prefetch on metered connections such as mobile data", "Settings", "Checkbox", "Allow smart prefetch to download over metered connections (off by default).", "clear checkbox label", 70),
 
         // JS-rendered offline library strings (#221 part 2): read at runtime from a JSON catalog
         // script element (offline-library-ui.js, mirroring pwa.js's shellText), not through Razor's

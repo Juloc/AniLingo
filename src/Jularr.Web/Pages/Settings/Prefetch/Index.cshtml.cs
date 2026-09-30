@@ -16,7 +16,8 @@ namespace Jularr.Web.Pages.Settings.Prefetch;
 public sealed class IndexModel(
     AppDbContext db,
     OfflinePrefetchPolicyStore store,
-    CurrentAccountContext currentAccount) : PageModel
+    CurrentAccountContext currentAccount,
+    ILogger<IndexModel> logger) : PageModel
 {
     private const long MiB = 1024L * 1024L;
     private const long GiB = 1024L * MiB;
@@ -48,18 +49,20 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await store.SaveAsync(currentAccount.ProfileId, Input.ToPolicy(), cancellationToken);
         }
         catch (InvalidOperationException exception)
         {
-            Error = exception.Message;
-            Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            // Logged server-side; the page shows a localized message, never the raw exception text (#523).
+            logger.LogWarning(exception, "Prefetch policy save was rejected.");
+            Error = Ui["settings.prefetch.saveFailed"];
             return Page();
         }
 
-        TempData["Status"] = "Prefetch settings saved.";
+        TempData["Status"] = Ui["settings.prefetch.saved"];
         return RedirectToPage();
     }
 
