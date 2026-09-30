@@ -186,6 +186,37 @@ public sealed class SubtitleManualSearchServiceTests
         Assert.AreEqual(0, await fixture.Db.SubtitleTracks.CountAsync());
     }
 
+    // #612: the manual import upserts by Path like every other source, so re-importing a provider
+    // result (or importing it for another episode) reuses the single row that owns the Path instead
+    // of inserting a second one (IX_SubtitleTracks_Path, 23505).
+    [TestMethod]
+    public async Task ImportingTheSameProviderResultTwiceOrForAnotherEpisodeNeverDuplicatesThePath()
+    {
+        await using var fixture = await SubtitleProfileFixture.CreateAsync();
+        var (_, first, _, _) = await fixture.AddEpisodeAsync(episodeNumber: 1);
+        var (_, second, _, _) = await fixture.AddEpisodeAsync(episodeNumber: 2);
+        var service = CreateImportService(fixture);
+        var stamp = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        const string srt = """
+            1
+            00:00:01,000 --> 00:00:02,000
+            Hello world
+            """;
+
+        var firstId = await service.ImportManualSearchResultAsync(
+            first.Id, "good", "token-1", "en", false, false, "srt", stamp, srt, CancellationToken.None);
+        var againId = await service.ImportManualSearchResultAsync(
+            first.Id, "good", "token-1", "en", false, false, "srt", stamp.AddMinutes(1), srt, CancellationToken.None);
+        var movedId = await service.ImportManualSearchResultAsync(
+            second.Id, "good", "token-1", "en", false, false, "srt", stamp.AddMinutes(2), srt, CancellationToken.None);
+
+        Assert.AreEqual(firstId, againId);
+        Assert.AreEqual(firstId, movedId);
+        var track = await fixture.Db.SubtitleTracks.AsNoTracking().SingleAsync();
+        Assert.AreEqual(second.Id, track.EpisodeId);
+        Assert.AreEqual(1, await fixture.Db.SubtitleCues.CountAsync(x => x.SubtitleTrackId == track.Id));
+    }
+
     private sealed class FakeSource(ISubtitleProvider? provider) : ISubtitleProviderSource
     {
         public Task<ISubtitleProvider?> GetProviderAsync(CancellationToken cancellationToken) =>
