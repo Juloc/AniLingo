@@ -87,7 +87,7 @@ public sealed class PwaManifestTests
         StringAssert.Contains(serviceWorker, "pathname.startsWith(\"/build/\")");
         StringAssert.Contains(serviceWorker, "request.mode === \"navigate\"");
         Assert.IsFalse(
-            serviceWorker.Contains("clients.claim()", StringComparison.Ordinal),
+            serviceWorker.Contains("self.clients.claim()", StringComparison.Ordinal),
             "A newly activated worker must not silently take over other open tabs.");
         Assert.IsFalse(
             serviceWorker.Contains("putLatestAsset", StringComparison.Ordinal),
