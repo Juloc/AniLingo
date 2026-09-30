@@ -15,11 +15,16 @@ namespace Jularr.Tests.Infrastructure;
 /// by truncating it (no DROP, so no eviction stalls). MSTest runs serially, so a single lock guards
 /// the pool. The base server comes from <c>JULARR_TEST_DB</c> (a throwaway ephemeral
 /// <c>postgres:18</c> is the intended target); never point this at production data.
+///
+/// Isolation contract: every test process gets its own run id and therefore its own template
+/// (<c>jt_{unix}_{rand}_tpl</c>) and databases (<c>jt_{unix}_{rand}_{n}</c>), so several
+/// <c>dotnet test</c> runs can share one server concurrently. A run drops only its own databases at
+/// process exit; leftovers of crashed runs are reclaimed by a later run once older than 12 hours.
 /// </summary>
 public static class TestPostgres
 {
-    private const string TemplateDatabase = "jularr_test_tpl";
     private const int MaxLiveDatabases = 24;
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromHours(12);
 
     private static readonly object Gate = new();
     private static readonly Dictionary<string, string> KeyToDatabase = new(StringComparer.Ordinal);
@@ -29,8 +34,13 @@ public static class TestPostgres
     private static string[] _dataTables = [];
     private static int _counter;
 
-    // Per-process prefix so database names never collide with leftovers from a previous run.
-    private static readonly string DatabasePrefix = "jt_" + Guid.NewGuid().ToString("N")[..8] + "_";
+    // Per-run prefix "jt_<unix seconds>_<random>_": unique per test process, so concurrent runs against
+    // the same server never share (or drop) each other's template or databases, and the embedded
+    // timestamp lets a later run recognise leftovers of crashed runs.
+    private static readonly string RunId =
+        DateTimeOffset.UtcNow.ToUnixTimeSeconds() + "_" + Guid.NewGuid().ToString("N")[..8];
+    private static readonly string DatabasePrefix = "jt_" + RunId + "_";
+    private static readonly string TemplateDatabase = DatabasePrefix + "tpl";
 
     private static string BaseConnectionString =>
         Environment.GetEnvironmentVariable("JULARR_TEST_DB")
@@ -124,14 +134,16 @@ public static class TestPostgres
         using (var admin = new NpgsqlConnection(maintenance))
         {
             admin.Open();
+            // Only reclaim databases of long-dead runs; never touch another live run's databases.
             foreach (var stale in StaleDatabases(admin))
             {
                 TryExecute(admin, $"DROP DATABASE IF EXISTS \"{stale}\" WITH (FORCE);");
             }
 
-            TryExecute(admin, $"DROP DATABASE IF EXISTS \"{TemplateDatabase}\" WITH (FORCE);");
             Execute(admin, $"CREATE DATABASE \"{TemplateDatabase}\";");
         }
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DropRunDatabases();
 
         var templateConnection = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = TemplateDatabase }
             .ConnectionString;
@@ -184,14 +196,44 @@ public static class TestPostgres
     {
         using var command = admin.CreateCommand();
         command.CommandText = "SELECT datname FROM pg_database WHERE datname LIKE 'jt\\_%';";
+        var cutoff = DateTimeOffset.UtcNow.Subtract(StaleAfter).ToUnixTimeSeconds();
         var names = new List<string>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            names.Add(reader.GetString(0));
+            var name = reader.GetString(0);
+            var parts = name.Split('_');
+            if (parts.Length > 2 && long.TryParse(parts[1], out var created) && created < cutoff)
+            {
+                names.Add(name);
+            }
         }
 
         return names;
+    }
+
+    internal static void DropRunDatabases()
+    {
+        try
+        {
+            if (!_initialized)
+            {
+                return;
+            }
+
+            NpgsqlConnection.ClearAllPools();
+            var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
+                .ConnectionString;
+            using var admin = new NpgsqlConnection(maintenance);
+            admin.Open();
+            foreach (var database in KeyToDatabase.Values.Append(TemplateDatabase).ToArray())
+            {
+                TryExecute(admin, $"DROP DATABASE IF EXISTS \"{database}\" WITH (FORCE);");
+            }
+        }
+        catch (Exception exception) when (exception is NpgsqlException or TimeoutException or InvalidOperationException)
+        {
+        }
     }
 
     private static void Execute(NpgsqlConnection connection, string sql)
