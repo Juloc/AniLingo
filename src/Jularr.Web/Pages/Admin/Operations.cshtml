@@ -35,7 +35,7 @@
     <a class="@(Model.View == "active" ? "active" : "")" asp-route-view="active">@ui["admin.operations.view.active"]</a>
     <a class="@(Model.View == "queue" ? "active" : "")" asp-route-view="queue">@ui["admin.operations.view.queue"]</a>
     <a class="@(Model.View == "downloads" ? "active" : "")" asp-route-view="downloads">@ui["admin.operations.view.downloads"]</a>
-    <a class="@(Model.View == "history" ? "active" : "")" asp-route-view="history">@ui["admin.operations.view.history"]</a>
+    <a asp-page="/Admin/History">@ui["admin.operations.view.history"]</a>
     <a class="@(Model.View == "all" ? "active" : "")" asp-route-view="all">@ui["admin.operations.view.all"]</a>
 </nav>
 

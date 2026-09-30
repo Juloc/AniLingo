@@ -8,6 +8,7 @@ using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Pages.Admin;
 
@@ -42,11 +43,25 @@ public sealed class OperationModel(
             ? playbackJobs.HasRuntimeWork(Operation.Id)
             : backgroundJobs.HasRuntimeWork(Operation.Id));
 
+    /// <summary>The history the visitor came from (with its filters and page), when they came from it.</summary>
+    public string? BackToHistory { get; private set; }
+
+    /// <summary>The name of the account that started the operation; null when the server did.</summary>
+    public string? ActorName { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         Guid id,
+        string? returnUrl,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!string.IsNullOrEmpty(returnUrl)
+            && Url.IsLocalUrl(returnUrl)
+            && (returnUrl == HistoryModel.PagePath
+                || returnUrl.StartsWith(HistoryModel.PagePath + "?", StringComparison.Ordinal)))
+        {
+            BackToHistory = returnUrl;
+        }
 
         return await LoadAsync(id, cancellationToken)
             ? Page()
@@ -136,6 +151,16 @@ public sealed class OperationModel(
         }
 
         Operation = operation;
+        if (!string.IsNullOrEmpty(operation.ActorProfileId))
+        {
+            ActorName = await db.OwnerAccounts
+                .AsNoTracking()
+                .Where(account => account.Id == operation.ActorProfileId)
+                .Select(account => account.UserName)
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? Ui["admin.history.actor.unknown"];
+        }
+
         DownloadDetails = DownloadOperationDetails.TryParse(operation.Details, out var details) ? details : null;
         Logs = await store.ListLogsAsync(
             new OperationLogFilter(OperationId: id, Limit: 300),

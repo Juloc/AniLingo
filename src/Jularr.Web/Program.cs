@@ -690,6 +690,13 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
+// Operations created while a signed-in account's request runs record that account as their actor
+// (Admin → History); work started by the server itself has none.
+app.Use(async (context, next) =>
+{
+    using var actor = OperationActor.Enter(context.User.FindFirstValue(ClaimTypes.NameIdentifier));
+    await next();
+});
 app.UseAuthorization();
 app.MapClientApiV1();
 app.MapClientApiPlaybackPlanV1();

@@ -36,7 +36,8 @@ public sealed record OperationDescriptor(
     long? BytesTotal = null,
     string? ExternalProvider = null,
     string? ExternalId = null,
-    string? Details = null)
+    string? Details = null,
+    string? ActorProfileId = null)
 {
     public static OperationDescriptor Background(string title = "Background task") =>
         new("background", "Task", title, Retryable: true);
@@ -75,7 +76,8 @@ public sealed record OperationSnapshot(
     DateTime? StartedAtUtc,
     DateTime? FinishedAtUtc,
     DateTime UpdatedAtUtc,
-    string? Details = null)
+    string? Details = null,
+    string? ActorProfileId = null)
 {
     public bool IsActive =>
         Status is OperationStatus.Queued or OperationStatus.Running;
@@ -125,3 +127,26 @@ public sealed record OperationLogFilter(
     string? Module = null,
     string? Search = null,
     int Limit = 200);
+
+/// <summary>The kind and category an operation was created with; together they decide its history category.</summary>
+public sealed record OperationKindKey(string Kind, string Category);
+
+/// <summary>How many finished operations one <see cref="OperationKindKey"/> has under a history filter.</summary>
+public sealed record OperationKindCount(OperationKindKey Key, int Count);
+
+/// <summary>
+/// Narrows the finished operations (Admin → History). <see cref="FromUtc"/> is inclusive and
+/// <see cref="ToUtc"/> exclusive, both against the time the operation finished.
+/// </summary>
+public sealed record OperationHistoryFilter(
+    DateTime? FromUtc = null,
+    DateTime? ToUtc = null,
+    IReadOnlyCollection<OperationKindKey>? Kinds = null,
+    IReadOnlyCollection<OperationStatus>? Statuses = null,
+    string? Search = null,
+    IReadOnlyCollection<string>? SearchActorIds = null,
+    bool NewestFirst = true,
+    int Offset = 0,
+    int Limit = 20);
+
+public sealed record OperationHistoryPage(IReadOnlyList<OperationSnapshot> Items, int Total);
