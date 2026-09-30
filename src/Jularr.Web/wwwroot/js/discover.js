@@ -1,513 +1,338 @@
 (() => {
+    "use strict";
+
     const root = document.querySelector("[data-discover]");
     if (!root) return;
 
-    const searchInput = root.querySelector("[data-discover-search]");
-    const shelves = root.querySelector("[data-discover-shelves]");
-    const gridWrap = root.querySelector("[data-discover-grid]");
-    const results = root.querySelector("[data-discover-results]");
-    const empty = root.querySelector("[data-discover-empty]");
-    const title = root.querySelector("[data-discover-title]");
-    const count = root.querySelector("[data-discover-count]");
-    const warning = root.querySelector("[data-discover-warning]");
-    const modeButtons = [...root.querySelectorAll("[data-discover-mode]")];
-    const categoryButtons = [...root.querySelectorAll("[data-discover-category]")];
-    const genreChip = root.querySelector("[data-discover-genre-chip]");
-    const genreLabel = root.querySelector("[data-discover-genre-label]");
-    const genreClear = root.querySelector("[data-discover-genre-clear]");
-    const importDetails = root.querySelector("[data-discover-import]");
-    const importTitle = root.querySelector("[data-import-title]");
-    const importProvider = root.querySelector("[data-import-provider]");
-    const importExternalId = root.querySelector("[data-import-external-id]");
-    const importUrl = root.querySelector("[data-import-url]");
-    const importClear = root.querySelector("[data-import-clear]");
+    const form = root.querySelector("[data-dc-form]");
+    const searchInput = root.querySelector("[data-dc-search]");
+    const body = root.querySelector("[data-dc-body]");
+    const errorBox = root.querySelector("[data-dc-error]");
+    const offlineNotice = root.querySelector("[data-dc-offline]");
+    const hover = root.querySelector("[data-dc-hover]");
+    const sheet = root.querySelector("[data-dc-sheet]");
+    const sheetContent = root.querySelector("[data-dc-sheet-content]");
+    const importDetails = root.querySelector("[data-dc-import]");
     const token = root.querySelector("input[name='__RequestVerificationToken']")?.value || "";
-    // "add", "request" or "" per AniList category, from the owner's access rules.
-    const addActions = {
-        "anime": root.dataset.addAnime || "",
-        "manga": root.dataset.addManga || "",
-        "light-novel": root.dataset.addLightNovel || ""
-    };
+    const text = name => root.dataset[name] || "";
     const statusText = status =>
         root.dataset[`status${status.charAt(0).toUpperCase()}${status.slice(1)}`] || status;
 
+    const touchFirst = window.matchMedia("(hover: none), (pointer: coarse)");
+    const HOVER_DELAY = 450;
+    const HOVER_LEAVE_DELAY = 180;
+    const SEARCH_DELAY = 250;
+
     let abortController = null;
-    let debounceTimer = null;
     let requestVersion = 0;
-    let browseMode = "trending";
-    let shelvesLoaded = false;
-    let state = readState();
+    let debounceTimer = null;
+    let hoverTimer = null;
+    let leaveTimer = null;
+    let hoverCard = null;
+    let loadFailed = false;
+    // Changes the visitor made in a preview (follow, request), applied again when a card's preview reopens.
+    const overrides = new Map();
 
-    // The default landing shows the provider-driven shelf board (#595); any query, non-default browse
-    // mode, category or genre is a drill-down that switches to the single browse/search grid instead.
-    function landing() {
-        return !!shelves &&
-            !state.query.trim() &&
-            state.mode === "trending" &&
-            state.category === "all" &&
-            !state.genre;
-    }
+    // ---- Address: the only state --------------------------------------------------------------
 
-    function showShelves() {
-        if (!shelves) {
-            showGrid();
-            return;
-        }
-        shelves.hidden = false;
-        if (gridWrap) gridWrap.hidden = true;
-    }
-
-    function showGrid() {
-        if (gridWrap) gridWrap.hidden = false;
-        if (shelves) shelves.hidden = true;
-    }
-
-    async function loadShelves() {
-        if (!shelves || shelvesLoaded) return;
-        shelvesLoaded = true;
-        shelves.setAttribute("aria-busy", "true");
-        try {
-            const response = await fetch(
-                `${window.location.pathname}?handler=Shelves`,
-                { cache: "no-store", headers: { "X-Requested-With": "fetch" } });
-            if (response.ok) {
-                // Same-origin server-rendered partial (escaped Razor); injected as the shelf board.
-                shelves.innerHTML = await response.text();
-            }
-        } catch {
-            shelvesLoaded = false;
-        } finally {
-            shelves.setAttribute("aria-busy", "false");
-        }
-    }
-
-    // Shows the shelf landing or the browse/search grid depending on the current state, keeping the URL
-    // in sync. Interaction handlers call this after mutating state.
-    function route(push) {
-        syncControls();
-        if (landing()) {
-            updateUrl(push);
-            showShelves();
-            loadShelves();
-        } else {
-            showGrid();
-            load(push);
-        }
-    }
-
-    function readState() {
-        const params = new URLSearchParams(window.location.search);
-        const query = (params.get("q") || "").trim();
-        const category = normalizeCategory(params.get("category"));
-        const requestedMode = normalizeMode(params.get("mode"));
-        const genre = (params.get("genre") || "").trim();
-        if (requestedMode !== "search") browseMode = requestedMode;
-
-        return {
-            query,
-            category,
-            mode: query ? "search" : requestedMode,
-            genre
-        };
-    }
-
-    function normalizeCategory(value) {
-        return ["all", "anime", "light-novel", "manga", "book"].includes(value)
-            ? value
-            : "all";
-    }
-
-    function normalizeMode(value) {
-        return ["trending", "top", "new", "my-list", "search"].includes(value)
-            ? value
-            : "trending";
-    }
-
-    function categoryLabel(value) {
-        return {
-            "all": "All",
-            "anime": "Anime",
-            "light-novel": "Light novel",
-            "manga": "Manga",
-            "book": "Book"
-        }[value] || "All";
-    }
-
-    function modeLabel(value) {
-        return {
-            "trending": "Trending",
-            "top": "Top",
-            "new": "New",
-            "my-list": "My AniList",
-            "search": "Search"
-        }[value] || "Trending";
-    }
-
-    function syncControls(syncSearchValue = true) {
-        if (syncSearchValue) searchInput.value = state.query;
-
-        const effectiveMode = state.mode === "search" ? browseMode : state.mode;
-
-        // "New" only has a real source (Open Library recent-subject data) for Books; other
-        // categories would silently alias it to Top, so the tab only appears there.
-        modeButtons.forEach(button => {
-            if (button.hasAttribute("data-discover-mode-books-only")) {
-                button.hidden = state.category !== "book";
-            }
-        });
-
-        if (effectiveMode === "new" && state.category !== "book") {
-            browseMode = "trending";
-            if (state.mode !== "search") state.mode = "trending";
-        }
-
-        modeButtons.forEach(button => {
-            const active = button.dataset.discoverMode ===
-                (state.mode === "search" ? browseMode : state.mode);
-            button.classList.toggle("active", active);
-            button.setAttribute("aria-selected", active ? "true" : "false");
-        });
-
-        categoryButtons.forEach(button => {
-            const active = button.dataset.discoverCategory === state.category;
-            button.classList.toggle("active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
-
-        if (genreChip) {
-            genreChip.hidden = !state.genre;
-            if (state.genre) genreLabel.textContent = state.genre;
-        }
-    }
-
-    function updateUrl(push) {
+    // The canonical address of the form: defaults and empty fields are left out, so a bookmark stays short.
+    function currentParams() {
+        const data = new FormData(form);
         const params = new URLSearchParams();
-        if (state.query.trim()) params.set("q", state.query.trim());
-        if (state.category !== "all") params.set("category", state.category);
-        const urlMode = state.mode === "search" ? browseMode : state.mode;
-        if (urlMode !== "trending") params.set("mode", urlMode);
-        if (state.genre) params.set("genre", state.genre);
+        const value = name => String(data.get(name) || "").trim();
+        if (value("q")) params.set("q", value("q"));
+        if (value("category") && value("category") !== "all") params.set("category", value("category"));
+        if (value("mode") && value("mode") !== "trending") params.set("mode", value("mode"));
+        ["genre", "year", "status", "avail"].forEach(name => {
+            if (value(name)) params.set(name, value(name));
+        });
+        if (value("pref") === "1") params.set("pref", "1");
+        return params;
+    }
 
+    function addressOf(params) {
         const query = params.toString();
-        const url = query
-            ? `${window.location.pathname}?${query}`
-            : window.location.pathname;
+        return query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    }
 
-        window.history[push ? "pushState" : "replaceState"]({}, "", url);
+    // Keeps the media-type links on the text that is being typed, since the links were built for the address
+    // the page was opened with.
+    function syncTabs() {
+        const q = searchInput.value.trim();
+        root.querySelectorAll("[data-dc-tab]").forEach(link => {
+            const url = new URL(link.getAttribute("href"), window.location.origin);
+            if (q) url.searchParams.set("q", q); else url.searchParams.delete("q");
+            link.setAttribute("href", url.pathname + url.search);
+        });
+        const browseGroup = root.querySelector("[data-dc-browse-group]");
+        if (browseGroup) browseGroup.hidden = q.length > 0;
+    }
+
+    // ---- Body: rows or results, fetched after first paint --------------------------------------
+
+    async function loadBody() {
+        clearTimeout(debounceTimer);
+        abortController?.abort();
+        abortController = new AbortController();
+        const version = ++requestVersion;
+        const params = new URLSearchParams(window.location.search);
+        params.set("handler", "Body");
+
+        body.setAttribute("aria-busy", "true");
+        errorBox.hidden = true;
+        try {
+            const response = await fetch(`${window.location.pathname}?${params}`, {
+                signal: abortController.signal,
+                cache: "no-store",
+                headers: { "X-Requested-With": "fetch" }
+            });
+            if (version !== requestVersion) return;
+
+            const html = await response.text();
+            // A failed body still renders its own unavailable state; anything else is a plain failure.
+            if (!response.ok && !html.includes("data-dc-state")) {
+                throw new Error(String(response.status));
+            }
+
+            hideHover();
+            // Same-origin, server-rendered and HTML-encoded by Razor; injected as the page body.
+            body.innerHTML = html;
+            loadFailed = false;
+        } catch (error) {
+            if (error?.name === "AbortError" || version !== requestVersion) return;
+            loadFailed = true;
+            body.replaceChildren();
+            errorBox.hidden = false;
+        } finally {
+            if (version === requestVersion) body.setAttribute("aria-busy", "false");
+        }
     }
 
     function scheduleSearch() {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => load(false), 250);
+        debounceTimer = setTimeout(() => {
+            window.history.replaceState({}, "", addressOf(currentParams()));
+            syncTabs();
+            loadBody();
+        }, SEARCH_DELAY);
     }
 
-    async function load(pushHistory, fromPopState = false) {
-        clearTimeout(debounceTimer);
+    searchInput.addEventListener("input", () => {
+        syncTabs();
+        scheduleSearch();
+    });
 
-        if (!fromPopState) updateUrl(pushHistory);
+    form.addEventListener("submit", event => {
+        event.preventDefault();
+        window.location.assign(addressOf(currentParams()));
+    });
 
-        abortController?.abort();
-        abortController = new AbortController();
-        const version = ++requestVersion;
-        const sources = providerSources();
+    root.addEventListener("click", event => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) return;
 
-        results.setAttribute("aria-busy", "true");
-        count.textContent = state.query.trim() ? "Searching…" : "Loading…";
-        warning.hidden = true;
-
-        const payloads = [];
-        const failures = [];
-
-        const tasks = sources.map(async source => {
-            try {
-                const payload = await loadSource(source, abortController.signal);
-                if (version !== requestVersion) return;
-
-                payloads.push(payload);
-                renderCombined(
-                    payloads,
-                    failures,
-                    Math.max(0, sources.length - payloads.length - failures.length));
-            } catch (error) {
-                if (error?.name === "AbortError" || version !== requestVersion) {
-                    return;
-                }
-
-                failures.push(error?.message || "A discovery provider is unavailable.");
-                renderCombined(
-                    payloads,
-                    failures,
-                    Math.max(0, sources.length - payloads.length - failures.length));
-            }
-        });
-
-        await Promise.allSettled(tasks);
-
-        if (version === requestVersion) {
-            results.setAttribute("aria-busy", "false");
-            renderCombined(payloads, failures, 0);
-        }
-    }
-
-    function providerSources() {
-        if (state.mode === "my-list") return ["anilist"];
-        if (state.category === "book") return ["books"];
-        if (state.category !== "all") return ["anilist"];
-        return ["anilist", "books"];
-    }
-
-    async function loadSource(source, signal) {
-        const params = new URLSearchParams({
-            handler: "Results",
-            category: state.category,
-            mode: state.mode,
-            source
-        });
-        if (state.query.trim()) params.set("q", state.query.trim());
-        if (state.genre) params.set("genre", state.genre);
-
-        const response = await fetch(
-            `${window.location.pathname}?${params}`,
-            {
-                signal,
-                cache: "no-store",
-                headers: { "X-Requested-With": "fetch" }
-            });
-
-        if (!response.ok) {
-            throw new Error(`Discovery returned HTTP ${response.status}.`);
+        if (target.closest("[data-dc-retry]")) {
+            loadBody();
+            return;
         }
 
-        return await response.json();
-    }
-
-    function renderCombined(payloads, failures, pendingCount) {
-        const first = payloads[0] || {
-            query: state.query.trim(),
-            category: state.category,
-            mode: state.mode,
-            aniListConnected: false,
-            items: [],
-            warnings: []
-        };
-
-        const itemMap = new Map();
-        const warnings = [...failures];
-        let aniListConnected = false;
-
-        payloads.forEach(payload => {
-            aniListConnected ||= payload.aniListConnected === true;
-            (payload.warnings || []).forEach(message => warnings.push(message));
-            (payload.items || []).forEach(item => {
-                if (!itemMap.has(item.id)) itemMap.set(item.id, item);
-            });
-        });
-
-        render({
-            ...first,
-            query: first.query || state.query.trim(),
-            category: state.category,
-            mode: state.mode,
-            aniListConnected,
-            items: [...itemMap.values()],
-            warnings: [...new Set(warnings)]
-        }, pendingCount);
-    }
-
-    function render(payload, pendingCount = 0) {
-        results.replaceChildren();
-
-        const items = Array.isArray(payload.items) ? payload.items : [];
-        const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
-
-        title.textContent = state.query.trim()
-            ? `Results for “${payload.query || state.query.trim()}”`
-            : `${modeLabel(payload.mode)} · ${categoryLabel(payload.category)}`;
-
-        count.textContent = pendingCount > 0
-            ? `${items.length} shown · loading more…`
-            : `${items.length} shown`;
-
-        if (warnings.length) {
-            warning.textContent = warnings.join(" ");
-            warning.hidden = false;
-        } else {
-            warning.hidden = true;
+        const tab = target.closest("[data-dc-tab]");
+        if (tab && event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) {
+            // Follow the link as it is now: it carries the text typed so far.
+            syncTabs();
         }
+    });
 
-        empty.hidden = items.length !== 0 || pendingCount > 0;
-        if (items.length === 0 && pendingCount === 0) {
-            const strong = empty.querySelector("strong");
-            const detail = empty.querySelector("span");
+    // ---- Filters: a native <details> popover that also closes on outside click, Escape and its buttons
 
-            if (payload.mode === "my-list" && payload.category === "book") {
-                strong.textContent = "Books are not an AniList list type";
-                detail.textContent = "Use Trending, Top or search to browse books.";
-            } else if (payload.mode === "my-list" && !payload.aniListConnected) {
-                strong.textContent = "AniList is not connected";
-                detail.textContent = "Connect your account in Settings → AniList.";
-            } else if (warnings.length && payloadsEmpty(payload)) {
-                strong.textContent = "Search unavailable";
-                detail.textContent = "Try again in a moment.";
-            } else {
-                strong.textContent = "No results";
-                detail.textContent = "Try another title, category or browse mode.";
+    const openPops = () => document.querySelectorAll("details[data-dc-pop][open]");
+
+    document.addEventListener("click", event => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) return;
+
+        const closer = target.closest("[data-dc-close]");
+        if (closer) {
+            const pop = closer.closest("details");
+            if (pop) {
+                pop.open = false;
+                pop.querySelector("summary")?.focus();
             }
             return;
         }
 
-        const fragment = document.createDocumentFragment();
-        items.forEach(item => fragment.append(createCard(item)));
-        results.append(fragment);
-    }
+        openPops().forEach(pop => {
+            if (!pop.contains(target)) pop.open = false;
+        });
+    });
 
-    function payloadsEmpty(payload) {
-        return !Array.isArray(payload.items) || payload.items.length === 0;
-    }
-
-    function createCard(item) {
-        const card = document.createElement("article");
-        card.className = "discover-card";
-
-        const cover = document.createElement("div");
-        cover.className = "discover-cover";
-
-        if (item.coverImageUrl) {
-            const image = document.createElement("img");
-            image.src = item.coverImageUrl;
-            image.alt = "";
-            image.loading = "lazy";
-            image.decoding = "async";
-            image.referrerPolicy = "no-referrer";
-            cover.append(image);
-        } else {
-            const placeholder = document.createElement("span");
-            placeholder.className = "discover-cover-placeholder";
-            placeholder.textContent = item.category === "anime"
-                ? "A"
-                : item.category === "manga"
-                    ? "漫"
-                    : "文";
-            cover.append(placeholder);
-        }
-
-        const copy = document.createElement("div");
-        copy.className = "discover-card-copy";
-
-        const kicker = document.createElement("div");
-        kicker.className = "discover-card-kicker";
-
-        const category = document.createElement("span");
-        category.textContent = categoryLabel(item.category);
-        kicker.append(category);
-
-        if (item.isLocal) {
-            const local = document.createElement("span");
-            local.className = "discover-local";
-            local.textContent = root.dataset.textInLibrary || "In library";
-            kicker.append(local);
-        }
-
-        const cardTitle = document.createElement("div");
-        cardTitle.className = "discover-card-title";
-        cardTitle.textContent = item.title || "Untitled";
-
-        copy.append(kicker, cardTitle);
-
-        if (item.nativeTitle && item.nativeTitle !== item.title) {
-            const native = document.createElement("div");
-            native.className = "discover-native-title";
-            native.textContent = item.nativeTitle;
-            copy.append(native);
-        }
-
-        if (item.author) {
-            const author = document.createElement("div");
-            author.className = "discover-native-title";
-            author.textContent = item.author;
-            copy.append(author);
-        }
-
-        const metaValues = [
-            item.format ? formatLabel(item.format) : null,
-            item.year || null,
-            item.listStatus ? listStatusLabel(item.listStatus) : null,
-            Number.isFinite(item.rating) ? `★ ${item.rating.toFixed(1)}` : null
-        ].filter(Boolean);
-
-        if (metaValues.length) {
-            const meta = document.createElement("div");
-            meta.className = "discover-card-meta";
-            metaValues.forEach(value => {
-                const part = document.createElement("span");
-                part.textContent = String(value);
-                meta.append(part);
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            hideHover();
+            openPops().forEach(pop => {
+                pop.open = false;
+                pop.querySelector("summary")?.focus();
             });
-            copy.append(meta);
+            return;
         }
 
-        if (Number.isFinite(item.progress)) {
-            const progress = createProgress(item);
-            if (progress) copy.append(progress);
+        if (event.key === "/" &&
+            !(event.ctrlKey || event.metaKey || event.altKey) &&
+            !/input|textarea|select/i.test(document.activeElement?.tagName || "")) {
+            event.preventDefault();
+            searchInput.focus();
         }
+    });
 
-        const actions = document.createElement("div");
-        actions.className = "discover-card-actions";
+    // ---- Preview: hover popover on a pointer, modal sheet on touch and from the preview button --------
 
-        // One primary action (open, add or request, import), then one follow control, then
-        // the provider page as a small link.
-        if (item.isLocal && item.localUrl) {
-            actions.append(createLink(item.localUrl, root.dataset.textOpenLocal || "Open", true));
-        } else if (item.category === "book") {
-            actions.append(createLink(item.detailsUrl, "Book details", true));
-        } else if (
-            item.category === "manga" &&
-            item.detailsUrl?.startsWith("/Discover/MangaImport")) {
-            actions.append(createLink(item.detailsUrl, "Add manga", true));
-        }
-
-        if (!item.isLocal && addActions[item.category]) {
-            renderAddAction(item, actions);
-        }
-
-        if (item.canImportSource) {
-            const source = document.createElement("button");
-            source.type = "button";
-            source.className = "primary";
-            source.textContent = "Add source";
-            source.addEventListener("click", () => openImport(item));
-            actions.append(source);
-        }
-
-        renderFollowControl(item, actions);
-
-        const providerUrl = aniListUrl(item);
-        if (providerUrl) {
-            const link = createLink(providerUrl, "AniList", false);
-            link.classList.add("discover-provider-link");
-            actions.append(link);
-        }
-
-        copy.append(actions);
-        card.append(cover, copy);
-        return card;
+    function cloneTemplate(card) {
+        const template = card.querySelector("template[data-dc-template]");
+        if (!template) return null;
+        const fragment = template.content.cloneNode(true);
+        const preview = fragment.querySelector(".dc-pv");
+        const key = card.dataset.dcKey;
+        const change = key ? overrides.get(key) : null;
+        if (preview && change) applyOverrides(preview, change);
+        return fragment;
     }
 
-    function aniListUrl(item) {
-        if (item.provider !== "anilist" || !/^\d+$/.test(String(item.externalId || ""))) return null;
-        const kind = item.category === "anime" ? "anime" : "manga";
-        return `https://anilist.co/${kind}/${item.externalId}`;
+    function keyOf(card) {
+        if (!card.dataset.dcKey) {
+            card.dataset.dcKey = String(++keyCounter);
+        }
+        return card.dataset.dcKey;
     }
+    let keyCounter = 0;
+
+    function positionHover(card) {
+        const rect = card.getBoundingClientRect();
+        const width = hover.offsetWidth || 320;
+        const height = hover.offsetHeight || 0;
+        const left = Math.min(
+            Math.max(8, rect.left + rect.width / 2 - width / 2),
+            Math.max(8, window.innerWidth - width - 8));
+        const top = Math.min(
+            Math.max(8, rect.top - 14),
+            Math.max(8, window.innerHeight - height - 8));
+        hover.style.left = `${Math.round(left)}px`;
+        hover.style.top = `${Math.round(top)}px`;
+    }
+
+    function showHover(card) {
+        if (sheet.open) return;
+        const content = cloneTemplate(card);
+        if (!content) return;
+        keyOf(card);
+        hoverCard = card;
+        hover.replaceChildren(content);
+        hover.setAttribute("aria-label", card.querySelector(".dc-card-title")?.textContent?.trim() || "");
+        hover.hidden = false;
+        positionHover(card);
+    }
+
+    function hideHover() {
+        clearTimeout(hoverTimer);
+        clearTimeout(leaveTimer);
+        hoverCard = null;
+        if (!hover.hidden) {
+            hover.hidden = true;
+            hover.replaceChildren();
+        }
+    }
+
+    function openSheet(card) {
+        const content = cloneTemplate(card);
+        if (!content) return false;
+        hideHover();
+        keyOf(card);
+        sheet.dataset.for = card.dataset.dcKey;
+        sheetContent.replaceChildren(content);
+        sheet.setAttribute("aria-label", card.querySelector(".dc-card-title")?.textContent?.trim() || "");
+        if (typeof sheet.showModal === "function") {
+            if (!sheet.open) sheet.showModal();
+        } else {
+            sheet.setAttribute("open", "");
+        }
+        return true;
+    }
+
+    function closeSheet() {
+        if (typeof sheet.close === "function") sheet.close();
+        else sheet.removeAttribute("open");
+    }
+
+    sheet.addEventListener("close", () => sheetContent.replaceChildren());
+    sheet.querySelector("[data-dc-sheet-close]")?.addEventListener("click", closeSheet);
+    // A click on the dimmed area (the dialog itself, outside its content) closes the sheet.
+    sheet.addEventListener("click", event => {
+        if (event.target === sheet) closeSheet();
+    });
+
+    // Hover: after a short delay, and only for a mouse.
+    body.addEventListener("pointerover", event => {
+        if (event.pointerType !== "mouse" || touchFirst.matches) return;
+        const card = event.target instanceof Element ? event.target.closest("[data-dc-card]") : null;
+        if (!card || card === hoverCard) {
+            clearTimeout(leaveTimer);
+            return;
+        }
+
+        clearTimeout(hoverTimer);
+        clearTimeout(leaveTimer);
+        hoverTimer = setTimeout(() => showHover(card), HOVER_DELAY);
+    });
+
+    body.addEventListener("pointerout", event => {
+        if (event.pointerType !== "mouse") return;
+        const card = event.target instanceof Element ? event.target.closest("[data-dc-card]") : null;
+        if (!card) return;
+        const next = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+        if (next && (card.contains(next) || hover.contains(next))) return;
+
+        clearTimeout(hoverTimer);
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(hideHover, HOVER_LEAVE_DELAY);
+    });
+
+    hover.addEventListener("pointerenter", () => clearTimeout(leaveTimer));
+    hover.addEventListener("pointerleave", () => {
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(hideHover, HOVER_LEAVE_DELAY);
+    });
+    window.addEventListener("scroll", hideHover, { capture: true, passive: true });
+    window.addEventListener("resize", hideHover);
+
+    // Click: the preview button always opens the sheet. A card that is not in the library opens it too, since
+    // its only page is the provider's; a library card opens its page, except on touch where the sheet comes first.
+    body.addEventListener("click", event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const card = target?.closest("[data-dc-card]");
+        if (!target || !card) return;
+
+        if (target.closest("[data-dc-preview]")) {
+            openSheet(card);
+            return;
+        }
+
+        const link = target.closest("a");
+        if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (link.closest(".dc-card-body, .dc-art") && (touchFirst.matches || !card.classList.contains("is-local"))) {
+            if (openSheet(card)) event.preventDefault();
+        }
+    });
+
+    // ---- Preview actions ---------------------------------------------------------------------------
 
     async function postForm(url, fields) {
-        const body = new FormData();
+        const data = new FormData();
         Object.entries(fields).forEach(([name, value]) => {
-            if (value !== null && value !== undefined && value !== "") body.set(name, String(value));
+            if (value !== null && value !== undefined && value !== "") data.set(name, String(value));
         });
-        body.set("__RequestVerificationToken", token);
+        data.set("__RequestVerificationToken", token);
         const response = await fetch(url, {
             method: "POST",
-            body,
+            body: data,
             credentials: "same-origin",
             headers: { Accept: "application/json" }
         });
@@ -515,363 +340,192 @@
         return response.json();
     }
 
-    // Follow toggle with a small menu for the franchise: one compact secondary control.
-    function renderFollowControl(item, actions) {
-        if (!root.dataset.watchlistUrl) return;
+    const requestedIcon =
+        "<svg class=\"dc-icon\" viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" aria-hidden=\"true\" focusable=\"false\" " +
+        "fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
+        "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 7.5V12l3 2\"/></svg>";
 
-        const group = document.createElement("span");
-        group.className = "discover-follow";
+    function showRequested(scope, label) {
+        scope.querySelectorAll(".dc-state").forEach(state => {
+            state.className = "dc-state dc-state-requested";
+            state.removeAttribute("title");
+            state.innerHTML = requestedIcon;
+            const span = document.createElement("span");
+            span.textContent = label;
+            state.append(span);
+        });
+    }
 
-        const toggle = document.createElement("button");
-        toggle.type = "button";
-        toggle.className = "discover-follow-toggle";
-        const sync = () => {
-            toggle.setAttribute("aria-pressed", String(item.isFollowed === true));
-            toggle.textContent = item.isFollowed ? root.dataset.textFollowed : root.dataset.textFollow;
-            toggle.title = item.isFollowed ? root.dataset.textUnfollow : root.dataset.textFollow;
-        };
-        sync();
+    function showFollowState(scope, followed) {
+        const button = scope.querySelector("[data-dc-follow]");
+        if (!button) return;
+        button.setAttribute("aria-pressed", String(followed));
+        button.title = followed ? text("textUnfollow") : "";
+        const label = button.querySelector("[data-dc-follow-label]");
+        if (label) label.textContent = followed ? text("textFollowed") : text("textFollow");
+    }
 
-        toggle.addEventListener("click", async () => {
-            const follow = !item.isFollowed;
-            toggle.disabled = true;
+    function showFranchise(scope, franchiseId) {
+        const button = scope.querySelector("[data-dc-follow-franchise]");
+        if (!button || !franchiseId) return;
+        const link = document.createElement("a");
+        link.className = "button";
+        link.href = `/Franchises/${franchiseId}`;
+        link.textContent = text("textFranchiseFollowed");
+        button.replaceWith(link);
+    }
+
+    function showRequestResult(scope, status, resultUrl) {
+        const slot = scope.querySelector("[data-dc-add-slot]");
+        if (slot) {
+            const pill = document.createElement("span");
+            pill.className = `dc-pv-status request-status-${status}`;
+            pill.textContent = statusText(status);
+            slot.replaceChildren(pill);
+            if (resultUrl) {
+                const link = document.createElement("a");
+                link.className = "button";
+                link.href = resultUrl;
+                link.textContent = text("textOpen");
+                slot.append(link);
+            }
+        }
+        showRequested(scope, statusText(status));
+    }
+
+    function applyOverrides(scope, change) {
+        if (change.followed !== undefined) showFollowState(scope, change.followed);
+        if (change.franchiseId) showFranchise(scope, change.franchiseId);
+        if (change.status) showRequestResult(scope, change.status, change.resultUrl);
+    }
+
+    function remember(scope, change) {
+        const holder = scope.closest("[data-dc-sheet], [data-dc-hover]");
+        const key = holder?.dataset.for || (holder === hover ? hoverCard?.dataset.dcKey : null);
+        if (!key) return;
+        overrides.set(key, { ...(overrides.get(key) || {}), ...change });
+        // The card behind the preview shows the new request state too.
+        if (change.status) {
+            const card = document.querySelector(`[data-dc-card][data-dc-key="${key}"]`);
+            if (card) showRequested(card, statusText(change.status));
+        }
+    }
+
+    root.addEventListener("click", async event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const preview = target?.closest(".dc-pv");
+        if (!target || !preview) return;
+        const data = preview.dataset;
+
+        const add = target.closest("[data-dc-add]");
+        if (add) {
+            add.disabled = true;
+            try {
+                const payload = await postForm(root.dataset.addUrl, {
+                    category: data.category,
+                    externalId: data.externalId,
+                    title: data.title,
+                    subtitle: data.subtitle,
+                    coverImageUrl: data.cover
+                });
+                showRequestResult(preview, payload.status, payload.resultUrl);
+                remember(preview, { status: payload.status, resultUrl: payload.resultUrl });
+            } catch {
+                add.disabled = false;
+                add.textContent = text("textAddFailed");
+            }
+            return;
+        }
+
+        const follow = target.closest("[data-dc-follow]");
+        if (follow) {
+            const next = follow.getAttribute("aria-pressed") !== "true";
+            follow.disabled = true;
             try {
                 const payload = await postForm(root.dataset.watchlistUrl, {
-                    category: item.category,
-                    provider: item.provider,
-                    externalId: item.externalId,
-                    title: item.title,
-                    nativeTitle: item.nativeTitle,
-                    coverImageUrl: item.coverImageUrl,
-                    format: item.format,
-                    status: item.status,
-                    year: item.year,
-                    follow
+                    category: data.category,
+                    provider: data.provider,
+                    externalId: data.externalId,
+                    title: data.title,
+                    nativeTitle: data.nativeTitle,
+                    coverImageUrl: data.cover,
+                    format: data.format,
+                    status: data.status,
+                    year: data.year,
+                    follow: next
                 });
-                item.isFollowed = payload.followed === true;
-                sync();
+                showFollowState(preview, payload.followed === true);
+                remember(preview, { followed: payload.followed === true });
             } catch {
-                toggle.title = root.dataset.textAddFailed || toggle.title;
+                follow.title = text("textAddFailed");
             } finally {
-                toggle.disabled = false;
+                follow.disabled = false;
             }
-        });
-        group.append(toggle);
-
-        if (["anime", "manga", "light-novel"].includes(item.category) &&
-            item.provider === "anilist" &&
-            root.dataset.franchiseUrl) {
-            group.append(...createFranchiseMenu(item));
-        }
-
-        actions.append(group);
-    }
-
-    function createFranchiseMenu(item) {
-        const more = document.createElement("button");
-        more.type = "button";
-        more.className = "discover-follow-more";
-        more.setAttribute("aria-haspopup", "menu");
-        more.setAttribute("aria-expanded", "false");
-        more.setAttribute("aria-label", root.dataset.textFollowOptions || "");
-        more.title = root.dataset.textFollowOptions || "";
-        more.textContent = "▾";
-
-        const menu = document.createElement("div");
-        menu.className = "discover-follow-menu";
-        menu.setAttribute("role", "menu");
-        menu.hidden = true;
-
-        const followedLink = franchiseId => {
-            const link = document.createElement("a");
-            link.setAttribute("role", "menuitem");
-            link.href = `/Franchises/${franchiseId}`;
-            link.textContent = root.dataset.textFranchiseFollowed;
-            return link;
-        };
-
-        if (item.followedFranchiseId) {
-            menu.append(followedLink(item.followedFranchiseId));
-        } else {
-            const follow = document.createElement("button");
-            follow.type = "button";
-            follow.setAttribute("role", "menuitem");
-            follow.textContent = root.dataset.textFollowFranchise;
-            follow.addEventListener("click", async () => {
-                follow.disabled = true;
-                try {
-                    const payload = await postForm(root.dataset.franchiseUrl, {
-                        category: item.category,
-                        provider: item.provider,
-                        externalId: item.externalId
-                    });
-                    item.followedFranchiseId = payload.franchiseId;
-                    menu.replaceChildren(followedLink(payload.franchiseId));
-                    menu.firstElementChild.focus();
-                } catch {
-                    follow.title = root.dataset.textAddFailed || "";
-                    follow.disabled = false;
-                }
-            });
-            menu.append(follow);
-        }
-
-        const close = () => {
-            menu.hidden = true;
-            more.setAttribute("aria-expanded", "false");
-            document.removeEventListener("click", onOutside, true);
-        };
-        const onOutside = event => {
-            if (!menu.contains(event.target) && event.target !== more) close();
-        };
-        more.addEventListener("click", () => {
-            if (!menu.hidden) {
-                close();
-                return;
-            }
-            menu.hidden = false;
-            more.setAttribute("aria-expanded", "true");
-            document.addEventListener("click", onOutside, true);
-            menu.querySelector("a, button")?.focus();
-        });
-        menu.addEventListener("keydown", event => {
-            if (event.key === "Escape") {
-                close();
-                more.focus();
-            }
-        });
-
-        return [more, menu];
-    }
-
-    function renderAddAction(item, actions) {
-        const slot = document.createElement("span");
-        slot.className = "discover-add";
-        actions.append(slot);
-
-        const showStatus = (status, resultUrl, message) => {
-            const pill = document.createElement("span");
-            pill.className = `status-pill request-status-${status}`;
-            pill.textContent = statusText(status);
-            if (message) pill.title = message;
-            slot.replaceChildren(pill);
-            if (resultUrl) slot.append(createLink(resultUrl, root.dataset.textOpen || "", false));
-            // A failed add explains what to fix (for example a missing library root).
-            if (status === "failed" && message) {
-                const note = document.createElement("small");
-                note.className = "discover-add-note";
-                note.textContent = message;
-                slot.append(note);
-            }
-        };
-
-        if (item.requestStatus) {
-            showStatus(item.requestStatus, null, null);
             return;
         }
 
-        const action = addActions[item.category];
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "primary";
-        button.textContent = action === "add" ? root.dataset.textAdd : root.dataset.textRequest;
-        button.addEventListener("click", async () => {
-            button.disabled = true;
-            const body = new FormData();
-            body.set("category", item.category);
-            body.set("externalId", item.externalId);
-            body.set("title", item.title);
-            const subtitle = [item.format ? formatLabel(item.format) : null, item.year].filter(Boolean).join(" · ");
-            if (subtitle) body.set("subtitle", subtitle);
-            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
-            body.set("__RequestVerificationToken", token);
+        const franchise = target.closest("[data-dc-follow-franchise]");
+        if (franchise) {
+            franchise.disabled = true;
             try {
-                const response = await fetch(root.dataset.addUrl, {
-                    method: "POST",
-                    body,
-                    credentials: "same-origin",
-                    headers: { Accept: "application/json" }
+                const payload = await postForm(root.dataset.franchiseUrl, {
+                    category: data.category,
+                    provider: data.provider,
+                    externalId: data.externalId
                 });
-                if (!response.ok) throw new Error(String(response.status));
-                const payload = await response.json();
-                item.requestStatus = payload.status;
-                showStatus(payload.status, payload.resultUrl, payload.message);
+                showFranchise(preview, payload.franchiseId);
+                remember(preview, { franchiseId: payload.franchiseId });
             } catch {
-                button.disabled = false;
-                button.title = root.dataset.textAddFailed || "";
-                button.textContent = root.dataset.textAddFailed || button.textContent;
+                franchise.title = text("textAddFailed");
+                franchise.disabled = false;
             }
-        });
-        slot.append(button);
-    }
-
-    function createProgress(item) {
-        const progressValue = Number(item.progress);
-        if (!Number.isFinite(progressValue)) return null;
-
-        const holder = document.createElement("div");
-        holder.className = "discover-progress";
-
-        const copy = document.createElement("div");
-        copy.className = "discover-progress-copy";
-
-        const label = document.createElement("span");
-        label.textContent = item.category === "anime"
-            ? "Episodes"
-            : "Chapters";
-
-        const value = document.createElement("span");
-        value.textContent = item.totalProgress
-            ? `${progressValue} / ${item.totalProgress}`
-            : String(progressValue);
-
-        copy.append(label, value);
-        holder.append(copy);
-
-        if (item.totalProgress && item.totalProgress > 0) {
-            const track = document.createElement("div");
-            track.className = "discover-progress-track";
-            const fill = document.createElement("span");
-            const percent = Math.min(
-                100,
-                Math.max(0, progressValue / item.totalProgress * 100));
-            fill.style.width = `${percent}%`;
-            track.append(fill);
-            holder.append(track);
-        }
-
-        return holder;
-    }
-
-    function createLink(url, label, primary) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.textContent = label;
-        if (primary) link.className = "primary";
-
-        if (/^https?:\/\//i.test(url)) {
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-        }
-
-        return link;
-    }
-
-    function formatLabel(value) {
-        return String(value)
-            .replaceAll("_", " ")
-            .toLowerCase()
-            .replace(/\b\w/g, char => char.toUpperCase());
-    }
-
-    function listStatusLabel(value) {
-        const label = formatLabel(value);
-        return label === "Current"
-            ? "In progress"
-            : label;
-    }
-
-    function openImport(item) {
-        if (!importDetails || !importUrl) return;
-
-        importDetails.open = true;
-        importProvider.value = item.provider || "";
-        importExternalId.value = item.externalId || "";
-        importTitle.textContent = `Source for ${item.title}`;
-        importDetails.scrollIntoView({ behavior: "smooth", block: "center" });
-        setTimeout(() => importUrl.focus(), 250);
-    }
-
-    function clearImportContext() {
-        if (!importProvider) return;
-        importProvider.value = "";
-        importExternalId.value = "";
-        importTitle.textContent = "Source URL";
-        importUrl?.focus();
-    }
-
-    function showError(message) {
-        results.replaceChildren();
-        empty.hidden = false;
-        empty.querySelector("strong").textContent = "Search unavailable";
-        empty.querySelector("span").textContent = message;
-        warning.hidden = true;
-        count.textContent = "Unavailable";
-    }
-
-    searchInput.addEventListener("input", () => {
-        state.query = searchInput.value;
-        state.mode = state.query.trim() ? "search" : browseMode;
-        syncControls(false);
-        if (landing()) {
-            // Cleared back to the default: drop the query params and return to the shelf landing.
-            updateUrl(false);
-            showShelves();
-            loadShelves();
-        } else {
-            showGrid();
-            scheduleSearch();
-        }
-    });
-
-    modeButtons.forEach(button => {
-        button.addEventListener("click", () => {
-            browseMode = button.dataset.discoverMode;
-            state.query = "";
-            searchInput.value = "";
-            state.mode = browseMode;
-            route(true);
-        });
-    });
-
-    categoryButtons.forEach(button => {
-        button.addEventListener("click", () => {
-            state.category = button.dataset.discoverCategory;
-            state.mode = state.query ? "search" : browseMode;
-            route(true);
-        });
-    });
-
-    importClear?.addEventListener("click", clearImportContext);
-
-    genreClear?.addEventListener("click", () => {
-        state.genre = "";
-        route(true);
-    });
-
-    document.addEventListener("keydown", event => {
-        if (event.key !== "/" ||
-            event.ctrlKey ||
-            event.metaKey ||
-            event.altKey ||
-            /input|textarea|select/i.test(document.activeElement?.tagName || "")) {
             return;
         }
 
-        event.preventDefault();
-        searchInput.focus();
-    });
-
-    window.addEventListener("popstate", () => {
-        state = readState();
-        if (state.mode !== "search") browseMode = state.mode;
-        syncControls();
-        if (landing()) {
-            showShelves();
-            loadShelves();
-        } else {
-            showGrid();
-            load(false, true);
+        if (target.closest("[data-dc-import-source]")) {
+            openImport(data);
         }
     });
 
-    if (state.mode !== "search") browseMode = state.mode;
-    syncControls();
-    if (landing()) {
-        showShelves();
-        loadShelves();
-    } else {
-        showGrid();
-        load(false);
+    // ---- Owner: import a light-novel source for a discovered title ----------------------------------
+
+    function openImport(data) {
+        if (!importDetails) return;
+        closeSheet();
+        hideHover();
+        importDetails.hidden = false;
+        importDetails.open = true;
+        importDetails.querySelector("[data-import-provider]").value = data.provider || "";
+        importDetails.querySelector("[data-import-external-id]").value = data.externalId || "";
+        importDetails.querySelector("[data-import-title]").textContent =
+            text("textSourceFor").replace("{title}", data.title || "");
+        importDetails.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => importDetails.querySelector("[data-import-url]")?.focus(), 250);
     }
+
+    importDetails?.querySelector("[data-import-clear]")?.addEventListener("click", () => {
+        importDetails.querySelector("[data-import-provider]").value = "";
+        importDetails.querySelector("[data-import-external-id]").value = "";
+        importDetails.querySelector("[data-import-title]").textContent = text("textSourceUrl");
+        importDetails.querySelector("[data-import-url]")?.focus();
+    });
+
+    // ---- Offline -----------------------------------------------------------------------------------
+
+    function syncOnline() {
+        offlineNotice.hidden = navigator.onLine;
+        if (navigator.onLine && loadFailed) loadBody();
+    }
+
+    window.addEventListener("online", syncOnline);
+    window.addEventListener("offline", syncOnline);
+
+    // Coming back through the history restores the page as it was.
+    window.addEventListener("pageshow", event => {
+        if (event.persisted) syncTabs();
+    });
+
+    syncTabs();
+    offlineNotice.hidden = navigator.onLine;
+    loadBody();
 })();

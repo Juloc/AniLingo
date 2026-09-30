@@ -1,0 +1,155 @@
+@using Jularr.Web.Features.Discovery
+@using Jularr.Web.Features.Localization
+@model (DiscoverCardView Card, UiTextBundle Ui)
+@* One title of Discover (docs/mockups/discover): dominant artwork, title, a compact type and year line and one
+   language or request indicator. The card is deliberately simpler than a Library card: no progress. The rich
+   preview (a hover popover on a pointer, a bottom sheet on touch) is the inert template below, cloned by
+   wwwroot/js/discover.js when it opens. Styles: wwwroot/css/discover-browse.css. *@
+@{
+    var card = Model.Card;
+    var ui = Model.Ui;
+    var linkTarget = card.HrefIsExternal ? "_blank" : null;
+    var linkRel = card.HrefIsExternal ? "noopener noreferrer" : null;
+}
+<article class="dc-card@(card.IsLocal ? " is-local" : "")" data-dc-card>
+    @* The whole card opens the title through the stretched title link; the artwork link is only for pointers. *@
+    <a class="dc-art" href="@card.Href" target="@linkTarget" rel="@linkRel" tabindex="-1" aria-hidden="true">
+        @if (card.PosterUrl is { } poster)
+        {
+            <img src="@poster" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+        }
+        else
+        {
+            <span class="dc-initial">@card.Initial</span>
+        }
+    </a>
+
+    <div class="dc-card-body">
+        <h3 class="dc-card-title"><a href="@card.Href" target="@linkTarget" rel="@linkRel" data-dc-title-link>@card.Title</a></h3>
+        <p class="dc-card-meta">@card.Meta</p>
+        <partial name="_DiscoverState" model="card.State" />
+    </div>
+
+    <button type="button" class="dc-card-preview" data-dc-preview
+            aria-label="@ui.Format("discover.preview.show", ("title", card.Title))">
+        <partial name="_DiscoverIcon" model='"preview"' />
+    </button>
+
+    <template data-dc-template>
+        <div class="dc-pv"
+             data-category="@card.Category"
+             data-provider="@card.Provider"
+             data-external-id="@card.ExternalId"
+             data-title="@card.Title"
+             data-native-title="@card.NativeTitle"
+             data-cover="@card.PosterUrl"
+             data-format="@card.Format"
+             data-status="@card.RawStatus"
+             data-year="@card.Year"
+             data-followed="@(card.IsFollowed ? "true" : "false")"
+             data-franchise-id="@card.FollowedFranchiseId"
+             data-subtitle="@card.Meta">
+            <div class="dc-pv-media">
+                @if (card.PosterUrl is { } cover)
+                {
+                    <img class="dc-pv-backdrop" src="@cover" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+                    <img class="dc-pv-poster" src="@cover" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+                }
+                else
+                {
+                    <span class="dc-initial">@card.Initial</span>
+                }
+            </div>
+
+            <div class="dc-pv-main">
+                <h3 class="dc-pv-title">@card.Title</h3>
+                @if (card.NativeTitle is { } nativeTitle)
+                {
+                    <p class="dc-pv-native">@nativeTitle</p>
+                }
+                <p class="dc-pv-meta">@card.Meta</p>
+                <partial name="_DiscoverState" model="card.State" />
+
+                @if (card.Genres.Count > 0)
+                {
+                    <ul class="dc-pv-genres">
+                        @foreach (var genre in card.Genres)
+                        {
+                            <li>@genre</li>
+                        }
+                    </ul>
+                }
+
+                @if (card.Description is { } description)
+                {
+                    <p class="dc-pv-desc">@description</p>
+                }
+
+                @if (card.Facts.Count > 0 || card.Audio.Count > 0 || card.Subtitles.Count > 0)
+                {
+                    <dl class="dc-pv-facts">
+                        @foreach (var fact in card.Facts)
+                        {
+                            <div><dt>@fact.Label</dt><dd>@fact.Value</dd></div>
+                        }
+                        @if (card.Audio.Count > 0)
+                        {
+                            <div><dt>@ui["library.mediaCard.audioLanguages"]</dt><dd>@string.Join(" · ", card.Audio.Select(code => code.ToUpperInvariant()))</dd></div>
+                        }
+                        @if (card.Subtitles.Count > 0)
+                        {
+                            <div><dt>@ui["library.mediaCard.subtitleLanguages"]</dt><dd>@string.Join(" · ", card.Subtitles.Select(code => code.ToUpperInvariant()))</dd></div>
+                        }
+                    </dl>
+                }
+
+                <div class="dc-pv-actions">
+                    @if (card.PlayUrl is { } playUrl)
+                    {
+                        <a class="button button-primary" href="@playUrl">
+                            <partial name="_DiscoverIcon" model='"play"' />
+                            <span>@card.PlayLabel</span>
+                        </a>
+                    }
+                    else if (card.AddAction.Length > 0)
+                    {
+                        <span class="dc-pv-add" data-dc-add-slot>
+                            <button type="button" class="button button-primary" data-dc-add>
+                                @ui[card.AddAction == "add" ? "discover.card.add" : "discover.card.request"]
+                            </button>
+                        </span>
+                    }
+                    else if (card.ImportMangaUrl is { } importUrl)
+                    {
+                        <a class="button button-primary" href="@importUrl">@ui["discover.preview.addManga"]</a>
+                    }
+                    else if (card.CanImportSource)
+                    {
+                        <button type="button" class="button button-primary" data-dc-import-source>@ui["discover.preview.addSource"]</button>
+                    }
+
+                    @if (card.CanFollow)
+                    {
+                        <button type="button" class="button" data-dc-follow aria-pressed="@(card.IsFollowed ? "true" : "false")">
+                            <partial name="_DiscoverIcon" model='"follow"' />
+                            <span data-dc-follow-label>@ui[card.IsFollowed ? "discover.card.followed" : "discover.card.follow"]</span>
+                        </button>
+                    }
+
+                    @if (card.CanFollowFranchise)
+                    {
+                        <button type="button" class="button" data-dc-follow-franchise>@ui["discover.card.followFranchise"]</button>
+                    }
+
+                    <a class="button" href="@card.Href" target="@linkTarget" rel="@linkRel">
+                        <span>@ui["discover.preview.details"]</span>
+                        @if (card.HrefIsExternal)
+                        {
+                            <partial name="_DiscoverIcon" model='"external"' />
+                        }
+                    </a>
+                </div>
+            </div>
+        </div>
+    </template>
+</article>

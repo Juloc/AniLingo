@@ -334,10 +334,10 @@ public sealed class DiscoveryTests
             "js",
             "discover.js"));
 
-        StringAssert.Contains(script, "setTimeout(() => load(false), 250)");
+        StringAssert.Contains(script, "const SEARCH_DELAY = 250");
         StringAssert.Contains(script, "AbortController");
         StringAssert.Contains(script, "requestVersion");
-        StringAssert.Contains(script, "popstate");
+        StringAssert.Contains(script, "history.replaceState");
     }
 
     [TestMethod]
@@ -357,17 +357,19 @@ public sealed class DiscoveryTests
         // #371: Anime/Manga/Novels have no real "recently published" source of their own (their
         // AniList browse only distinguishes Trending from Top), so the New tab must stay hidden
         // outside the Book category instead of silently aliasing to Top under a wrong label.
-        var root = FindRepositoryRoot();
-        var script = File.ReadAllText(Path.Combine(
-            root,
+        var page = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
             "src",
             "Jularr.Web",
-            "wwwroot",
-            "js",
-            "discover.js"));
+            "Pages",
+            "Discover",
+            "Index.cshtml"));
 
-        StringAssert.Contains(script, "data-discover-mode-books-only");
-        StringAssert.Contains(script, "state.category !== \"book\"");
+        StringAssert.Contains(page, "if (query.Category == DiscoveryCategory.Book)");
+        StringAssert.Contains(page, "DiscoveryMode.New, \"discover.tabs.new\"");
+        Assert.AreEqual(
+            DiscoveryMode.Trending,
+            DiscoverBrowseQuery.Parse(key => key == "mode" ? "new" : key == "category" ? "anime" : null).Mode);
     }
 
     private static AniListRemoteListEntry Remote(

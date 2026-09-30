@@ -1,0 +1,85 @@
+@using Jularr.Web.Features.Discovery
+@model DiscoverBodyView
+@* The body of Discover under the search field, returned by the Body handler and injected after first paint:
+   rows on the landing, one grid for a search or drill-down, and the empty, unavailable and not-connected
+   states. Styles: wwwroot/css/discover-browse.css. *@
+@{
+    var ui = Model.Ui;
+    var query = Model.Query;
+}
+<div data-dc-state="@Model.State.ToString().ToLowerInvariant()">
+    @if (Model.Degraded)
+    {
+        <p class="dc-notice dc-notice-warning" role="status">
+            <partial name="_DiscoverIcon" model='"warning"' />
+            <span>@ui["discover.results.degraded"]</span>
+            <button type="button" class="dc-link" data-dc-retry>@ui["library.browse.error.retry"]</button>
+        </p>
+    }
+
+    @switch (Model.State)
+    {
+        case DiscoverBodyState.Shelves:
+            foreach (var shelf in Model.Shelves)
+            {
+                <partial name="_DiscoverShelf" model="(shelf, ui)" />
+            }
+            break;
+
+        case DiscoverBodyState.Results:
+            <p class="dc-count" aria-live="polite">
+                @(query.HasPostFilters
+                    ? ui.Format("discover.results.countFiltered", ("count", Model.Cards.Count), ("total", Model.Total))
+                    : Model.Cards.Count == 1
+                        ? ui["discover.results.countOne"]
+                        : ui.Format("discover.results.count", ("count", Model.Cards.Count)))
+            </p>
+            <ul class="dc-grid">
+                @foreach (var card in Model.Cards)
+                {
+                    <li><partial name="_DiscoverCard" model="(card, ui)" /></li>
+                }
+            </ul>
+            break;
+
+        case DiscoverBodyState.NoResults:
+            <div class="dc-message">
+                <p>@ui["library.browse.noResults.title"]</p>
+                <a class="button" href="@query.WithoutFilters().Href">@ui["library.browse.noResults.reset"]</a>
+            </div>
+            break;
+
+        case DiscoverBodyState.Empty:
+            <div class="dc-message">
+                <div>
+                    <p><strong>@ui["discover.results.emptyTitle"]</strong></p>
+                    <p>@ui["discover.results.emptyBody"]</p>
+                </div>
+            </div>
+            break;
+
+        case DiscoverBodyState.Unavailable:
+            <div class="dc-message" role="alert">
+                <div>
+                    <p><strong>@ui["discover.results.unavailableTitle"]</strong></p>
+                    <p>@ui["discover.results.unavailableBody"]</p>
+                </div>
+                <button type="button" class="button" data-dc-retry>@ui["library.browse.error.retry"]</button>
+            </div>
+            break;
+
+        case DiscoverBodyState.NotConnected:
+            <div class="dc-message">
+                <p>@ui["discover.results.notConnected"]</p>
+                <a class="button" href="/Settings/AniList">@ui["discover.results.connect"]</a>
+            </div>
+            break;
+
+        case DiscoverBodyState.BooksNotInList:
+            <div class="dc-message">
+                <p>@ui["discover.results.booksNotInList"]</p>
+                <a class="button" href="@query.WithoutFilters().Href">@ui["library.browse.noResults.reset"]</a>
+            </div>
+            break;
+    }
+</div>

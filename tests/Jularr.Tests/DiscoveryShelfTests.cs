@@ -147,15 +147,15 @@ public sealed class DiscoveryShelfTests
         var script = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "js", "discover.js"));
 
-        // The shelf board is fetched from the Shelves handler and shown on the default landing; any
-        // drill-down switches to the grid.
-        StringAssert.Contains(script, "data-discover-shelves");
-        StringAssert.Contains(script, "handler=Shelves");
-        StringAssert.Contains(script, "function landing()");
-        StringAssert.Contains(script, "loadShelves");
-        // The debounce/abort/history guards from #371/earlier must survive the change.
-        StringAssert.Contains(script, "setTimeout(() => load(false), 250)");
-        StringAssert.Contains(script, "popstate");
+        // Rows or the result grid are one server-rendered body fetched from the Body handler after
+        // first paint; the address decides which of the two the server renders.
+        StringAssert.Contains(script, "data-dc-body");
+        StringAssert.Contains(script, "params.set(\"handler\", \"Body\")");
+        Assert.IsFalse(script.Contains("handler=Results", StringComparison.Ordinal), "The JSON Results handler is gone.");
+        // The debounce and stale-request guards must survive.
+        StringAssert.Contains(script, "const SEARCH_DELAY = 250");
+        StringAssert.Contains(script, "abortController?.abort()");
+        StringAssert.Contains(script, "requestVersion");
     }
 
     private static string RepositoryRoot()

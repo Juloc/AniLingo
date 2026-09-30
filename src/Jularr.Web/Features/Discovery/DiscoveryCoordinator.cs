@@ -123,11 +123,11 @@ public sealed class DiscoveryCoordinator(
         var includeAnime = includeAniList &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime);
         var includeNovel = includeAniList &&
-            (request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel);
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel or DiscoveryCategory.BooksAndLightNovels);
         var includeManga = includeAniList &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga);
         var includeBook = includeBooks &&
-            (request.Category is DiscoveryCategory.All or DiscoveryCategory.Book);
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.Book or DiscoveryCategory.BooksAndLightNovels);
 
         var animeTask = includeAnime
             ? CaptureAsync(
@@ -218,7 +218,7 @@ public sealed class DiscoveryCoordinator(
     {
         var includeAnime = category is DiscoveryCategory.All or DiscoveryCategory.Anime;
         var includeReading = category is DiscoveryCategory.All or
-            DiscoveryCategory.LightNovel or DiscoveryCategory.Manga;
+            DiscoveryCategory.LightNovel or DiscoveryCategory.Manga or DiscoveryCategory.BooksAndLightNovels;
 
         var animeTask = includeAnime
             ? CaptureAsync(
@@ -245,7 +245,7 @@ public sealed class DiscoveryCoordinator(
                     return rows
                         .Where(x => category switch
                         {
-                            DiscoveryCategory.LightNovel => x.IsNovel,
+                            DiscoveryCategory.LightNovel or DiscoveryCategory.BooksAndLightNovels => x.IsNovel,
                             DiscoveryCategory.Manga => !x.IsNovel,
                             _ => true
                         })
@@ -645,6 +645,7 @@ public sealed class DiscoveryCoordinator(
             DiscoveryCategory.LightNovel => "light-novel",
             DiscoveryCategory.Manga => "manga",
             DiscoveryCategory.Book => "book",
+            DiscoveryCategory.BooksAndLightNovels => "books-light-novels",
             _ => "all"
         };
 

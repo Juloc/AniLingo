@@ -3,6 +3,7 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Franchises;
+using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
@@ -12,11 +13,12 @@ using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Ui;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Pages.Discover;
 
 public sealed class IndexModel(
-    DiscoveryCoordinator coordinator,
+    IDiscoveryFeed coordinator,
     DiscoveryShelfService shelves,
     AppDbContext db,
     NovelImportService novels,
@@ -33,19 +35,22 @@ public sealed class IndexModel(
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
 
+    /// <summary>What the address asks for; the address is the only state of the page.</summary>
+    public DiscoverBrowseQuery Query { get; private set; } = new();
+
+    /// <summary>The preferred audio and subtitle language of the profile, offered as a filter when set.</summary>
+    public LibraryLanguagePreference Preference { get; private set; } = LibraryLanguagePreference.None;
+
     /// <summary>The card action per AniList category: "add", "request" or "" (none).</summary>
     public IReadOnlyDictionary<string, string> AddActions { get; private set; } = new Dictionary<string, string>();
 
+    /// <summary>The page itself reads local state only (#186); the titles come from <see cref="OnGetBodyAsync"/> after first paint.</summary>
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        var actions = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (category, kind) in Categories)
-        {
-            actions[category] = AddAction(kind, await requests.GetCapabilitiesAsync(kind, cancellationToken));
-        }
-
-        AddActions = actions;
+        Query = ParseQuery();
+        AddActions = await LoadAddActionsAsync(cancellationToken);
+        Preference = await LoadPreferenceAsync(cancellationToken);
     }
 
     // Anime is added like in Sonarr. Manga and light novels have no automatic acquisition, so
@@ -56,68 +61,71 @@ public sealed class IndexModel(
         : access.IsOwner ? ""
         : "request";
 
-    public async Task<IActionResult> OnGetResultsAsync(
-        string? q,
-        string? category,
-        string? mode,
-        string? source,
-        string? genre,
-        CancellationToken cancellationToken)
+    private DiscoverBrowseQuery ParseQuery() =>
+        DiscoverBrowseQuery.Parse(key => Request.Query.TryGetValue(key, out var values) ? values.ToString() : null);
+
+    private async Task<IReadOnlyDictionary<string, string>> LoadAddActionsAsync(CancellationToken cancellationToken)
     {
-        Response.Headers.CacheControl = "no-store";
-
-        var request = DiscoveryRequest.Parse(q, category, mode, genre);
-
-        var normalizedSource = source?.Trim().ToLowerInvariant();
-        var includeAniList = normalizedSource is not "books";
-        var includeBooks = normalizedSource is not "anilist";
-
-        var result = await coordinator.GetAsync(
-            request,
-            account.ProfileId,
-            account.IsOwner,
-            includeAniList,
-            includeBooks,
-            cancellationToken);
-
-        var open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
-            .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
-            .GroupBy(item => (item.Kind, item.ExternalId))
-            .ToDictionary(group => group.Key, group => AcquisitionAccessNames.Status(group.First().Status));
-
-        var followed = (await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken))
-            .ToDictionary(item => item.Identity.Key, item => item.FranchiseId, StringComparer.Ordinal);
-
-        return new JsonResult(result with
+        var actions = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (category, kind) in Categories)
         {
-            Items = result.Items
-                .Select(item =>
-                {
-                    var mapped = !item.IsLocal &&
-                                 Categories.TryGetValue(item.Category, out var kind) &&
-                                 open.TryGetValue((kind, item.ExternalId), out var status)
-                        ? item with { RequestStatus = status }
-                        : item;
+            actions[category] = AddAction(kind, await requests.GetCapabilitiesAsync(kind, cancellationToken));
+        }
 
-                    return TryWatchIdentity(item.Category, item.Provider, item.ExternalId, out var identity) &&
-                           followed.TryGetValue(identity.Key, out var franchiseId)
-                        ? mapped with { IsFollowed = true, FollowedFranchiseId = franchiseId }
-                        : mapped;
-                })
-                .ToArray()
-        });
+        return actions;
+    }
+
+    private async Task<LibraryLanguagePreference> LoadPreferenceAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var preferences = await db.ProfilePlaybackPreferences
+                .AsNoTracking()
+                .Where(x => x.ProfileId == account.ProfileId)
+                .Select(x => new { x.PreferredAudioLanguage, x.PreferredSubtitleLanguage })
+                .SingleOrDefaultAsync(cancellationToken);
+            return preferences is null
+                ? LibraryLanguagePreference.None
+                : LibraryLanguagePreference.From(preferences.PreferredAudioLanguage, preferences.PreferredSubtitleLanguage);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Only the language indicator and its filter are lost.
+            logger.LogWarning(exception, "The playback language preferences could not be read for Discover.");
+            return LibraryLanguagePreference.None;
+        }
     }
 
     /// <summary>
-    /// The provider-driven discovery board (#595): named rows for the media types this profile may
-    /// browse, rendered with the shared banner card. Fetched after first paint from the client so the
-    /// page GET stays local (#186); the shelf service TTL-caches the assembled board.
+    /// The body of the page for one address (rows on the landing, one grid for a search or drill-down),
+    /// rendered on the server and fetched from the client after first paint so the page GET stays local
+    /// (#186). The provider board is TTL-cached by the shelf service and the feed.
     /// </summary>
-    public async Task<IActionResult> OnGetShelvesAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetBodyAsync(CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        Query = ParseQuery();
 
+        try
+        {
+            AddActions = await LoadAddActionsAsync(cancellationToken);
+            Preference = await LoadPreferenceAsync(cancellationToken);
+            var body = Query.IsLanding
+                ? await BuildLandingAsync(cancellationToken)
+                : await BuildResultsAsync(cancellationToken);
+            return Partial("_DiscoverBody", body);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(exception, "The Discover body could not be built.");
+            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            return Partial("_DiscoverBody", DiscoverBodyView.Of(Ui, Query, DiscoverBodyState.Unavailable));
+        }
+    }
+
+    private async Task<DiscoverBodyView> BuildLandingAsync(CancellationToken cancellationToken)
+    {
         var board = await shelves.GetBoardAsync(
             User,
             account.ProfileId,
@@ -126,80 +134,191 @@ public sealed class IndexModel(
             includeBooks: true,
             cancellationToken);
 
-        // Open requests overlay the availability badge per response (never cached), like the grid does.
-        var open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
-            .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
-            .GroupBy(item => (item.Kind, item.ExternalId))
-            .ToDictionary(group => group.Key, group => group.First().Status);
-
-        var providerRows = board.Rows
-            .Select(row => new MediaShelfModel(
-                row.Id,
-                ShelfHeading(row),
-                row.DeepLinkUrl,
-                Ui["discover.shelf.seeAll"],
-                row.Items
-                    .Select(item => MediaBannerCardModel.Create(ToCardData(item, open), Ui))
-                    .ToArray()));
+        var rows = new List<(string Id, string Heading, string? SeeAll, IReadOnlyList<DiscoveryItem> Items)>();
 
         // Personalized cross-media rows (#428) lead the board: explainable "Because you …" and
-        // continuation shelves for this profile, rendered through the same shelf surface.
-        var personalized = await recommendations.GetForProfileAsync(
-            User,
-            account.ProfileId,
-            cancellationToken);
-        var personalizedRows = MediaRecommendationShelfView.ToShelves(personalized, Ui);
+        // continuation shelves for this profile. They enrich the page, so a failure only drops them.
+        try
+        {
+            var personalized = await recommendations.GetForProfileAsync(User, account.ProfileId, cancellationToken);
+            foreach (var shelf in personalized.Shelves)
+            {
+                var items = shelf.Items
+                    .Where(item => DiscoverScopes.Includes(
+                        Query.Category,
+                        DiscoverRecommendations.CategoryOf(item.Candidate.MediaType)))
+                    .Select(item => DiscoverRecommendations.ToItem(item.Candidate))
+                    .ToArray();
+                if (items.Length > 0)
+                {
+                    rows.Add((shelf.Id, RecommendationHeading(shelf), null, items));
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "The personalized rows could not be loaded for Discover.");
+        }
 
-        var model = new MediaShelfBoardModel(
-            personalizedRows.Concat(providerRows).ToArray());
+        foreach (var row in board.Rows.Where(row => DiscoverScopes.Includes(Query.Category, row.Category)))
+        {
+            rows.Add((row.Id, ShelfHeading(row), row.DeepLinkUrl, row.Items));
+        }
 
-        return Partial("_MediaShelfBoard", model);
+        var collapsed = rows
+            .Select(row => (row.Id, row.Heading, row.SeeAll, Items: DiscoverCanonical.Collapse(row.Items)))
+            .Where(row => row.Items.Count > 0)
+            .ToArray();
+
+        var context = await BuildContextAsync(collapsed.SelectMany(row => row.Items), cancellationToken);
+        var views = collapsed
+            .Select(row => new DiscoverShelfView(
+                row.Id,
+                row.Heading,
+                row.SeeAll,
+                [.. row.Items.Select(item => DiscoverCardFactory.Create(item, context))]))
+            .ToArray();
+
+        var degraded = board.Warnings.Count > 0;
+        return new DiscoverBodyView(
+            Ui,
+            Query,
+            views.Length > 0
+                ? DiscoverBodyState.Shelves
+                : degraded ? DiscoverBodyState.Unavailable : DiscoverBodyState.Empty,
+            views,
+            [],
+            views.Sum(shelf => shelf.Cards.Count),
+            degraded && views.Length > 0);
     }
 
+    private async Task<DiscoverBodyView> BuildResultsAsync(CancellationToken cancellationToken)
+    {
+        if (!Query.IsSearch && Query.Mode == DiscoveryMode.MyList && Query.Category == DiscoveryCategory.Book)
+        {
+            return DiscoverBodyView.Of(Ui, Query, DiscoverBodyState.BooksNotInList);
+        }
+
+        var response = await coordinator.GetAsync(
+            Query.ToRequest(),
+            account.ProfileId,
+            account.IsOwner,
+            includeAniList: true,
+            includeBooks: true,
+            cancellationToken);
+
+        if (!Query.IsSearch && Query.Mode == DiscoveryMode.MyList && !response.AniListConnected)
+        {
+            return DiscoverBodyView.Of(Ui, Query, DiscoverBodyState.NotConnected);
+        }
+
+        var items = DiscoverCanonical.Collapse(response.Items);
+        var context = await BuildContextAsync(items, cancellationToken);
+        var cards = items.Select(item => DiscoverCardFactory.Create(item, context)).ToArray();
+        var shown = DiscoverFilter.Apply(cards, Query);
+        var degraded = response.Warnings.Count > 0;
+
+        var state = shown.Count > 0
+            ? DiscoverBodyState.Results
+            : cards.Length > 0
+                ? DiscoverBodyState.NoResults
+                : degraded ? DiscoverBodyState.Unavailable : DiscoverBodyState.Empty;
+
+        return new DiscoverBodyView(Ui, Query, state, [], shown, cards.Length, degraded && shown.Count > 0);
+    }
+
+    private string RecommendationHeading(MediaRecommendationShelf shelf)
+    {
+        var title = shelf.SeedTitle ?? "";
+        return shelf.Kind == MediaRecommendationShelfKind.Continuation
+            ? Ui.Format("recommendations.shelf.continue", ("title", title))
+            : Ui.Format("recommendations.shelf.becauseYou", ("title", title));
+    }
+
+    // With one media type picked the type is the scope, so the heading is only the ordering.
     private string ShelfHeading(DiscoveryShelfRow row) =>
-        row.MediaLabelKey is { Length: > 0 } mediaKey
+        Query.Category == DiscoveryCategory.All && row.MediaLabelKey is { Length: > 0 } mediaKey
             ? $"{Ui[row.TitleKey]} · {Ui[mediaKey]}"
             : Ui[row.TitleKey];
 
-    private static MediaBannerCardData ToCardData(
-        DiscoveryItem item,
-        IReadOnlyDictionary<(MediaAcquisitionKind, string), AcquisitionRequestStatus> open)
+    /// <summary>
+    /// Reads what the cards need beyond the titles: open requests, followed works and the languages of the
+    /// library titles among them. Each is a supporting detail, so a failure only removes it from the cards.
+    /// </summary>
+    private async Task<DiscoverContext> BuildContextAsync(
+        IEnumerable<DiscoveryItem> items,
+        CancellationToken cancellationToken)
     {
-        var kind = item.Category switch
-        {
-            "anime" => MediaBannerKind.Anime,
-            "manga" => MediaBannerKind.Manga,
-            "light-novel" => MediaBannerKind.LightNovel,
-            _ => MediaBannerKind.Book
-        };
+        var list = items.ToArray();
 
-        MediaAvailabilityFacts? availability = null;
-        if (item.IsLocal)
+        IReadOnlyDictionary<(MediaAcquisitionKind, string), AcquisitionRequest> open =
+            new Dictionary<(MediaAcquisitionKind, string), AcquisitionRequest>();
+        try
         {
-            availability = new MediaAvailabilityFacts(InLibrary: true, HasPlayableContent: false);
+            open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
+                .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
+                .GroupBy(item => (item.Kind, item.ExternalId))
+                .ToDictionary(group => group.Key, group => group.First());
         }
-        else if (Categories.TryGetValue(item.Category, out var acquisitionKind) &&
-                 open.TryGetValue((acquisitionKind, item.ExternalId), out var status))
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            availability = new MediaAvailabilityFacts(
-                InLibrary: false,
-                HasPlayableContent: false,
-                Request: status);
+            logger.LogWarning(exception, "The open requests could not be read for Discover.");
         }
 
-        var href = item.IsLocal && item.LocalUrl is { Length: > 0 } localUrl
-            ? localUrl
-            : item.DetailsUrl;
+        IReadOnlyDictionary<string, Guid?> followed = new Dictionary<string, Guid?>();
+        try
+        {
+            followed = (await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken))
+                .ToDictionary(item => item.Identity.Key, item => item.FranchiseId, StringComparer.Ordinal);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "The watchlist could not be read for Discover.");
+        }
 
-        return new MediaBannerCardData(
-            kind,
-            item.Title,
-            href,
-            BackdropUrl: item.CoverImageUrl,
-            ProviderStatus: item.Status,
-            Year: item.Year,
-            GroupCount: kind == MediaBannerKind.Anime ? null : item.VolumeCount,
-            Availability: availability);
+        return new DiscoverContext(
+            Ui,
+            Preference,
+            open,
+            await LoadLocalFactsAsync(list, cancellationToken),
+            followed,
+            AddActions);
+    }
+
+    private async Task<IReadOnlyDictionary<string, DiscoverLocalFacts>> LoadLocalFactsAsync(
+        IReadOnlyList<DiscoveryItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (!items.Any(item => item.IsLocal && item.Category == "anime"))
+        {
+            return new Dictionary<string, DiscoverLocalFacts>();
+        }
+
+        try
+        {
+            var entries = await new LibraryMediaCardQuery(db).GetAnimeEntriesAsync(account.ProfileId, cancellationToken);
+            return entries.Entries
+                .GroupBy(entry => entry.Card.Href, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group =>
+                    {
+                        var card = group.First().Card;
+                        var action = MediaBannerCardModel.Create(card, Ui).Action;
+                        return new DiscoverLocalFacts(
+                            card.AudioLanguages ?? [],
+                            card.SubtitleLanguages ?? [],
+                            action?.Url,
+                            action?.Label);
+                    },
+                    StringComparer.Ordinal);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The cards fall back to "In library" without a language.
+            logger.LogWarning(exception, "The library languages could not be read for Discover.");
+            return new Dictionary<string, DiscoverLocalFacts>();
+        }
     }
 
     /// <summary>Follows or unfollows one work for this profile. Library state is never taken from the browser.</summary>
@@ -265,13 +384,6 @@ public sealed class IndexModel(
             cancellationToken);
         return new JsonResult(new { followed = true, franchiseId, franchiseUrl = $"/Franchises/{franchiseId}" });
     }
-
-    private static bool TryWatchIdentity(
-        string category,
-        string provider,
-        string externalId,
-        out WatchlistIdentity identity) =>
-        WatchlistDraftInput.TryIdentity(category, provider, externalId, out identity);
 
     /// <summary>Adds (anime, automatic) or requests an AniList title according to its access policy.</summary>
     public async Task<IActionResult> OnPostAddAsync(
