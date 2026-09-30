@@ -125,6 +125,17 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             },
             cancellationToken);
 
+    /// <summary>Every request, waiting ones first, then most recently changed first; the owner's queue narrows them.</summary>
+    public Task<IReadOnlyList<AcquisitionRequest>> ListAllAsync(int limit, CancellationToken cancellationToken) =>
+        QueryAsync(
+            $"""
+            SELECT {Columns} FROM "AcquisitionRequests"
+            ORDER BY CASE "Status" WHEN 'pending' THEN 0 ELSE 1 END, "UpdatedAt" DESC, "Id"
+            LIMIT @limit;
+            """,
+            command => Add(command, "@limit", Math.Clamp(limit, 1, 5000)),
+            cancellationToken);
+
     /// <summary>One page of a profile's own requests, most recently changed first.</summary>
     public Task<IReadOnlyList<AcquisitionRequest>> ListForProfileAsync(
         string requestedByProfileId,

@@ -144,6 +144,44 @@ public sealed class RequestPagesRenderTests
     }
 
     [TestMethod]
+    public async Task AdminQueueOffersTabsFiltersAndTheActionOfEachState()
+    {
+        await using var host = await RequestPagesHost.CreateAsync();
+        var store = new AcquisitionAccessStore(host.Db);
+        var german = new AcquisitionRequestOptions { AudioLanguage = "de" }.Validate();
+        await store.CreateAsync(Anime("1", "Pending Show", german), RequestPagesHost.Profile, AcquisitionRequestStatus.Pending, null, CancellationToken.None);
+        await store.CreateAsync(Anime("2", "Downloading Show"), RequestPagesHost.Profile, AcquisitionRequestStatus.Downloading, "owner", CancellationToken.None);
+        await store.CreateAsync(Anime("3", "Rejected Show"), RequestPagesHost.Profile, AcquisitionRequestStatus.Rejected, "owner", CancellationToken.None);
+
+        var all = await host.GetHtmlAsync("/Admin/Requests", asOwner: true);
+
+        foreach (var tab in new[] { "All", "Open", "Approved", "In progress", "Done", "Rejected" })
+        {
+            StringAssert.Contains(all, tab);
+        }
+
+        StringAssert.Contains(all, "Pending Show");
+        StringAssert.Contains(all, "Deutsch");
+        StringAssert.Contains(all, "admreq-state-pending");
+        StringAssert.Contains(all, "admreq-state-downloading");
+        Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "button-primary\" type=\"submit\">\\s*Approve\\s*</button>").Count, "Only the pending request can be approved.");
+        Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "type=\"submit\">Reject</button>").Count);
+        Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(all, "type=\"submit\">Reopen</button>").Count);
+        StringAssert.Contains(all, "href=\"/Acquisition#wanted\"");
+
+        var rejected = await host.GetHtmlAsync("/Admin/Requests?tab=rejected", asOwner: true);
+        StringAssert.Contains(rejected, "Rejected Show");
+        Assert.IsFalse(rejected.Contains("Pending Show", StringComparison.Ordinal));
+
+        var byLanguage = await host.GetHtmlAsync("/Admin/Requests?lang=de", asOwner: true);
+        StringAssert.Contains(byLanguage, "Pending Show");
+        Assert.IsFalse(byLanguage.Contains("Downloading Show", StringComparison.Ordinal));
+
+        var none = await host.GetHtmlAsync("/Admin/Requests?q=zzz", asOwner: true);
+        StringAssert.Contains(none, "No requests match these filters.");
+    }
+
+    [TestMethod]
     public async Task LibraryCardsShowTheAvailabilityBadgeOnlyWhereItAddsSomething()
     {
         await using var host = await RequestPagesHost.CreateAsync();

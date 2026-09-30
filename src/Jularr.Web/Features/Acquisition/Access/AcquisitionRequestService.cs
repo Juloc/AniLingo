@@ -130,6 +130,24 @@ public sealed class AcquisitionRequestService(
         await PublishDecisionAsync(request, JularrEventCategory.RequestDenied, cancellationToken);
     }
 
+    /// <summary>
+    /// Puts a rejected (or withdrawn) request back in front of the owner. A title is only ever requested
+    /// once at a time, so nothing changes when another request for it is open already.
+    /// </summary>
+    public async Task<AcquisitionRequest> ReopenAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireRequestManager();
+        var request = await RequireAsync(id, cancellationToken);
+        if (request.Status != AcquisitionRequestStatus.Rejected
+            || await store.FindOpenAsync(request.Kind, request.Provider, request.ExternalId, cancellationToken) is not null)
+        {
+            return request;
+        }
+
+        await store.UpdateStatusAsync(id, AcquisitionRequestStatus.Pending, null, null, null, null, cancellationToken);
+        return await RequireAsync(id, cancellationToken);
+    }
+
     /// <summary>For media types without automatic acquisition: the owner added it by hand.</summary>
     public async Task MarkCompletedAsync(Guid id, CancellationToken cancellationToken)
     {

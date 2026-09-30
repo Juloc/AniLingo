@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Quality;
@@ -21,36 +22,103 @@ public sealed class RequestsModel(
     AcquisitionAccessStore store,
     AcquisitionRequestService requests,
     AcquisitionRequestSettingsStore settings,
-    QualityProfileStore qualityProfiles) : PageModel
+    QualityProfileStore qualityProfiles,
+    ILogger<RequestsModel> logger) : PageModel
 {
+    private const string PagePath = "/Admin/Requests";
+    private const int QueueLimit = 2000;
+
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<AcquisitionAccessPolicy> Policies { get; private set; } = [];
-    public IReadOnlyList<AcquisitionRequest> Requests { get; private set; } = [];
+    public AdminRequestPage Queue { get; private set; } = AdminRequestQuery.Build([], new AdminRequestFilter(), new Dictionary<string, string>());
+
+    /// <summary>Whether the queue could not be read; the rules below it still work.</summary>
+    public bool QueueFailed { get; private set; }
+
+    /// <summary>Whether the server has any request at all, whatever the filters say.</summary>
+    public bool AnyRequests { get; private set; }
+
+    /// <summary>The profiles that made requests, for the requester filter, by name.</summary>
+    public IReadOnlyList<(string Id, string Name)> Requesters { get; private set; } = [];
     public IReadOnlyDictionary<string, string> ProfileNames { get; private set; } = new Dictionary<string, string>();
     public AcquisitionRequestSettings RequestSettings { get; private set; } = AcquisitionRequestSettings.Default;
     public IReadOnlyList<QualityProfile> QualityProfiles { get; private set; } = [];
     public IReadOnlyDictionary<string, string> QualityProfileNames { get; private set; } = new Dictionary<string, string>();
-    public bool ShowAll { get; private set; }
 
     /// <summary>Whether the signed-in account may change rules and settings (the queue itself needs only the page policy).</summary>
     public bool CanEditSettings => JularrPolicies.Allows(User, JularrPolicies.AcquisitionSettings);
 
-    /// <summary>The requester's chosen options as short lines for the queue.</summary>
+    /// <summary>The requester's chosen options besides the audio language, which has its own column.</summary>
     public IReadOnlyList<string> OptionsOf(AcquisitionRequest request) =>
-        RequestOptionsSummary.Describe(request.Options, Ui, QualityProfileNames);
+        RequestOptionsSummary.Describe(request.Options with { AudioLanguage = null }, Ui, QualityProfileNames);
 
-    public async Task OnGetAsync(bool all, CancellationToken cancellationToken)
+    /// <summary>The address of the queue with the given filter; default values stay out of it.</summary>
+    public static string Href(AdminRequestFilter filter)
+    {
+        var parts = new List<string>();
+        void Add(string name, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                parts.Add($"{name}={Uri.EscapeDataString(value)}");
+            }
+        }
+
+        Add("tab", filter.Tab == AdminRequestTab.All ? null : AdminRequestQuery.TabName(filter.Tab));
+        Add("type", filter.Kind is { } kind ? AcquisitionAccessNames.Kind(kind) : null);
+        Add("status", filter.Status is { } status ? AcquisitionAccessNames.Status(status) : null);
+        Add("lang", filter.Language);
+        Add("by", filter.RequesterProfileId);
+        Add("q", filter.Search?.Trim());
+        Add("p", filter.Page > 1 ? filter.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : null);
+        return parts.Count == 0 ? PagePath : $"{PagePath}?{string.Join('&', parts)}";
+    }
+
+    public async Task OnGetAsync(
+        string? tab,
+        string? type,
+        string? status,
+        string? lang,
+        string? by,
+        string? q,
+        int p,
+        CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        ShowAll = all;
         Policies = await store.GetPoliciesAsync(cancellationToken);
-        Requests = await store.ListAsync(null, null, openOnly: !all, limit: 200, cancellationToken);
         ProfileNames = await db.OwnerAccounts
             .AsNoTracking()
             .ToDictionaryAsync(account => account.Id, account => account.UserName, cancellationToken);
         RequestSettings = await settings.LoadAsync(cancellationToken);
         QualityProfiles = (await qualityProfiles.LoadAsync(cancellationToken)).Profiles;
         QualityProfileNames = QualityProfiles.ToDictionary(profile => profile.Id, profile => profile.Name, StringComparer.Ordinal);
+
+        var filter = new AdminRequestFilter(
+            AdminRequestQuery.ParseTab(tab),
+            AdminRequestQuery.TryParseKind(type),
+            AdminRequestQuery.TryParseStatus(status),
+            string.IsNullOrWhiteSpace(lang) ? null : lang.Trim().ToLowerInvariant(),
+            string.IsNullOrWhiteSpace(by) ? null : by,
+            string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
+            Math.Max(p, 1));
+        try
+        {
+            var rows = await store.ListAllAsync(QueueLimit, cancellationToken);
+            AnyRequests = rows.Count > 0;
+            Requesters = rows
+                .Select(row => row.RequestedByProfileId)
+                .Distinct(StringComparer.Ordinal)
+                .Select(id => (Id: id, Name: ProfileNames.GetValueOrDefault(id) ?? id))
+                .OrderBy(requester => requester.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+            Queue = AdminRequestQuery.Build(rows, filter, ProfileNames);
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException or FormatException)
+        {
+            logger.LogError(exception, "The request queue could not be read.");
+            QueueFailed = true;
+            Queue = AdminRequestQuery.Build([], filter, ProfileNames);
+        }
     }
 
     public async Task<IActionResult> OnPostPoliciesAsync(CancellationToken cancellationToken)
@@ -154,22 +222,42 @@ public sealed class RequestsModel(
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostApproveAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostApproveAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
     {
         var request = await requests.ApproveAsync(id, cancellationToken);
         TempData["Status"] = request.StatusMessage ?? request.Title;
-        return RedirectToPage();
+        return Back(returnUrl);
     }
 
-    public async Task<IActionResult> OnPostRejectAsync(Guid id, string? note, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRejectAsync(Guid id, string? note, string? returnUrl, CancellationToken cancellationToken)
     {
         await requests.RejectAsync(id, note, cancellationToken);
-        return RedirectToPage();
+        return Back(returnUrl);
     }
 
-    public async Task<IActionResult> OnPostCompleteAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostCompleteAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
     {
         await requests.MarkCompletedAsync(id, cancellationToken);
-        return RedirectToPage();
+        return Back(returnUrl);
     }
+
+    public async Task<IActionResult> OnPostReopenAsync(Guid id, string? returnUrl, CancellationToken cancellationToken)
+    {
+        var request = await requests.ReopenAsync(id, cancellationToken);
+        if (request.Status != AcquisitionRequestStatus.Pending)
+        {
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui["admin.requests.reopenBlocked"];
+        }
+
+        return Back(returnUrl);
+    }
+
+    /// <summary>Returns to the filtered queue the action came from; anything else goes to the unfiltered page.</summary>
+    private IActionResult Back(string? returnUrl) =>
+        !string.IsNullOrEmpty(returnUrl)
+        && Url.IsLocalUrl(returnUrl)
+        && (returnUrl == PagePath || returnUrl.StartsWith(PagePath + "?", StringComparison.Ordinal))
+            ? LocalRedirect(returnUrl)
+            : RedirectToPage();
 }
