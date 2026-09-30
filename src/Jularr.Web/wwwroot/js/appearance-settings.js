@@ -18,7 +18,7 @@
     const monoNote = host.querySelector('[data-accent-mono-note]');
     const status = host.querySelector('[data-appearance-status]');
     const swatches = Array.from(host.querySelectorAll('[data-accent-preset]'));
-    const brandSeed = host.dataset.brandSeed;
+    const defaultSeed = host.dataset.defaultSeed;
     const hexPattern = /^#?([0-9a-f]{6})$/i;
 
     let previewController = null;
@@ -107,8 +107,8 @@
     };
 
     const save = async (accent) => {
-        // The brand red is stored as "no choice", so a future brand refresh reaches this profile too.
-        const stored = accent === brandSeed ? '' : accent;
+        // The default lila is stored as "no choice", so a future default change reaches this profile too.
+        const stored = accent === defaultSeed ? '' : accent;
         if (stored === savedAccent) {
             await preview(accent);
             return;
@@ -172,8 +172,8 @@
     });
 
     host.querySelector('[data-accent-reset]').addEventListener('click', () => {
-        reflectSelection(brandSeed);
-        save(brandSeed);
+        reflectSelection(defaultSeed);
+        save(defaultSeed);
     });
 
     // --- theme mode ------------------------------------------------------------------------------
