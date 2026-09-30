@@ -4,8 +4,6 @@
   const INSTALL_DISMISS_KEY = "anilingo.pwa.installDismissedUntil";
   const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
   let deferredInstallPrompt = null;
-  let reloadForServiceWorker = false;
-  let didReloadForServiceWorker = false;
 
   // Localized shell text is rendered by the server from the UI catalog
   // (pwa.* keys), so this script never keeps its own copy of UI strings.
@@ -238,6 +236,40 @@
     }, 2500);
   };
 
+  const activateWaitingServiceWorker = worker => new Promise(resolve => {
+    if (!worker) {
+      resolve(false);
+      return;
+    }
+
+    if (worker.state === "activated") {
+      resolve(true);
+      return;
+    }
+
+    let finished = false;
+    const finish = activated => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      window.clearTimeout(timeout);
+      worker.removeEventListener("statechange", onStateChange);
+      resolve(activated);
+    };
+    const onStateChange = () => {
+      if (worker.state === "activated") {
+        finish(true);
+      } else if (worker.state === "redundant") {
+        finish(false);
+      }
+    };
+    const timeout = window.setTimeout(() => finish(false), 5000);
+
+    worker.addEventListener("statechange", onStateChange);
+    worker.postMessage({ type: "SKIP_WAITING" });
+  });
+
   const offerServiceWorkerUpdate = worker => {
     if (!worker || !navigator.serviceWorker.controller) {
       return;
@@ -249,15 +281,28 @@
       primaryLabel: shellLabel("pwa.update.action"),
       secondaryLabel: shellLabel("pwa.update.later"),
       onPrimary: async () => {
-        reloadForServiceWorker = true;
-        worker.postMessage({ type: "SKIP_WAITING" });
+        const activated = await activateWaitingServiceWorker(worker);
+        if (activated) {
+          window.location.reload();
+        }
       }
     });
   };
 
+  const isVersionedShellAsset = url =>
+    url
+    && url.origin === window.location.origin
+    && (
+      (
+        (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/"))
+        && url.searchParams.has("v")
+      )
+      || url.pathname.startsWith("/build/")
+    );
+
   const currentFingerprintedAssets = () => {
     const candidates = document.querySelectorAll(
-      'link[rel="stylesheet"][href], script[src]');
+      'link[rel="stylesheet"][href], link[rel="modulepreload"][href], script[src]');
 
     return [...new Set(Array.from(candidates)
       .map(element => element.href || element.src)
@@ -269,12 +314,23 @@
           return null;
         }
       })
-      .filter(url =>
-        url
-        && url.origin === window.location.origin
-        && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/"))
-        && url.searchParams.has("v"))
+      .filter(isVersionedShellAsset)
       .map(url => url.pathname + url.search))];
+  };
+
+  const hashBuildSignature = value => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  };
+
+  const serviceWorkerBuildKey = () => {
+    const appVersion = document.documentElement.dataset.appVersion || "unknown";
+    const assets = currentFingerprintedAssets().slice().sort().join("|");
+    return appVersion + "-" + hashBuildSignature(assets);
   };
 
   const syncCurrentAssets = registration => {
@@ -296,8 +352,10 @@
     }
 
     try {
+      const workerUrl =
+        "/service-worker.js?v=" + encodeURIComponent(serviceWorkerBuildKey());
       const registration = await navigator.serviceWorker.register(
-        "/service-worker.js",
+        workerUrl,
         { scope: "/", updateViaCache: "none" });
 
       if (registration.waiting) {
@@ -315,13 +373,6 @@
             offerServiceWorkerUpdate(worker);
           }
         });
-      });
-
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (reloadForServiceWorker && !didReloadForServiceWorker) {
-          didReloadForServiceWorker = true;
-          window.location.reload();
-        }
       });
 
       syncCurrentAssets(registration);
