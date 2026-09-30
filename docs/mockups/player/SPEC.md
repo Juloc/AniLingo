@@ -280,21 +280,84 @@ Where WebKit requires system surfaces:
 
 The mockup represents the intended Jularr inline state, but implementation may use a system-control fallback for unsupported WebKit capabilities.
 
-## 9. Timeline, chapters and skip segments
+## 9. Timeline, buffer, chapters and skip segments
+
+The timeline is the primary playback-position surface and must clearly separate **played**, **buffered** and **remaining** media.
 
 Timeline must show:
 - played position;
-- buffered range when meaningful;
-- duration;
-- hover/seek preview where available;
-- chapter markers where useful;
+- buffered range whenever the delivery layer can report it reliably;
+- remaining/unbuffered range;
+- current time and duration;
+- hover/seek preview on Desktop where available;
+- chapter markers;
 - canonical intro/recap/outro/credits/preview markers only when resolved and above the configured confidence threshold.
 
-Skip actions:
-- appear contextually only while the current position is inside an eligible segment;
-- use labels such as Skip intro / Skip recap / Skip outro;
-- disappear after the segment;
-- never expose segment editing in the normal Player.
+### Buffer visualization
+
+Buffer must be visible directly in the timeline as a secondary fill/range behind the played position.
+
+When playback actually stalls waiting for media:
+- preserve the current frame where possible;
+- show a centered buffering indicator after a short delay so tiny network fluctuations do not flash UI;
+- if the stall becomes prolonged, add a concise `Buffering…` status;
+- keep the timeline and valid controls accessible;
+- do not show a fake percentage unless the delivery layer exposes a meaningful buffer/download value.
+
+Buffer display is distinct from acquisition/download progress. Normal playback buffering must never expose indexer or download-client internals.
+
+### Chapters
+
+Chapters are visible in two places:
+1. discrete markers on the timeline;
+2. a **Chapters** menu/sheet listing chapter title and start time.
+
+Behavior:
+- selecting a chapter seeks to its canonical start position;
+- the current chapter is clearly selected;
+- Desktop hover/focus may show the chapter title near its marker;
+- Mobile/Tablet use a touch-friendly sheet;
+- TV uses a large D-pad-focusable chapter list;
+- chapter markers must remain visually subordinate to the main played/buffered timeline.
+
+### Manual skip actions
+
+Eligible canonical segments expose contextual, real buttons:
+- **Skip intro**
+- **Skip recap**
+- **Skip outro**
+- **Skip credits**
+- **Skip preview** where applicable
+
+Rules:
+- button appears only while current playback position is inside the corresponding eligible segment;
+- button is directly reachable in player chrome, not hidden only in a settings menu;
+- Desktop keeps it compact but obvious;
+- Mobile/Tablet use a large touch target;
+- TV exposes it as a first-class focusable action;
+- the segment is also marked on the timeline;
+- button disappears after leaving/skipping the segment;
+- segment editing never happens inside the normal Player.
+
+### Optional Auto-Skip
+
+Playback settings include per-profile/user options:
+- **Auto-skip intro** — Off/On;
+- **Auto-skip recap** — Off/On;
+- **Auto-skip outro/credits** — Off/On.
+
+Default for all automatic skip options is **Off**.
+
+When Auto-Skip is enabled:
+- only canonical resolved segment markers may trigger it;
+- configured confidence/policy thresholds still apply;
+- Jularr seeks to the segment end automatically;
+- show a brief non-blocking confirmation such as `Intro automatically skipped`;
+- expose **Undo** for a short period, returning to the segment start;
+- auto-skip must never mark an episode completed by itself;
+- an unavailable/ambiguous segment is never guessed client-side.
+
+These preferences belong to normal Playback settings and are reused across clients. They must not be implemented as separate per-platform rules.
 
 Segment correction/editing is an Admin/Episode-detail concern.
 
@@ -416,7 +479,7 @@ Do not expose indexer/download-client internals.
 Show a normal loading state. Only show technical reason inside diagnostics.
 
 ### Buffering
-Keep the current frame when possible, show center spinner after a short delay, keep controls available.
+Keep the current frame when possible, show a center spinner after a short delay, keep controls available, and continue to show the buffered range in the timeline. For prolonged stalls add a concise `Buffering…` label. Do not show unreliable percentages.
 
 ### Storage waking/offline
 Explain that media storage is unavailable/waking and expose Retry/Back. Do not classify it as codec failure.
@@ -569,7 +632,9 @@ The screen consumes view data derived from:
 - PlaybackPlan and safe user-facing reasons;
 - ActiveSession;
 - canonical progress/completion state;
-- chapters/segments;
+- buffered time ranges when the delivery/client can report them;
+- chapters/segments and their confidence/policy eligibility;
+- profile/user Auto-Skip playback preferences;
 - subtitle cues / learning capability;
 - client feature capabilities;
 - preparing/acquisition state when Play triggered missing-media acquisition.
@@ -595,6 +660,9 @@ The Player must not query legacy Anime/Episode-only tables as its permanent sour
 - No separate subtitle identity model for learning.
 - No permanent mini-player state disconnected from ActiveSession.
 - No duplicated platform pages that reimplement business rules independently.
+- No client-guessed intro/outro/chapter boundaries.
+- No Auto-Skip enabled by default.
+- No Auto-Skip without a canonical eligible segment marker.
 
 ## 24. Mockup acceptance checklist
 
@@ -606,6 +674,10 @@ A Player mockup is acceptable only when:
 - TV has a complete D-pad focus path;
 - audio/subtitle/quality are accessible without persistent clutter;
 - Light/Dark contrast behavior is defined;
+- played/buffered/remaining timeline states are visually distinct;
+- chapters and segment markers are visible without making the timeline noisy;
+- manual Skip actions are direct contextual buttons;
+- Auto-Skip has explicit settings, defaults Off and provides temporary Undo feedback;
 - preparing/loading/buffering/error states have clear treatment;
 - completion vs resume semantics are not visually conflated;
 - no legacy media model is implied;
