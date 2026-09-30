@@ -75,7 +75,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<ViteAssetManifest>();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 
-var dataProtectionDirectory = new DirectoryInfo("/data/keys");
+var dataProtectionDirectory = new DirectoryInfo(builder.Configuration["DataProtection:KeysDirectory"] ?? "/data/keys");
 Directory.CreateDirectory(dataProtectionDirectory.FullName);
 builder.Services.AddDataProtection()
     // Stays "AniLingo" after the Jularr rebrand: the application name isolates the Data Protection
@@ -363,6 +363,8 @@ Jularr.Web.Features.Playback.Decision.PlaybackDecisionRegistration.AddPlaybackDe
 // Universal media core (#592): the provider-independent work/identity model the #556 children build on.
 Jularr.Web.Features.MediaCore.MediaCoreRegistration.AddMediaCore(builder.Services);
 // Smart & manual collections (#427): user-curated and rule-driven cross-media shelves over works.
+// Per-type media facts (#426): one registration for Collections (#427) and any other consumer.
+builder.Services.AddScoped<Jularr.Web.Features.MediaFacts.MediaFactsService>();
 Jularr.Web.Features.Collections.CollectionRegistration.AddCollections(builder.Services);
 // Learning v3 curriculum foundation (#441): blueprint hierarchy + shared course instances + progress.
 Jularr.Web.Features.Learning.Curriculum.CurriculumRegistration.AddLearningCurriculum(builder.Services);
@@ -652,7 +654,25 @@ builder.Services.AddSingleton<PlaybackSessionCoordinator>();
 builder.Services.AddSingleton<DevicePairingStore>();
 builder.Services.AddHostedService<DiscoveryBeaconService>();
 
+// Container check (#649): the DI graph test boots this entry point with this flag so every
+// registration is validated (constructor dependencies and scope lifetimes), then exits before
+// touching the database or serving anything.
+var containerCheckOnly = builder.Configuration.GetValue<bool>("Jularr:ContainerCheckOnly");
+if (containerCheckOnly)
+{
+    builder.Host.UseDefaultServiceProvider(options =>
+    {
+        options.ValidateOnBuild = true;
+        options.ValidateScopes = true;
+    });
+}
+
 var app = builder.Build();
+
+if (containerCheckOnly)
+{
+    return;
+}
 
 if (app.Environment.IsDevelopment())
 {
