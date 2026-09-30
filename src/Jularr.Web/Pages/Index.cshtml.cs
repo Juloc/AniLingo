@@ -45,6 +45,12 @@ public sealed class IndexModel(
     /// <summary>Most slides the hero carousel holds.</summary>
     public const int HeroLimit = 6;
 
+    /// <summary>
+    /// How long the active hero segment takes to fill before the hero advances. Rendered as the
+    /// hero's <c>data-interval-ms</c>; the script reads it on every frame and has no default of its own.
+    /// </summary>
+    public const int HeroIntervalMs = 30_000;
+
     /// <summary>Most slides one source (resume, reading, up next, watchlist) may contribute, so the hero stays mixed.</summary>
     public const int HeroPerSourceLimit = 2;
 

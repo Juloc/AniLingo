@@ -13,16 +13,29 @@
     background: #120f1a;
 }
 
+/* The track is moved with a transform (home-spotlight.js): drag/swipe follows the pointer 1:1 and
+   releases snap to a slide. pan-y keeps vertical page scrolling native on touch screens. */
 .home-hero-track {
     display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    overscroll-behavior-x: contain;
+    touch-action: pan-y;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform .45s cubic-bezier(.22, .61, .36, 1);
+    will-change: transform;
 }
 
-.home-hero-track::-webkit-scrollbar {
-    display: none;
+.home-hero.is-dragging .home-hero-track {
+    cursor: grabbing;
+    transition: none;
+}
+
+.home-hero.is-instant .home-hero-track {
+    transition: none;
+}
+
+.home-hero-track img {
+    -webkit-user-drag: none;
 }
 
 .home-hero-slide {
@@ -35,8 +48,11 @@
     min-height: clamp(300px, 30vw, 400px);
     padding: 36px 88px 44px 72px;
     overflow: hidden;
-    scroll-snap-align: start;
     color: #fff;
+}
+
+.home-hero-slide :is(a, button) {
+    cursor: pointer;
 }
 
 .home-hero-slide-plain {
@@ -59,7 +75,7 @@
     transform: scale(1.3);
 }
 
-/* Scrim: darkest behind the copy on the left and along the bottom (progress, dots). */
+/* Scrim: darkest behind the copy on the left and along the bottom (progress, segments). */
 .home-hero-slide::before {
     content: "";
     position: absolute;
@@ -235,31 +251,55 @@
 .home-hero-prev { left: 16px; }
 .home-hero-next { right: 16px; }
 
-.home-hero-dots {
+/* Progress segments: one thin bar per slide near the bottom centre. The active one fills with the
+   accent over data-interval-ms (driven by --fill from the script); earlier ones are full. */
+.home-hero-segments {
     position: absolute;
     left: 50%;
-    bottom: 14px;
+    bottom: 10px;
     z-index: 2;
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 6px;
     transform: translateX(-50%);
 }
 
-.home-hero-dots > [data-home-hero-dot] {
-    width: 8px;
-    height: 8px;
+.home-hero-segment {
+    --fill: 0;
+    display: grid;
+    align-items: center;
+    width: 34px;
+    height: 20px;
     padding: 0;
     border: 0;
-    border-radius: 999px;
-    background: rgb(255 255 255 / .45);
+    background: transparent;
     cursor: pointer;
-    transition: width .2s ease, background-color .2s ease;
 }
 
-.home-hero-dots > [aria-current="true"] {
-    width: 22px;
-    background: #fff;
+.home-hero-segment-track {
+    display: block;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .34);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .12);
+}
+
+.home-hero-segment-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--accent) 78%, #fff);
+    transform: scaleX(var(--fill));
+    transform-origin: left center;
+}
+
+.home-hero-segment[aria-current="true"] .home-hero-segment-track {
+    background: rgb(255 255 255 / .5);
+}
+
+.home-hero-segment:hover .home-hero-segment-track {
+    background: rgb(255 255 255 / .6);
 }
 
 .home-hero-rotation {
@@ -549,7 +589,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .home-hero-dots > [data-home-hero-dot],
+    .home-hero-track,
     .home-continue-backdrop,
     .home-poster img {
         transition: none;

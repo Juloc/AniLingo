@@ -119,13 +119,53 @@ public sealed class HomeHeroTests
         StringAssert.Contains(view, "@if (Model.ForYou.Count > 0)");
         StringAssert.Contains(view, "<partial name=\"_HomeContinueTile\"");
 
-        // Slow auto-advance that respects reduced motion and pauses on interaction.
-        StringAssert.Contains(script, "prefers-reduced-motion: reduce");
-        StringAssert.Contains(script, "INTERVAL_MS = 8000");
-        foreach (var pause in new[] { "mouseenter", "focusin", "touchstart" })
+        // One progress segment per slide, each a button; the fill duration is a single data attribute.
+        StringAssert.Contains(view, "data-interval-ms=\"@IndexModel.HeroIntervalMs\"");
+        StringAssert.Contains(view, "data-home-hero-segment");
+        StringAssert.Contains(view, "home.spotlight.slideLabel");
+        Assert.IsFalse(view.Contains("data-home-hero-dot", StringComparison.Ordinal), "Segments replace the dots.");
+        StringAssert.Contains(css, "--fill");
+    }
+
+    [TestMethod]
+    public void HeroSegmentsFillOverThirtySeconds()
+    {
+        var shipped = typeof(IndexModel).GetField(nameof(IndexModel.HeroIntervalMs))!.GetRawConstantValue();
+        Assert.AreEqual(30_000, shipped, "The shipped fill duration is 30 s.");
+
+        var script = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "js", "home-spotlight.js"));
+        // The script has no duration or query-string override of its own: it reads data-interval-ms.
+        StringAssert.Contains(script, "hero.dataset.intervalMs");
+        Assert.IsFalse(script.Contains("location.search", StringComparison.Ordinal), "No query-string override in production code.");
+        Assert.IsFalse(script.Contains("URLSearchParams", StringComparison.Ordinal), "No query-string override in production code.");
+        // Elapsed-time fill, so every pause freezes it and resuming continues from the same point.
+        StringAssert.Contains(script, "requestAnimationFrame");
+        StringAssert.Contains(script, "elapsed += now - lastFrame");
+        StringAssert.Contains(script, "!reducedMotion.matches", "No autoplay with prefers-reduced-motion.");
+        foreach (var pause in new[] { "pointerenter", "focusin", "visibilitychange", "stoppedByUser" })
         {
             StringAssert.Contains(script, pause);
         }
+    }
+
+    [TestMethod]
+    public void HeroIsDraggableWithoutBlockingVerticalScrollOrFollowingLinks()
+    {
+        var web = Path.Combine(RepositoryRoot(), "src", "Jularr.Web");
+        var script = File.ReadAllText(Path.Combine(web, "wwwroot", "js", "home-spotlight.js"));
+        var css = File.ReadAllText(Path.Combine(web, "wwwroot", "css", "home.css"));
+
+        foreach (var pointer in new[] { "pointerdown", "pointermove", "pointerup", "pointercancel", "setPointerCapture" })
+        {
+            StringAssert.Contains(script, pointer);
+        }
+
+        StringAssert.Contains(script, "SNAP_RATIO = 0.2", "A drag past 20 % of the width changes the slide.");
+        StringAssert.Contains(script, "clickGuardUntil", "The click that ends a drag is swallowed.");
+        StringAssert.Contains(css, "touch-action: pan-y");
+        StringAssert.Contains(css, "cursor: grab");
+        StringAssert.Contains(css, "cursor: grabbing");
+        StringAssert.Contains(css, "user-select: none");
     }
 
     private static async Task FollowWithRecentReleaseAsync(AppDbContext db)

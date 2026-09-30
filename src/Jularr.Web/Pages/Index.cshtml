@@ -17,6 +17,7 @@
     <section class="home-hero"
              aria-roledescription="carousel"
              aria-label="@Model.Ui["home.spotlight.aria"]"
+             data-interval-ms="@IndexModel.HeroIntervalMs"
              data-home-hero>
         <div class="home-hero-track" aria-live="polite" data-home-hero-track>
             @for (var index = 0; index < Model.Hero.Count; index++)
@@ -36,7 +37,7 @@
                         <img class="home-hero-art@(isPoster ? " home-hero-art-derived" : "")"
                              src="@slide.ImageUrl"
                              alt=""
-                             loading="@(index == 0 ? "eager" : "lazy")"
+                             draggable="false"
                              referrerpolicy="no-referrer" />
                     }
                     @if (isPoster)
@@ -44,7 +45,7 @@
                         <img class="home-hero-poster"
                              src="@slide.ImageUrl"
                              alt=""
-                             loading="@(index == 0 ? "eager" : "lazy")"
+                             draggable="false"
                              referrerpolicy="no-referrer" />
                     }
                     <div class="home-hero-copy">
@@ -103,13 +104,17 @@
             <button type="button" class="home-hero-arrow home-hero-next" aria-label="@Model.Ui["home.spotlight.next"]" data-home-hero-next>
                 <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
-            <div class="home-hero-dots">
+            @* One segment per slide: the active one fills over data-interval-ms, then the hero advances.
+               Each segment is also a button that jumps to its slide. *@
+            <div class="home-hero-segments">
                 @for (var index = 0; index < Model.Hero.Count; index++)
                 {
                     <button type="button"
-                            aria-label="@Model.Ui.Format("home.spotlight.slideAria", ("title", Model.Hero[index].Title))"
+                            class="home-hero-segment"
+                            aria-label="@Model.Ui.Format("home.spotlight.slideLabel", ("index", index + 1), ("count", Model.Hero.Count))"
+                            aria-controls="home-hero-@index"
                             aria-current="@(index == 0 ? "true" : null)"
-                            data-home-hero-dot></button>
+                            data-home-hero-segment><span class="home-hero-segment-track"><span class="home-hero-segment-fill"></span></span></button>
                 }
                 <button type="button"
                         class="home-hero-rotation"
