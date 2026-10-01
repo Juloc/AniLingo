@@ -77,7 +77,7 @@ public sealed class PwaManifestTests
         StringAssert.Contains(serviceWorker, "\"/offline.html\"");
         Assert.IsFalse(serviceWorker.Contains("\"/css/site.css\"", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("\"/js/pwa.js\"", StringComparison.Ordinal));
-        StringAssert.Contains(serviceWorker, "SKIP_WAITING");
+        Assert.IsFalse(serviceWorker.Contains("SKIP_WAITING", StringComparison.Ordinal));
         StringAssert.Contains(serviceWorker, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(serviceWorker, "cache: \"reload\"");
         StringAssert.Contains(serviceWorker, "jularr-static-v1-");
@@ -135,13 +135,13 @@ public sealed class PwaManifestTests
         StringAssert.Contains(pwaRuntime, "url.pathname.startsWith(\"/build/\")");
         StringAssert.Contains(pwaRuntime, "serviceWorkerBuildKey");
         StringAssert.Contains(pwaRuntime, "encodeURIComponent(serviceWorkerBuildKey())");
-        StringAssert.Contains(pwaRuntime, "UPDATE_NOTICE_WORKER_KEY");
-        StringAssert.Contains(pwaRuntime, "worker.scriptURL");
-        StringAssert.Contains(pwaRuntime, "jularr.pwa.updateNoticeWorker");
+        Assert.IsFalse(pwaRuntime.Contains("registration.update()", StringComparison.Ordinal));
+        Assert.IsFalse(pwaRuntime.Contains("SKIP_WAITING", StringComparison.Ordinal));
+        Assert.IsFalse(pwaRuntime.Contains("window.location.reload()", StringComparison.Ordinal));
+        Assert.IsFalse(pwaRuntime.Contains("pwa-update-notice", StringComparison.Ordinal));
         Assert.IsFalse(
             pwaRuntime.Contains("currentFingerprintedAssets().slice().sort().join", StringComparison.Ordinal),
             "Page-specific assets must not create a new service-worker registration on every navigation.");
-        StringAssert.Contains(pwaRuntime, "activateWaitingServiceWorker");
         StringAssert.Contains(pwaRuntime, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(pwaRuntime, "updateViaCache: \"none\"");
         Assert.IsFalse(
@@ -167,7 +167,7 @@ public sealed class PwaManifestTests
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.IsTrue(keys.Length >= 10);
+        Assert.IsTrue(keys.Length >= 9);
         foreach (var key in keys)
         {
             Assert.IsTrue(key.StartsWith("pwa.", StringComparison.Ordinal), key);
