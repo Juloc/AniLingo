@@ -123,104 +123,41 @@ Primary actions may include:
 - Open related media
 - View logs/details
 
-## Import Review / Assignment dialog
+## Manual assignment flows
 
-A failed or ambiguous import opens a dedicated dialog/sheet from To-Do.
+To-Do can open two distinct mapping flows. They share canonical mapping concepts but are not the same UI.
 
-This dialog replaces a standalone Imports page.
+### Download Assignment
 
-### Purpose
+Binding spec:
+- `docs/mockups/admin-download-assignment/SPEC.md`
 
-Let an admin safely correct Jularr's interpretation before the file is committed into canonical media/storage state.
+Use when a completed download job contains one or more files whose canonical episode/unit or release metadata could not be resolved automatically.
 
-The dialog should prefill everything Jularr could detect automatically and allow explicit correction.
+Desktop uses a compact editable table:
+- one downloaded file = one row
+- multiple files in the same download = multiple rows
 
-### Editable canonical assignment
+The row directly exposes Work, Season/Structure, Episode/Unit, Release Group, Quality, Language, Audio, Subtitles, Version and Source/Type as applicable.
 
-The admin may choose/correct, depending on media type:
-- Work
-- Structure/unit
-- season
-- episode
-- volume
-- chapter
-- part
-- Edition
-- Version / version target where applicable
+Do not add large artwork, side-by-side summary panels or a second technical-info layout around this table.
 
-The UI must use canonical pickers/search/selectors. Never ask the admin to type database IDs.
+### Folder / Library Import Mapping
 
-### Editable parsed release metadata
+Binding spec:
+- `docs/mockups/admin-folder-import-mapping/SPEC.md`
 
-Where automatic parsing/probing is incomplete or wrong, the admin may correct:
-- release group
-- quality / source / format classification
-- language
-- audio language
-- subtitle language
-- release type
-- other normalized acquisition metadata supported by the canonical model
+Use when Library Scan / Reconciliation finds existing folders/files inside a configured LibraryRoot that cannot be associated reliably.
 
-These corrections apply to this import decision unless a separate explicit parser/rule-management feature exists.
+This is a broader reconciliation flow with:
+- folder-level canonical assignment
+- one row per file
+- batch mapping
+- sequence/range suggestions
+- per-file Episode/Unit correction
+- safe reconciliation/rename/move semantics where applicable
 
-Do not silently train/change global parser rules from a one-off manual correction.
-
-### File-derived metadata
-
-Where metadata can be reliably probed from the file itself, prefer detected technical facts over freeform manual entry.
-
-Examples:
-- codec
-- resolution
-- bitrate
-- audio tracks
-- subtitle tracks
-- container
-- duration
-
-Manual correction is allowed only where Jularr cannot determine the value reliably or where an authorized override is explicitly supported.
-
-### Destination
-
-The admin normally does **not** manually choose an arbitrary destination path.
-
-Once the canonical Work/Structure/Edition/Version assignment is known, Jularr derives the destination from:
-- configured LibraryRoot / storage policy
-- canonical media assignment
-- naming/path rules
-
-The dialog may preview the resolved destination and allow choosing among configured valid roots/policies where permitted.
-
-Never use arbitrary server-path text entry as the normal import-resolution flow.
-
-### File list
-
-Show:
-- source download/job
-- source file(s)
-- detected media file(s)
-- ignored/extras where applicable
-- size
-- current parser interpretation
-- target mapping
-- conflicts/duplicates
-- destination preview
-
-For multi-file downloads/season packs, allow per-file unit mapping when automatic mapping is ambiguous.
-
-### Actions
-
-Depending on state/permission:
-- Import / Confirm assignment
-- Retry automatic detection
-- Save corrected mapping and import
-- Skip file
-- Ignore job
-- Cancel
-- Open logs
-- Open related media
-
-Destructive source-file actions require explicit semantics/confirmation.
+It requires its own dedicated mockup and must not be collapsed into the compact Download Assignment dialog.
 
 ## History tab
 
