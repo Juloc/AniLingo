@@ -283,7 +283,9 @@ jobs:
       # publish pushes exactly this smoke-tested image instead of rebuilding it
       # on another runner, where a cache miss or newer apt package could differ.
       - name: Export tested image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release)
         run: |
           set -euo pipefail
           # Content fingerprint (layer diff IDs + image config) that survives
@@ -293,7 +295,9 @@ jobs:
           docker save "${IMAGE}:${GITHUB_SHA}" | zstd -T0 -3 -q -o "${RUNNER_TEMP}/jularr-image.tar.zst"
 
       - name: Upload tested image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release)
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.IMAGE_ARTIFACT }}
