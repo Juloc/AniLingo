@@ -81,7 +81,7 @@ public sealed class AdminDashboardPageRenderTests
     }
 
     [TestMethod]
-    public async Task WorkStreamsHostFiguresAndStorageAreShownFromRealData()
+    public async Task WorkStreamsStackResourcesAndStorageAreShownFromRealData()
     {
         await using var host = await DashboardHost.CreateAsync();
         await host.SeedAsync();
@@ -122,20 +122,17 @@ public sealed class AdminDashboardPageRenderTests
         StringAssert.Contains(streams, "popovertarget=\"admdash-stream-");
         StringAssert.Contains(streams, "Transcode");
 
-        // Host figures come from the telemetry, with a history line only where there are two values.
-        StringAssert.Contains(html, "data-metric=\"cpu\"");
+        // Only Jularr and PostgreSQL cgroup figures are shown, with the stack total first.
+        StringAssert.Contains(html, "data-metric=\"stack-total\"");
         StringAssert.Contains(html, "42%");
-        StringAssert.Contains(html, "Jularr 3%");
-        StringAssert.Contains(html, "data-metric=\"memory\"");
-        StringAssert.Contains(html, "50%");
-        StringAssert.Contains(html, "8 GB of 16 GB");
-        StringAssert.Contains(html, "data-metric=\"load\"");
-        StringAssert.Contains(html, "0.73");
-        StringAssert.Contains(html, "data-metric=\"download\"");
+        StringAssert.Contains(html, "data-metric=\"jularr\"");
+        StringAssert.Contains(html, "data-metric=\"postgresql\"");
+        StringAssert.Contains(html, "800 MB");
+        StringAssert.Contains(html, "data-stack-network");
         StringAssert.Contains(html, "48.5 MB/s");
         StringAssert.Contains(html, "6.1 MB/s");
-        Assert.IsTrue(Regex.Matches(html, "class=\"admdash-spark\"").Count >= 4, "CPU, memory and both network figures have a history.");
-        Assert.IsFalse(html.Contains("GPU", StringComparison.Ordinal), "There is no GPU reading, so none is shown.");
+        StringAssert.Contains(html, "data-stack-resource-chart");
+        Assert.IsFalse(html.Contains("Host CPU", StringComparison.Ordinal));
 
         // Storage: a probed root with its free space, and the data volume.
         StringAssert.Contains(html, "data-root-state=\"online\"");
@@ -165,10 +162,7 @@ public sealed class AdminDashboardPageRenderTests
         Assert.IsFalse(html.Contains("data-admin-dashboard-calm", StringComparison.Ordinal), "Something is wrong, so no calm line.");
 
         var order = Regex.Matches(html, "data-problem=\"([A-Za-z]+)\"").Select(match => match.Groups[1].Value).ToArray();
-        CollectionAssert.IsSubsetOf(new[] { "jobsFailed", "indexerDown", "metadataDown", "cpuHigh" }, order);
-        Assert.IsTrue(
-            Array.IndexOf(order, "jobsFailed") < Array.IndexOf(order, "cpuHigh"),
-            "Errors come before warnings.");
+        CollectionAssert.IsSubsetOf(new[] { "jobsFailed", "indexerDown", "metadataDown" }, order);
 
         StringAssert.Contains(html, "Failed jobs: 1");
         StringAssert.Contains(html, "href=\"/Admin/Operations?tab=failed&status=failed\"");
@@ -176,7 +170,6 @@ public sealed class AdminDashboardPageRenderTests
         StringAssert.Contains(html, "auth failed");
         StringAssert.Contains(html, "href=\"/Admin/Usenet\"");
         StringAssert.Contains(html, "Metadata provider AniList is failing");
-        StringAssert.Contains(html, "Host CPU load is high: 95%");
         StringAssert.Contains(html, "1/2 online");
     }
 
@@ -196,14 +189,40 @@ public sealed class AdminDashboardPageRenderTests
     }
 
     [TestMethod]
-    public async Task AFreshServerShowsThatTheSystemFiguresAreBeingMeasured()
+    public async Task AFreshServerShowsWhenStackResourceMeasurementIsUnavailable()
     {
         await using var host = await DashboardHost.CreateAsync(withTelemetry: false);
 
         var html = await host.GetHtmlAsync("/Admin");
 
-        StringAssert.Contains(html, "data-admin-dashboard-measuring");
+        StringAssert.Contains(html, "data-stack-resources-unavailable");
         Assert.IsFalse(html.Contains("data-metric=", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task ResourcesPageKeepsTheStackHistoryAndMountedStorageSeparateFromTheHost()
+    {
+        await using var host = await DashboardHost.CreateAsync();
+        await host.SeedAsync();
+
+        var html = await host.GetHtmlAsync("/Admin/Resources");
+
+        StringAssert.Contains(html, "Resources");
+        StringAssert.Contains(html, "data-stack-resources");
+        StringAssert.Contains(html, "data-resource-summary=\"cpu\"");
+        StringAssert.Contains(html, "42%");
+        StringAssert.Contains(html, "data-resource-service=\"jularr\"");
+        StringAssert.Contains(html, "data-resource-service=\"postgresql\"");
+        StringAssert.Contains(html, "data-resource-chart=\"cpu\"");
+        StringAssert.Contains(html, "data-resource-chart=\"memory\"");
+        StringAssert.Contains(html, "data-resource-chart=\"network\"");
+        StringAssert.Contains(html, "data-resource-chart=\"io\"");
+        StringAssert.Contains(html, "48.5 MB/s");
+        StringAssert.Contains(html, "data-resource-mounts");
+        StringAssert.Contains(html, "Test media");
+        StringAssert.Contains(html, "data-resource-gpu");
+        Assert.IsFalse(html.Contains("Host CPU", StringComparison.Ordinal));
+        Assert.IsTrue(Regex.IsMatch(html, "<a class=\"admin-nav-item active\"[^>]*href=\"/Admin/Resources\""));
     }
 
     [TestMethod]
@@ -213,6 +232,8 @@ public sealed class AdminDashboardPageRenderTests
 
         Assert.AreEqual(HttpStatusCode.OK, await host.GetStatusAsync("/Admin", asOwner: true));
         Assert.AreEqual(HttpStatusCode.Forbidden, await host.GetStatusAsync("/Admin", asOwner: false));
+        Assert.AreEqual(HttpStatusCode.OK, await host.GetStatusAsync("/Admin/Resources", asOwner: true));
+        Assert.AreEqual(HttpStatusCode.Forbidden, await host.GetStatusAsync("/Admin/Resources", asOwner: false));
     }
 
     private static string Section(string html, string marker)
@@ -223,11 +244,11 @@ public sealed class AdminDashboardPageRenderTests
         return html[start..end];
     }
 
-    private sealed class FakeTelemetry(HostTelemetrySnapshot snapshot) : IHostTelemetry
+    private sealed class FakeResources(StackResourceSnapshot snapshot) : IStackResourceTelemetry
     {
-        public HostTelemetrySnapshot Snapshot { get; set; } = snapshot;
+        public StackResourceSnapshot Snapshot { get; set; } = snapshot;
 
-        public HostTelemetrySnapshot GetSnapshot() => Snapshot;
+        public StackResourceSnapshot GetSnapshot() => Snapshot;
     }
 
     private sealed class ForbiddenAnswerHandler(
@@ -290,7 +311,7 @@ public sealed class AdminDashboardPageRenderTests
             var protection = new EphemeralDataProtectionProvider();
             var sessions = new PlaybackStreamSessionStore(TimeProvider.System);
             var coordinator = new StorageAvailabilityCoordinator();
-            var telemetry = new FakeTelemetry(withTelemetry ? Telemetry() : HostTelemetrySnapshot.Empty);
+            var telemetry = new FakeResources(withTelemetry ? Resources() : StackResourceSnapshot.Empty);
 
             var host = await new HostBuilder()
                 .ConfigureWebHost(webBuilder => webBuilder
@@ -333,7 +354,7 @@ public sealed class AdminDashboardPageRenderTests
                         services.AddSingleton(new DownloadClientStore(protection, acquisition));
                         services.AddSingleton(new AcquisitionHealthStore(acquisition));
                         services.AddProviderFramework();
-                        services.AddSingleton<IHostTelemetry>(telemetry);
+                        services.AddSingleton<IStackResourceTelemetry>(telemetry);
                         services.AddScoped<AdminDashboardService>();
                     })
                     .Configure(app =>
@@ -362,7 +383,7 @@ public sealed class AdminDashboardPageRenderTests
             var created = new DashboardHost(root, db, host, host.GetTestServer());
             created.Sessions = sessions;
             created.Coordinator = coordinator;
-            created.FakeTelemetry = telemetry;
+            created.FakeResources = telemetry;
             return created;
         }
 
@@ -370,22 +391,16 @@ public sealed class AdminDashboardPageRenderTests
 
         private StorageAvailabilityCoordinator Coordinator { get; set; } = null!;
 
-        private FakeTelemetry FakeTelemetry { get; set; } = null!;
+        private FakeResources FakeResources { get; set; } = null!;
 
-        private static HostTelemetrySnapshot Telemetry()
+        private static StackResourceSnapshot Resources()
         {
             var start = DateTimeOffset.UtcNow.AddSeconds(-10);
-            HostTelemetrySample Sample(int step, double cpu) => new(
+            StackResourceSample Sample(int step, double cpu) => new(
                 start.AddSeconds(step * 5),
-                HostCpuPercent: cpu,
-                ProcessCpuPercent: 3,
-                ProcessWorkingSetBytes: 300_000_000,
-                HostMemoryUsedBytes: 8_000_000_000,
-                HostMemoryTotalBytes: 16_000_000_000,
-                ReceiveBytesPerSecond: 48_500_000,
-                SendBytesPerSecond: 6_100_000,
-                Load: new HostLoadAverage(0.73, 0.71, 0.69));
-            return new HostTelemetrySnapshot([Sample(0, 30), Sample(1, 36), Sample(2, 42)]);
+                new StackServiceResource(cpu - 12, 300_000_000, 48_500_000, 6_100_000, 4_500_000, 1_500_000),
+                new StackServiceResource(12, 500_000_000, ReadBytesPerSecond: 3_500_000, WriteBytesPerSecond: 2_100_000));
+            return new StackResourceSnapshot([Sample(0, 30), Sample(1, 36), Sample(2, 42)]);
         }
 
         /// <summary>Running and waiting downloads, an import, finished work, a live transcode, a probed storage root and a pending request.</summary>
@@ -474,8 +489,6 @@ public sealed class AdminDashboardPageRenderTests
                 tracker.RecordFailure(ProviderKeys.AniList, "AniList timed out");
             }
 
-            FakeTelemetry.Snapshot = new HostTelemetrySnapshot(
-                FakeTelemetry.Snapshot.History.Select(sample => sample with { HostCpuPercent = 95 }).ToArray());
         }
 
         public async Task<string> GetHtmlAsync(string path)

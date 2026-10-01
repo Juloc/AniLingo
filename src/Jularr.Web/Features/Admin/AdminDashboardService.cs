@@ -77,7 +77,8 @@ public sealed record DashboardRoot(
     string Path,
     StorageHealthState? Health,
     long? FreeBytes,
-    long? TotalBytes);
+    long? TotalBytes,
+    string? FileSystemType);
 
 public sealed record DashboardStorage(
     IReadOnlyList<DashboardRoot> Roots,
@@ -119,7 +120,7 @@ public sealed record AdminDashboardSnapshot(
     IReadOnlyList<AdminSessionRow>? Sessions,
     IReadOnlyList<OperationSnapshot>? Recent,
     DashboardWaiting? Waiting,
-    HostTelemetrySnapshot Telemetry,
+    StackResourceSnapshot Resources,
     bool HealthComplete);
 
 /// <summary>
@@ -138,7 +139,7 @@ public sealed class AdminDashboardService(
     AcquisitionHealthStore acquisitionHealth,
     ProviderCatalog providerCatalog,
     ProviderHealthTracker providerHealth,
-    IHostTelemetry telemetry,
+    IStackResourceTelemetry telemetry,
     TimeProvider clock,
     ILogger<AdminDashboardService> logger)
 {
@@ -150,16 +151,12 @@ public sealed class AdminDashboardService(
     /// <summary>Above this, a database round trip is reported as slow.</summary>
     public const double SlowDatabaseMilliseconds = 250;
 
-    /// <summary>Host CPU and memory above this share is reported as pressure.</summary>
-    public const double PressurePercent = 90;
-
     private const int ActiveScanLimit = 500;
-    private const int PressureSamples = 6;
 
     public async Task<AdminDashboardSnapshot> GetAsync(bool includeSessions, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var host = telemetry.GetSnapshot();
+        var resources = telemetry.GetSnapshot();
 
         var counts = await TryAsync("overview", () => overview.GetAsync(cancellationToken));
         var database = await ReadDatabaseAsync(cancellationToken);
@@ -232,8 +229,6 @@ public sealed class AdminDashboardService(
                 Count: waiting.WantedFailed));
         }
 
-        AddPressureProblems(problems, host);
-
         return new AdminDashboardSnapshot(
             now,
             services,
@@ -245,7 +240,7 @@ public sealed class AdminDashboardService(
             liveSessions,
             recent,
             waiting,
-            host,
+            resources,
             HealthComplete: counts is not null && storage is not null && acquisition is not null && work is not null);
     }
 
@@ -315,7 +310,13 @@ public sealed class AdminDashboardService(
                 total = AdminServerLoad.VolumeSpace(root.Path).Total;
             }
 
-            roots.Add(new DashboardRoot(root.Name, root.Path, snapshot?.Health, snapshot?.FreeSpaceBytes, total));
+            roots.Add(new DashboardRoot(
+                root.Name,
+                root.Path,
+                snapshot?.Health,
+                snapshot?.FreeSpaceBytes,
+                total,
+                ContainerMounts.FileSystemTypeForPath(root.Path)));
         }
 
         var (free, totalBytes) = AdminServerLoad.DataVolumeSpace();
@@ -522,31 +523,6 @@ public sealed class AdminDashboardService(
                 "jobsInterrupted",
                 AdminActivityQuery.Href("/Admin/Operations", new AdminActivityFilter(AdminActivityTab.Failed, Status: OperationStatus.Interrupted)),
                 Count: counts.BlockedJobs));
-        }
-    }
-
-    private static void AddPressureProblems(List<DashboardProblem> problems, HostTelemetrySnapshot host)
-    {
-        var recent = host.History.TakeLast(PressureSamples).ToArray();
-        var cpu = recent.Where(sample => sample.HostCpuPercent is not null).Select(sample => sample.HostCpuPercent!.Value).ToArray();
-        if (cpu.Length >= 3 && cpu.Average() >= PressurePercent)
-        {
-            problems.Add(new DashboardProblem(
-                DashboardSeverity.Warning,
-                "cpuHigh",
-                "/Admin/Sessions",
-                Count: (int)Math.Round(cpu.Average())));
-        }
-
-        if (host.Current is { HostMemoryUsedBytes: { } used, HostMemoryTotalBytes: { } total }
-            && total > 0
-            && used * 100d / total >= PressurePercent)
-        {
-            problems.Add(new DashboardProblem(
-                DashboardSeverity.Warning,
-                "memoryHigh",
-                "/Admin/System",
-                Count: (int)Math.Round(used * 100d / total)));
         }
     }
 

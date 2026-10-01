@@ -14,7 +14,6 @@
     var ui = Model.Ui;
     ViewData["Title"] = ui["admin.dashboard.title"];
     var snapshot = Model.Snapshot;
-    var host = snapshot.Telemetry;
     var now = snapshot.GeneratedAtUtc;
     var problems = snapshot.Problems;
     var refreshHref = "/Admin";
@@ -101,26 +100,25 @@
 
     string Summary(int running, int queued) => ui.Format("admin.dashboard.summary", ("running", running), ("queued", queued));
 
-    // Resources: the host figure where the platform reports one, otherwise Jularr's own process.
-    var current = host.Current;
-    var hostCpuKnown = host.History.Any(sample => sample.HostCpuPercent is not null);
-    double[] cpuSeries = host.History
-        .Select(sample => hostCpuKnown ? sample.HostCpuPercent : sample.ProcessCpuPercent)
-        .Where(value => value is not null)
-        .Select(value => value!.Value)
-        .ToArray();
-    var hostMemoryKnown = current is { HostMemoryUsedBytes: not null, HostMemoryTotalBytes: > 0 };
-    double[] memorySeries = hostMemoryKnown
-        ? host.History
-            .Where(sample => sample is { HostMemoryUsedBytes: not null, HostMemoryTotalBytes: > 0 })
-            .Select(sample => sample.HostMemoryUsedBytes!.Value * 100d / sample.HostMemoryTotalBytes!.Value)
-            .ToArray()
-        : host.History.Select(sample => (double)sample.ProcessWorkingSetBytes).ToArray();
-    double[] receiveSeries = host.History.Where(sample => sample.ReceiveBytesPerSecond is not null).Select(sample => sample.ReceiveBytesPerSecond!.Value).ToArray();
-    double[] sendSeries = host.History.Where(sample => sample.SendBytesPerSecond is not null).Select(sample => sample.SendBytesPerSecond!.Value).ToArray();
-    var networkKnown = receiveSeries.Length > 0 && sendSeries.Length > 0;
+    var resources = snapshot.Resources;
+    var currentResources = resources.Current;
+    var resourcesAvailable = currentResources is { IsComplete: true };
+    double[] jularrCpu = resources.History.Where(sample => sample.Jularr?.CpuPercent is not null).Select(sample => sample.Jularr!.CpuPercent!.Value).ToArray();
+    double[] postgresCpu = resources.History.Where(sample => sample.PostgreSql?.CpuPercent is not null).Select(sample => sample.PostgreSql!.CpuPercent!.Value).ToArray();
+    double[] jularrMemory = resources.History.Where(sample => sample.Jularr is not null).Select(sample => (double)sample.Jularr!.MemoryBytes).ToArray();
+    double[] postgresMemory = resources.History.Where(sample => sample.PostgreSql is not null).Select(sample => (double)sample.PostgreSql!.MemoryBytes).ToArray();
+    var cpuMaximum = Math.Max(100d, new[] { jularrCpu.DefaultIfEmpty(0).Max(), postgresCpu.DefaultIfEmpty(0).Max() }.Max());
+    var memoryMaximum = Math.Max(1d, new[] { jularrMemory.DefaultIfEmpty(0).Max(), postgresMemory.DefaultIfEmpty(0).Max() }.Max());
+    string ChartPoints(double[] values, double maximum)
+    {
+        if (values.Length < 2 || maximum <= 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(" ", values.Select((value, index) => string.Create(CultureInfo.InvariantCulture, $"{50 + 560d * index / (values.Length - 1):0.##},{196 - Math.Clamp(value / maximum, 0, 1) * 176:0.##}")));
+    }
     var storage = snapshot.Storage;
-    var showsResources = current is not null;
 }
 
 <header class="page-header">
@@ -222,99 +220,58 @@
             <div class="panel-heading">
                 <h2 id="admdash-resources">@ui["admin.dashboard.resources.title"]</h2>
             </div>
-            @if (!showsResources)
+            @if (!resourcesAvailable)
             {
-                <p class="muted" data-admin-dashboard-measuring>@ui["admin.dashboard.measuring"]</p>
+                <p class="muted" data-stack-resources-unavailable>@ui["admin.dashboard.resources.unavailable"]</p>
             }
             else
             {
-                <div class="admdash-metrics">
-                    @if (cpuSeries.Length > 0)
-                    {
-                        <div class="admdash-metric" data-metric="cpu">
-                            <span class="admdash-metric-label">@ui["admin.dashboard.resources.cpu"]</span>
-                            <strong class="admdash-metric-value">@Percent(cpuSeries[^1])</strong>
-                            <small>@(hostCpuKnown && current!.ProcessCpuPercent is { } processCpu
-                                ? ui.Format("admin.dashboard.resources.jularr", ("value", Percent(processCpu)))
-                                : ui["admin.dashboard.resources.jularrProcess"])</small>
-                            @if (AdminDashboardFormat.SparklinePoints(cpuSeries, 100) is { } cpuPoints)
-                            {
-                                <partial name="_DashboardSparkline" model="cpuPoints" />
-                            }
-                        </div>
-                    }
-                    <div class="admdash-metric" data-metric="memory">
-                        <span class="admdash-metric-label">@ui["admin.dashboard.resources.memory"]</span>
-                        @if (hostMemoryKnown)
-                        {
-                            var usedBytes = current!.HostMemoryUsedBytes!.Value;
-                            var totalBytes = current.HostMemoryTotalBytes!.Value;
-                            <strong class="admdash-metric-value">@Percent(usedBytes * 100d / totalBytes)</strong>
-                            <small>@ui.Format("admin.dashboard.resources.usedOf", ("used", Bytes(usedBytes)), ("total", Bytes(totalBytes)))</small>
-                            @if (AdminDashboardFormat.SparklinePoints(memorySeries, 100) is { } memoryPoints)
-                            {
-                                <partial name="_DashboardSparkline" model="memoryPoints" />
-                            }
-                        }
-                        else
-                        {
-                            <strong class="admdash-metric-value">@Bytes(current!.ProcessWorkingSetBytes)</strong>
-                            <small>@ui["admin.dashboard.resources.jularrProcess"]</small>
-                            @if (AdminDashboardFormat.SparklinePoints(memorySeries, memorySeries.Max() * 1.1) is { } memoryPoints)
-                            {
-                                <partial name="_DashboardSparkline" model="memoryPoints" />
-                            }
-                        }
+                var jularr = currentResources!.Jularr!;
+                var postgres = currentResources.PostgreSql!;
+                <div class="admdash-metrics admdash-stack-metrics" data-stack-resources>
+                    <div class="admdash-metric admdash-stack-total" data-metric="stack-total">
+                        <span class="admdash-metric-label">@ui["admin.dashboard.resources.total"]</span>
+                        <strong class="admdash-metric-value">@(currentResources.TotalCpuPercent is { } totalCpu ? Percent(totalCpu) : "—")</strong>
+                        <small>@ui.Format("admin.dashboard.resources.cpuMemory", ("memory", Bytes(currentResources.TotalMemoryBytes!.Value)))</small>
                     </div>
-                    @if (storage is { DataFreeBytes: { } dataFree, DataTotalBytes: { } dataTotal and > 0 })
-                    {
-                        <div class="admdash-metric" data-metric="disk">
-                            <span class="admdash-metric-label">@ui["admin.dashboard.storage.dataVolume"]</span>
-                            <strong class="admdash-metric-value">@Percent((dataTotal - dataFree) * 100d / dataTotal)</strong>
-                            <small>@ui.Format("admin.dashboard.storage.freeOf", ("free", Bytes(dataFree)), ("total", Bytes(dataTotal)))</small>
-                        </div>
-                    }
-                    @if (current!.Load is { } load)
-                    {
-                        <div class="admdash-metric" data-metric="load">
-                            <span class="admdash-metric-label">@ui["admin.dashboard.resources.load"]</span>
-                            <strong class="admdash-metric-value">@load.One.ToString("0.00", CultureInfo.InvariantCulture)</strong>
-                            <small>@ui.Format("admin.dashboard.resources.loadHistory", ("five", load.Five.ToString("0.00", CultureInfo.InvariantCulture)), ("fifteen", load.Fifteen.ToString("0.00", CultureInfo.InvariantCulture)))</small>
-                        </div>
-                    }
+                    <div class="admdash-metric" data-metric="jularr">
+                        <span class="admdash-metric-label">@ui["admin.dashboard.service.web"]</span>
+                        <strong class="admdash-metric-value">@(jularr.CpuPercent is { } cpu ? Percent(cpu) : "—")</strong>
+                        <small>@ui.Format("admin.dashboard.resources.cpuMemory", ("memory", Bytes(jularr.MemoryBytes)))</small>
+                    </div>
+                    <div class="admdash-metric" data-metric="postgresql">
+                        <span class="admdash-metric-label">@ui["admin.dashboard.service.database"]</span>
+                        <strong class="admdash-metric-value">@(postgres.CpuPercent is { } postgresCpuValue ? Percent(postgresCpuValue) : "—")</strong>
+                        <small>@ui.Format("admin.dashboard.resources.cpuMemory", ("memory", Bytes(postgres.MemoryBytes)))</small>
+                    </div>
                 </div>
+                <div class="admdash-stack-network" data-stack-network>
+                    <span class="admdash-metric-label">@ui["admin.dashboard.network.title"] · @ui["admin.dashboard.service.web"]</span>
+                    <span>@ui["admin.dashboard.network.download"] <strong>@(jularr.ReceiveBytesPerSecond is { } receive ? AdminDashboardFormat.Rate(ui, receive) : "—")</strong></span>
+                    <span>@ui["admin.dashboard.network.upload"] <strong>@(jularr.SendBytesPerSecond is { } send ? AdminDashboardFormat.Rate(ui, send) : "—")</strong></span>
+                </div>
+                @if (jularrMemory.Length > 1 && postgresMemory.Length > 1)
+                {
+                    <div class="admdash-resource-chart-wrap">
+                        <svg class="admdash-resource-chart" data-stack-resource-chart viewBox="0 0 640 240" role="img" aria-label="@ui["admin.dashboard.resources.chartAria"]">
+                            <line class="admdash-chart-axis" x1="50" y1="196" x2="610" y2="196" />
+                            <line class="admdash-chart-axis" x1="50" y1="20" x2="50" y2="196" />
+                            <line class="admdash-chart-axis" x1="610" y1="20" x2="610" y2="196" />
+                            <text x="2" y="26">@Percent(cpuMaximum)</text><text x="25" y="200">0%</text>
+                            <text x="614" y="26">@Bytes((long)memoryMaximum)</text><text x="614" y="200">0</text>
+                            @if (jularrCpu.Length > 1) { <polyline class="admdash-chart-line admdash-chart-jularr admdash-chart-cpu" points="@ChartPoints(jularrCpu, cpuMaximum)" /> }
+                            @if (postgresCpu.Length > 1) { <polyline class="admdash-chart-line admdash-chart-postgres admdash-chart-cpu" points="@ChartPoints(postgresCpu, cpuMaximum)" /> }
+                            <polyline class="admdash-chart-line admdash-chart-jularr admdash-chart-memory" points="@ChartPoints(jularrMemory, memoryMaximum)" />
+                            <polyline class="admdash-chart-line admdash-chart-postgres admdash-chart-memory" points="@ChartPoints(postgresMemory, memoryMaximum)" />
+                        </svg>
+                        <div class="admdash-chart-legend" aria-hidden="true">
+                            <span class="admdash-chart-jularr">@ui["admin.dashboard.service.web"]</span><span class="admdash-chart-postgres">@ui["admin.dashboard.service.database"]</span>
+                            <span class="admdash-chart-cpu">@ui["admin.dashboard.resources.cpu"]</span><span class="admdash-chart-memory">@ui["admin.dashboard.resources.memory"]</span>
+                        </div>
+                    </div>
+                }
             }
         </section>
-
-        @if (networkKnown)
-        {
-            <section class="panel admdash-panel" aria-labelledby="admdash-network">
-                <div class="panel-heading">
-                    <h2 id="admdash-network">@ui["admin.dashboard.network.title"]</h2>
-                </div>
-                <div class="admdash-metrics admdash-metrics-network">
-                    @{
-                        var networkMax = Math.Max(1, Math.Max(receiveSeries.Max(), sendSeries.Max()));
-                    }
-                    <div class="admdash-metric" data-metric="download">
-                        <span class="admdash-metric-label">@ui["admin.dashboard.network.download"]</span>
-                        <strong class="admdash-metric-value">@AdminDashboardFormat.Rate(ui, receiveSeries[^1])</strong>
-                        @if (AdminDashboardFormat.SparklinePoints(receiveSeries, networkMax) is { } receivePoints)
-                        {
-                            <partial name="_DashboardSparkline" model="receivePoints" />
-                        }
-                    </div>
-                    <div class="admdash-metric" data-metric="upload">
-                        <span class="admdash-metric-label">@ui["admin.dashboard.network.upload"]</span>
-                        <strong class="admdash-metric-value">@AdminDashboardFormat.Rate(ui, sendSeries[^1])</strong>
-                        @if (AdminDashboardFormat.SparklinePoints(sendSeries, networkMax) is { } sendPoints)
-                        {
-                            <partial name="_DashboardSparkline" model="sendPoints" />
-                        }
-                    </div>
-                </div>
-            </section>
-        }
     </div>
 
     @if (Model.CanManageSessions)
