@@ -308,7 +308,7 @@
                             <button type="button" data-reader-timer="0" aria-pressed="true">@ui["reader.frame.timerOff"]</button>
                         </div>
                     </div>
-                    <div class="reader-menu-offline" data-offline-save="@work.Id">
+                    <div class="reader-menu-offline" data-offline-save="@work.Id" data-offline-media-item data-offline-media-kind="book" data-offline-media-id="@work.Id">
                         <partial name="_ReaderIcon" model="@("download")" />
                         <button type="button" role="menuitem" data-offline-save-button disabled>@ui["offlineLibrary.action.saveButton"]</button>
                         <small data-offline-save-status>@ui["offlineLibrary.action.checking"]</small>
@@ -316,6 +316,7 @@
                     <div class="reader-menu-offline">
                         <partial name="_ReaderIcon" model="@("download")" />
                         <button type="button" role="menuitem" data-offline-media-save="@work.Id" data-offline-media-kind="book">@ui["offlineLibrary.action.saveButton"]</button>
+                        <progress data-offline-media-progress max="100" value="0" hidden></progress>
                         <small data-offline-media-status></small>
                     </div>
                     <button type="button" role="menuitem" data-reader-share>

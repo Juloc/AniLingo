@@ -85,6 +85,26 @@ public sealed class OfflineMediaEngineTests
         StringAssert.Contains(manager, "textStore?.clearProfile()");
     }
 
+    [TestMethod]
+    public void DownloadUiShowsProgressAndOffersPackageControlsAtEveryMediaEntryPoint()
+    {
+        var root = RepositoryRoot();
+        var ui = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "offline-media-ui.js"));
+        var settings = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Settings", "Offline.cshtml"));
+        var episode = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Library", "Episode.cshtml"));
+        var manga = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Manga", "Read.cshtml"));
+        var book = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Books", "Read.cshtml"));
+
+        StringAssert.Contains(ui, "jularr:offline-media-progress");
+        StringAssert.Contains(ui, "data-offline-media-remove");
+        StringAssert.Contains(ui, "completedChunks");
+        StringAssert.Contains(settings, "data-offline-media-downloads");
+        StringAssert.Contains(settings, "data-offline-media-progress");
+        StringAssert.Contains(episode, "data-offline-media-progress");
+        StringAssert.Contains(manga, "data-offline-media-progress");
+        StringAssert.Contains(book, "data-offline-media-progress");
+    }
+
     private static Engine CreateEngine()
     {
         var engine = new Engine(options => options.TimeoutInterval(TimeSpan.FromSeconds(10)));

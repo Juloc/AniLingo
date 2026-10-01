@@ -236,6 +236,12 @@ button, input { font: inherit; }
 .media-copy > span { color: var(--muted); font-size: 12px; }
 .progress-track { height: 3px; border-radius: 99px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; margin-top: 7px; }
 .progress-track > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.offline-media-row { align-items: center; gap: 10px; }
+.offline-media-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.offline-media-row-progress { display: grid; gap: 4px; min-width: min(240px, 100%); }
+.offline-media-row-progress small, .reader-menu-offline [data-offline-media-status], .reader-frame-actions [data-offline-media-status] { color: var(--muted); font-variant-numeric: tabular-nums; }
+[data-offline-media-progress] { inline-size: 100%; block-size: 6px; accent-color: var(--accent); }
+.sidebar-offline-indicator { text-decoration: none; }
 
 .empty-state {
     padding: 42px 28px; border: 1px dashed var(--border-strong); border-radius: var(--radius-card);

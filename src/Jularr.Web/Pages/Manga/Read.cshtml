@@ -151,12 +151,13 @@
             }
         </nav>
 
-        <div class="reader-frame-actions">
+        <div class="reader-frame-actions" data-offline-media-item data-offline-media-kind="manga" data-offline-media-id="@chapter.Id">
             <button class="reader-frame-icon" type="button"
                     data-offline-media-save="@chapter.Id" data-offline-media-kind="manga"
                     aria-label="@ui["offlineLibrary.action.saveButton"]" title="@ui["offlineLibrary.action.saveButton"]">
                 <partial name="_ReaderIcon" model="@("download")" />
             </button>
+            <progress data-offline-media-progress max="100" value="0" hidden></progress>
             <small data-offline-media-status></small>
             <div class="reader-menu-anchor">
                 <button class="reader-frame-icon reader-frame-desktop" type="button"
