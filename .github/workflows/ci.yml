@@ -433,11 +433,15 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${VERSION}"
-          gh release create "${RELEASE_TAG}" \
-            --target "${GITHUB_SHA}" \
-            --title "Jularr ${VERSION}" \
-            --prerelease \
-            --generate-notes
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; keeping it."
+          else
+            gh release create "${RELEASE_TAG}" \
+              --target "${GITHUB_SHA}" \
+              --title "Jularr ${VERSION}" \
+              --prerelease \
+              --generate-notes
+          fi
 
   # Reuse the Android release workflow only after the prerelease exists. This
   # avoids a separate workflow_run event for every CI run (most of which used
@@ -451,6 +455,8 @@ jobs:
       - publish
       - release
     uses: ./.github/workflows/android.yml
+    with:
+      release: true
     secrets: inherit
     permissions:
       contents: write
