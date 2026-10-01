@@ -337,7 +337,6 @@ Admin navigation groups:
 - Wanted
 - Requests
 - Manual Search
-- Imports
 
 ### Acquisition
 - Indexers / release search providers
@@ -426,19 +425,19 @@ Rejected and suspicious candidates remain visible by default so the admin can un
 
 Candidate columns are configurable and all meaningful fields are filterable. Default ordering follows the effective profile score, then decision quality/source preference.
 
-## 22. Imports
+## 22. Downloads / Imports inside Activity
 
-Queue/history of downloads waiting for or completing import.
+There is no standalone permanent Imports page in V1.
 
-Shows:
-- source download
-- detected Work/unit
-- destination
-- state
-- identification confidence/problem
-- failure reason
+Operational flow:
+- active downloads and import processing appear in Admin Activity;
+- successful completion appears in History;
+- failed/ambiguous imports that require human intervention appear in To-Do;
+- To-Do opens an Import Review / Assignment dialog.
 
-Ambiguous imports provide a safe manual match UI rather than editing database IDs.
+The Import Review dialog can correct canonical Work/Structure/Edition/Version assignment and supported parsed release metadata such as release group, quality and languages. Jularr prefills detected values.
+
+Destination is normally derived from the canonical assignment plus configured LibraryRoot/storage policy. The normal UX does not ask the admin to type arbitrary server paths.
 
 ## 23. Storage admin
 
@@ -624,12 +623,11 @@ Approve at minimum:
 14. Admin dashboard
 15. Admin media detail
 16. Wanted/Missing + Manual Search
-17. Imports
+17. Activity / To-Do + Import Review dialog
 18. Storage/path browser
 19. Providers/settings
 20. AI admin
 21. Users/permissions
-22. Activity/jobs
 
 Mockups are binding UX references. Agents must not redesign them during implementation without updating/approving the spec.
 
