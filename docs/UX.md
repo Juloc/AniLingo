@@ -136,16 +136,14 @@ Movie:
 - single primary playback action
 - available versions/languages
 
-Book/Light Novel:
-- volumes/chapters or publication structure
+Book / Light Novel / Manga:
+- one shared Reading Detail page family
+- Parts/Volumes/Chapter structure where meaningful
+- context-sensitive labels: Book may use Parts, Light Novel/Manga usually Volumes
 - edition/language selector
 - Read/Continue
 - translation state where applicable
-
-Manga:
-- volume/chapter structure
-- Read/Continue
-- edition/language selector
+- format-specific behavior moves to the Reader rather than creating separate detail-page designs
 
 Audiobook:
 - chapters/tracks
@@ -392,22 +390,41 @@ Binding screen specification:
 
 Wanted is the technical acquisition worklist for requested/approved, missing, searching and failed acquisition needs across all media types. User request moderation is separate in Admin Requests.
 
+Selecting a Wanted target opens the reusable Acquisition dialog with exactly three primary tabs:
+- Search
+- Current
+- History
+
+Search is the default/main tab. Current explains the active profile/language/desired version and existing local state. History shows target-scoped search, grab, import and failure events.
+
 ## 21. Manual Search
 
-Sonarr/Radarr-like capability but Jularr visual language.
+Binding screen specification:
+- `docs/mockups/admin-manual-search/SPEC.md`
 
-Shows normalized candidates with:
+Manual Search is the Search tab of the reusable Admin Acquisition dialog rather than an independent acquisition workflow.
+
+It is Sonarr/Radarr-like in diagnostic depth but uses Jularr's visual language and canonical identity model.
+
+Normalized candidates may expose:
 - title
 - source/indexer
 - age
 - size
 - quality/format
 - languages
+- audio/subtitles
 - release group
-- score
-- rejection reasons
+- release type such as single/multi/season pack
+- parsed target and match confidence
+- effective-profile score
+- rejection/warning reasons
 
-Default ordering follows profile score. User can inspect why a candidate is accepted/rejected and manually grab when authorized.
+The primary score is contextual to the selected acquisition profile + language target. Optional comparison columns may show scores for other profiles.
+
+Rejected and suspicious candidates remain visible by default so the admin can understand why automatic acquisition did not choose them. This includes likely wrong-episode/unit matches. Identity mismatches are clearly marked and can never be automatically grabbed; any permitted manual override requires explicit confirmation and target mapping.
+
+Candidate columns are configurable and all meaningful fields are filterable. Default ordering follows the effective profile score, then decision quality/source preference.
 
 ## 22. Imports
 
@@ -597,11 +614,10 @@ Approve at minimum:
 3. Search/Discover — desktop/mobile
 4. Anime/Series detail — user
 5. Movie detail — user
-6. Book/LN detail — user
-7. Manga detail — user
-8. Audiobook detail — user
-9. Player — mobile/desktop/tablet/TV
-10. Reader — mobile/desktop
+6. Reading detail (Book / Light Novel / Manga) — user
+7. Audiobook detail — user
+8. Player — mobile/desktop/tablet/TV
+9. Reader — mobile/desktop
 11. Calendar — desktop/mobile
 12. Learning home + lesson/review
 13. Settings — desktop/mobile

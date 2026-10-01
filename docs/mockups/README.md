@@ -15,8 +15,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `discover/SPEC.md`
 - `anime-series-detail/SPEC.md`
 - `movie-detail/SPEC.md`
-- `book-light-novel-detail/SPEC.md`
-- `manga-detail/SPEC.md`
+- `reading-detail/SPEC.md` — shared Book / Light Novel / Manga detail family
 - `audiobook-detail/SPEC.md`
 - `player/SPEC.md`
 - `reader/SPEC.md`
