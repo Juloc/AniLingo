@@ -192,15 +192,31 @@
 
     const refresh = async () => {
       const books = await instance.listBooks();
-      const downloadingCount = books.filter((b) => b.status === "downloading").length;
+      const bookDownloadingCount = books.filter((b) => b.status === "downloading").length;
+      let mediaDownloading = [];
+      try {
+        mediaDownloading = (await window.JularrOfflineMediaManager?.packages?.() || [])
+          .filter((item) => item.state === "downloading");
+      } catch { /* The text-library indicator remains useful when media storage is unavailable. */ }
+      const downloadingCount = bookDownloadingCount + mediaDownloading.length;
       root.hidden = downloadingCount === 0;
       if (downloadingCount > 0) {
-        root.textContent = format("offlineLibrary.indicator.downloading", { count: downloadingCount });
+        const total = mediaDownloading.reduce((sum, item) => sum + (item.sizeBytes || 0), 0);
+        const complete = mediaDownloading.reduce((sum, item) => sum + (item.resources || []).reduce((resourceTotal, resource) => {
+          const chunks = Math.min(resource.completedChunks || 0,
+            window.JularrOfflineMedia?.chunkCount(resource.sizeBytes || 0) || 0);
+          return resourceTotal + Math.min(resource.sizeBytes || 0, chunks * (window.JularrOfflineMedia?.CHUNK_BYTES || 0));
+        }, 0), 0);
+        root.textContent = total > 0
+          ? format("offlineLibrary.indicator.mediaProgress", { count: downloadingCount, percent: Math.round(complete / total * 100) })
+          : format("offlineLibrary.indicator.downloading", { count: downloadingCount });
       }
     };
 
     root.setAttribute("aria-label", text("offlineLibrary.indicator.aria"));
     instance.onChange(() => { void refresh(); });
+    window.addEventListener("jularr:offline-media-progress", () => { void refresh(); });
+    window.addEventListener("jularr:offline-media-ready", () => { void refresh(); });
     await refresh();
   };
 

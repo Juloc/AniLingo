@@ -370,8 +370,9 @@ else if (Model.Playback.Media is { } media)
 
             <div class="player-error" data-player-error hidden></div>
         </div>
-        <div class="reader-menu-offline">
+        <div class="reader-menu-offline" data-offline-media-item data-offline-media-kind="episode" data-offline-media-id="@Model.EpisodeId">
             <button class="button" type="button" data-offline-episode-save="@Model.EpisodeId">@ui["offlineLibrary.action.saveButton"]</button>
+            <progress data-offline-media-progress max="100" value="0" hidden></progress>
             <small data-offline-media-status></small>
         </div>
 
