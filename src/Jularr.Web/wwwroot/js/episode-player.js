@@ -15,6 +15,7 @@
     const legacyQualityKey = `anilingo.profile.${profileId}.qualityCap`;
     const qualityKey = `anilingo.profile.${profileId}.qualityPreset`;
     const progressUrl = root.dataset.progressUrl || "";
+    let offlineMediaUrl = "";
     const planUrl = root.dataset.playbackPlanUrl || "";
     const persistedResumeSeconds = Number(root.dataset.resumeSeconds);
     const video = root.querySelector("[data-playback-video]");
@@ -283,7 +284,13 @@
                 completed
             }),
             keepalive
-        }).catch(() => {});
+        }).then(response => {
+            if (!response.ok) throw new Error("Progress sync failed.");
+        }).catch(() => {
+            window.dispatchEvent(new CustomEvent("jularr:episode-progress", {
+                detail: { episodeId: root.dataset.episodeId, positionMs, durationMs, completed }
+            }));
+        });
     };
 
     // A new source resets playbackRate to defaultPlaybackRate, so both are set.
@@ -559,7 +566,28 @@
         stage.classList.add("player-placeholder");
     };
 
+    window.addEventListener("jularr:offline-media-ready", event => {
+        const pkg = event.detail?.package;
+        if (pkg?.id === `episode:${root.dataset.episodeId || ""}`) {
+            offlineMediaUrl = event.detail.url || "";
+            video.querySelectorAll("track[data-offline-media-track]").forEach(track => track.remove());
+            for (const resource of pkg.resources || []) {
+                if (resource.type !== "subtitle") continue;
+                const track = document.createElement("track");
+                track.kind = "subtitles";
+                track.label = resource.fileName || "Subtitle";
+                track.srclang = "und";
+                track.src = window.JularrOfflineMediaManager?.localUrl(profileId, pkg.id, resource.id) || "";
+                track.dataset.offlineMediaTrack = "true";
+                video.append(track);
+            }
+            video.dataset.playbackSource = "";
+            if (offlineMediaUrl) loadSource(0);
+        }
+    });
+
     const buildMediaUrl = (startSeconds) => {
+        if (offlineMediaUrl) return offlineMediaUrl;
         const url = new URL(delivery.url, window.location.origin);
         if (streamIsLive() && delivery.startParameter && startSeconds > 0) {
             url.searchParams.set(delivery.startParameter, startSeconds.toFixed(3));

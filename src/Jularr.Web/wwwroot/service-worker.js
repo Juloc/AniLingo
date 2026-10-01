@@ -6,10 +6,14 @@ const CACHE_PREFIX = "jularr-static-v1-";
 const workerUrl = new URL(self.location.href);
 const buildKey = sanitizeCacheKey(workerUrl.searchParams.get("v") || "unversioned");
 const CACHE_VERSION = CACHE_PREFIX + buildKey;
-
 const PRECACHE = [
   "/offline.html",
-  "/js/offline-review.js",
+  "/js/offline-media.js",
+  "/js/offline-media-storage.js",
+  "/js/offline-library.js",
+  "/js/offline-library-storage.js",
+  "/js/offline-media-worker.js?v=1",
+  "/js/offline-media-catalog.js",
   "/brand/jularr-mark.svg",
   "/icons/jularr-192.png",
   "/icons/jularr-512.png",
@@ -17,6 +21,8 @@ const PRECACHE = [
   "/icons/apple-touch-icon.png",
   "/manifest.webmanifest"
 ];
+
+importScripts("/js/offline-media-worker.js?v=1");
 
 self.addEventListener("install", event => {
   event.waitUntil(
@@ -56,6 +62,14 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // Private package bytes are never written to CacheStorage.  The module below
+  // obtains them from profile-scoped IndexedDB and can answer video/audio Range
+  // requests without a network connection.
+  if (url.pathname.startsWith("/_offline-media/")) {
+    event.respondWith(self.JularrOfflineMediaWorker.respond(request, url));
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -77,11 +91,9 @@ self.addEventListener("fetch", event => {
   );
 });
 
-// App shell only. Offline library content (manifests, chapters, assets under
-// /api/client/v1/offline-library/**) is intentionally never matched here: it
-// lives in IndexedDB/OPFS (wwwroot/js/offline-library-storage.js), a separate
-// storage area this cache's lifecycle never touches. Do not add offline-library
-// paths to this allowlist (#221).
+// App shell only. Private library manifests, chapters and assets are intentionally
+// never matched here: they live in IndexedDB/OPFS, a separate storage area this
+// cache's version bumps and cleanup never touch.
 function isStaticAsset(pathname) {
   return pathname === "/manifest.webmanifest"
     || pathname.startsWith("/css/")

@@ -79,6 +79,12 @@
         <script src="~/js/offline-library-storage.js" asp-append-version="true" defer></script>
         <script src="~/js/offline-library-manager.js" asp-append-version="true" defer></script>
         <script src="~/js/offline-library-ui.js" asp-append-version="true" defer></script>
+        @* Media packages are separate from the chapter-only offline library. They keep binary media
+           profile-scoped in IndexedDB and expose it through the service worker, never CacheStorage. *@
+        <script src="~/js/offline-media.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-media-storage.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-media-manager.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-media-ui.js" asp-append-version="true" defer></script>
         @* Owner-only "Manage" sheet (#519): loaded on every authenticated page, like the offline
            library scripts above, so any consumer detail page can open one. *@
         <link rel="stylesheet" href="~/css/manage-sheet.css" asp-append-version="true" />

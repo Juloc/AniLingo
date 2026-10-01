@@ -313,6 +313,11 @@
                         <button type="button" role="menuitem" data-offline-save-button disabled>@ui["offlineLibrary.action.saveButton"]</button>
                         <small data-offline-save-status>@ui["offlineLibrary.action.checking"]</small>
                     </div>
+                    <div class="reader-menu-offline">
+                        <partial name="_ReaderIcon" model="@("download")" />
+                        <button type="button" role="menuitem" data-offline-media-save="@work.Id" data-offline-media-kind="book">@ui["offlineLibrary.action.saveButton"]</button>
+                        <small data-offline-media-status></small>
+                    </div>
                     <button type="button" role="menuitem" data-reader-share>
                         <partial name="_ReaderIcon" model="@("share")" />
                         <span>@ui["reader.frame.share"]</span>

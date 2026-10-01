@@ -111,8 +111,11 @@
     return dir;
   };
 
-  const chapterPath = (workId, chapterId) => ["offline", workId, "chapters"];
-  const assetPath = (workId, volumeId) => ["offline", workId, "assets", volumeId];
+  // OPFS is shared by the browser origin, unlike our IndexedDB databases.
+  // Keep the profile in every path as well, otherwise two profiles that own a
+  // work with the same id could read each other's downloaded text or images.
+  const chapterPath = (profileId, workId) => ["offline", profileId, workId, "chapters"];
+  const assetPath = (profileId, workId, volumeId) => ["offline", profileId, workId, "assets", volumeId];
 
   /** Requests persistent storage (best-effort) and reports whether OPFS is usable. */
   const requestPersistence = async () => {
@@ -165,14 +168,24 @@
     }
   };
 
-  const removeOpfsWork = async (workId) => {
-    const parent = await opfsDirectory(["offline"], { create: false });
+  const removeOpfsWork = async (profileId, workId) => {
+    const parent = await opfsDirectory(["offline", profileId], { create: false });
     if (!parent) return;
 
     try {
       await parent.removeEntry(workId, { recursive: true });
     } catch {
       // Already gone.
+    }
+  };
+
+  const removeOpfsProfile = async (profileId) => {
+    const parent = await opfsDirectory(["offline"], { create: false });
+    if (!parent) return;
+    try {
+      await parent.removeEntry(profileId, { recursive: true });
+    } catch {
+      // Already gone, or OPFS cleanup is unavailable.
     }
   };
 
@@ -183,8 +196,7 @@
    * signed in; callers (the UI layer) must treat that as "offline downloads
    * are unavailable while signed out" rather than a hard error.
    */
-  const openStore = async () => {
-    const profileId = currentProfileId();
+  const openStoreForProfile = async (profileId) => {
     const db = await openDatabase(profileId);
     const persistence = await requestPersistence();
 
@@ -257,7 +269,7 @@
 
     const saveChapterPayload = async (workId, chapterId, payload) => {
       const text = JSON.stringify(payload);
-      if (persistence.opfsAvailable && await writeOpfsFile(chapterPath(workId), `${chapterId}.json`, text)) {
+      if (persistence.opfsAvailable && await writeOpfsFile(chapterPath(profileId, workId), `${chapterId}.json`, text)) {
         return { degraded: false };
       }
 
@@ -269,37 +281,44 @@
     };
 
     const loadChapterPayload = async (workId, chapterId) => {
-      const fromOpfs = await readOpfsFile(chapterPath(workId), `${chapterId}.json`, { asText: true });
+      const fromOpfs = await readOpfsFile(chapterPath(profileId, workId), `${chapterId}.json`, { asText: true });
       const text = fromOpfs ?? await getSetting(`chapter:${workId}:${chapterId}`, null);
       return text ? JSON.parse(text) : null;
     };
 
     const deleteChapterPayload = async (workId, chapterId) => {
-      await deleteOpfsEntry(chapterPath(workId), `${chapterId}.json`);
+      await deleteOpfsEntry(chapterPath(profileId, workId), `${chapterId}.json`);
       await tx(db, STORES.settings, "readwrite", (store) => requestToPromise(
         store.delete(`chapter:${workId}:${chapterId}`)));
     };
 
     const saveAsset = async (workId, volumeId, assetName, bytes) => {
       if (!persistence.opfsAvailable) return { degraded: true };
-      const ok = await writeOpfsFile(assetPath(workId, volumeId), assetName, bytes);
+      const ok = await writeOpfsFile(assetPath(profileId, workId, volumeId), assetName, bytes);
       return { degraded: !ok };
     };
 
     const loadAsset = async (workId, volumeId, assetName) =>
-      readOpfsFile(assetPath(workId, volumeId), assetName, { asText: false });
+      readOpfsFile(assetPath(profileId, workId, volumeId), assetName, { asText: false });
 
     const removeWork = async (workId) => {
       await deleteManifest(workId);
       await clearQueueForWork(workId);
       await clearVerifiedForWork(workId);
-      await removeOpfsWork(workId);
+      await removeOpfsWork(profileId, workId);
 
       // Sweep any degraded-mode chapter payloads kept in IndexedDB settings.
       const all = await tx(db, STORES.settings, "readonly", (store) => requestToPromise(store.getAll()));
       const prefix = `chapter:${workId}:`;
       await tx(db, STORES.settings, "readwrite", (store) => Promise.all(
         all.filter((row) => row.key.startsWith(prefix)).map((row) => requestToPromise(store.delete(row.key)))));
+    };
+
+    const clearProfile = async () => {
+      await tx(db, Object.values(STORES), "readwrite", (...stores) => {
+        stores.forEach(store => store.clear());
+      });
+      await removeOpfsProfile(profileId);
     };
 
     return {
@@ -313,12 +332,15 @@
       listSyncQueue, putSyncEvent, deleteSyncEvent,
       saveChapterPayload, loadChapterPayload, deleteChapterPayload,
       saveAsset, loadAsset,
-      removeWork
+      removeWork, clearProfile
     };
   };
 
+  const openStore = () => openStoreForProfile(currentProfileId());
+
   window.JularrOfflineLibraryStorage = Object.freeze({
     openStore,
+    openStoreForProfile,
     currentProfileId,
     requestPersistence
   });

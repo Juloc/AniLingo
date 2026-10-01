@@ -34,6 +34,28 @@
         </div>
         <div data-offline-list class="muted">…</div>
     </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.offline.mediaTitle"]</h2></div>
+        <p class="muted">@ui["settings.offline.mediaDescription"]</p>
+        <div class="settings-list">
+            @foreach (var item in Model.Media)
+            {
+                <div class="settings-row">
+                    <span>@item.Title</span>
+                    @if (item.Kind == "episode")
+                    {
+                        <button class="button" type="button" data-offline-episode-save="@item.Id">@ui["offlineLibrary.action.saveButton"]</button>
+                    }
+                    else
+                    {
+                        <button class="button" type="button" data-offline-media-save="@item.Id" data-offline-media-kind="@item.Kind">@ui["offlineLibrary.action.saveButton"]</button>
+                    }
+                    <small data-offline-media-status></small>
+                </div>
+            }
+        </div>
+    </section>
 </div>
 
 @* offline-library-*.js are loaded once, globally, from _Layout.cshtml (#221 part 2). *@

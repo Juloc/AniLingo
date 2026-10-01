@@ -152,6 +152,12 @@
         </nav>
 
         <div class="reader-frame-actions">
+            <button class="reader-frame-icon" type="button"
+                    data-offline-media-save="@chapter.Id" data-offline-media-kind="manga"
+                    aria-label="@ui["offlineLibrary.action.saveButton"]" title="@ui["offlineLibrary.action.saveButton"]">
+                <partial name="_ReaderIcon" model="@("download")" />
+            </button>
+            <small data-offline-media-status></small>
             <div class="reader-menu-anchor">
                 <button class="reader-frame-icon reader-frame-desktop" type="button"
                         data-reader-menu-toggle="palette"
