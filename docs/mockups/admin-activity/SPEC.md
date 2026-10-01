@@ -142,22 +142,28 @@ The row directly exposes Work, Season/Structure, Episode/Unit, Release Group, Qu
 
 Do not add large artwork, side-by-side summary panels or a second technical-info layout around this table.
 
-### Folder / Library Import Mapping
+### Library Reconciliation / Folder Import Mapping
 
 Binding spec:
 - `docs/mockups/admin-folder-import-mapping/SPEC.md`
 
 Use when Library Scan / Reconciliation finds existing folders/files inside a configured LibraryRoot that cannot be associated reliably.
 
-This is a broader reconciliation flow with:
-- folder-level canonical assignment
-- one row per file
-- batch mapping
-- sequence/range suggestions
-- per-file Episode/Unit correction
-- safe reconciliation/rename/move semantics where applicable
+This opens a dedicated multi-step Admin page rather than a dialog.
 
-It requires its own dedicated mockup and must not be collapsed into the compact Download Assignment dialog.
+The wizard covers:
+- scan scope/result
+- expandable folder tree and recognition state
+- split/merge of logical groups
+- folder defaults + per-file mapping
+- batch/range mapping
+- organization policy
+- rename/move preview
+- dry-run and execution
+
+Recognized subfolders may be collapsed by default but must remain expandable and correctable.
+
+It must not be collapsed into the compact Download Assignment dialog.
 
 ## History tab
 
