@@ -25,7 +25,7 @@ Clients
         -> Domain modules
            -> Ports/interfaces
               -> Infrastructure adapters
-                 -> PostgreSQL / NAS / indexers / downloaders / metadata / AI
+                 -> PostgreSQL / NAS / indexers / native Usenet / optional downloaders / metadata / AI
 ```
 
 Do not split into microservices merely because domains are separated. Domain boundaries are code and ownership boundaries first.
@@ -71,14 +71,35 @@ AniList/TMDB/OpenLibrary/etc. are adapters behind this module.
 ### Acquisition
 Owns the universal Wanted-to-Import pipeline:
 - WantedItem
-- search orchestration
+- search/indexer orchestration
 - ReleaseCandidate
 - scoring/profiles
 - DownloadJob
 - ImportJob
 - AcquisitionEvent/history
+- generic-download routing for content that has no specialized library
 
-Anime, TV, Movies, Manga, Books and Light Novels use this module rather than independent pipelines.
+Movies, TV, Anime, Manga, Comics, Books, Light Novels, Magazines, Music, Audiobooks, Games, Software and generic content reuse this module rather than independent pipelines.
+
+### Usenet
+Owns Jularr's native Usenet download engine. Normal Jularr operation must not require SABnzbd or NZBGet.
+
+Responsibilities:
+- NZB parsing and normalized download manifests;
+- NNTP/NNTP-over-TLS connections and configurable multiple servers;
+- article scheduling, connection pools, retries and server failover;
+- yEnc decoding and article/file assembly;
+- persistent queue state, pause/resume and crash-safe recovery;
+- priorities, categories/routes, bandwidth and connection limits;
+- duplicate detection and history;
+- verification/repair orchestration (for example PAR2 through a replaceable tool adapter);
+- archive extraction orchestration (RAR/7z/etc. through replaceable tool adapters);
+- password handling and post-processing handoff;
+- progress, speed, ETA, per-server health and structured diagnostics.
+
+The Usenet module owns transport/download mechanics. Acquisition owns why something is wanted, candidate selection and the transition into import. Storage owns final placement. Specialized libraries own content-specific organization and consumption.
+
+External `IDownloadClient` adapters remain supported for migration/interoperability, but native Usenet is the target default path.
 
 ### Storage
 Owns physical storage infrastructure:
@@ -481,6 +502,7 @@ src/Jularr.Web/
     Library/
     Metadata/
     Acquisition/
+    Usenet/
     Storage/
     Playback/
     Reader/
