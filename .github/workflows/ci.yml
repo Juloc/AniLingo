@@ -1,6 +1,13 @@
 name: CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish the version currently declared on main"
+        required: true
+        default: false
+        type: boolean
   push:
     branches: [main]
     paths-ignore:
@@ -298,7 +305,9 @@ jobs:
           retention-days: 1
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release)
     needs:
       - build-test
       - image
@@ -323,13 +332,17 @@ jobs:
         run: |
           set -euo pipefail
           VERSION_FILE="src/Jularr.Web/Jularr.Web.csproj"
-          if ! git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif ! git rev-parse --verify HEAD^ >/dev/null 2>&1; then
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           elif ! git diff --quiet HEAD^ HEAD -- "${VERSION_FILE}"; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
 
       - name: Resolve release version
         if: steps.release_commit.outputs.is_release == 'true'
@@ -394,7 +407,10 @@ jobs:
           docker push "${IMAGE}:${VERSION}"
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish.outputs.is_release == 'true'
+    if: >-
+      needs.publish.outputs.is_release == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release))
     needs:
       - publish
     runs-on: ubuntu-latest
@@ -422,7 +438,10 @@ jobs:
   # avoids a separate workflow_run event for every CI run (most of which used
   # to do no work), while still attaching signed APKs to real releases.
   android-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish.outputs.is_release == 'true'
+    if: >-
+      needs.publish.outputs.is_release == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release))
     needs:
       - publish
       - release
