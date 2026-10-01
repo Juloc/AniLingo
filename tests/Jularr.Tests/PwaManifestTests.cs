@@ -135,6 +135,12 @@ public sealed class PwaManifestTests
         StringAssert.Contains(pwaRuntime, "url.pathname.startsWith(\"/build/\")");
         StringAssert.Contains(pwaRuntime, "serviceWorkerBuildKey");
         StringAssert.Contains(pwaRuntime, "encodeURIComponent(serviceWorkerBuildKey())");
+        StringAssert.Contains(pwaRuntime, "UPDATE_NOTICE_WORKER_KEY");
+        StringAssert.Contains(pwaRuntime, "worker.scriptURL");
+        StringAssert.Contains(pwaRuntime, "jularr.pwa.updateNoticeWorker");
+        Assert.IsFalse(
+            pwaRuntime.Contains("currentFingerprintedAssets().slice().sort().join", StringComparison.Ordinal),
+            "Page-specific assets must not create a new service-worker registration on every navigation.");
         StringAssert.Contains(pwaRuntime, "activateWaitingServiceWorker");
         StringAssert.Contains(pwaRuntime, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(pwaRuntime, "updateViaCache: \"none\"");
