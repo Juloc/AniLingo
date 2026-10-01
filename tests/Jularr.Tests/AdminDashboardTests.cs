@@ -2,110 +2,57 @@ using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Playback.Decision;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
-/// <summary>The figures behind the Admin dashboard: host readings, the sampler and how values read.</summary>
+/// <summary>The figures behind the Admin dashboard: Jularr plus PostgreSQL cgroup readings and formatting.</summary>
 [TestClass]
 public sealed class AdminDashboardTests
 {
-    private const string ProcStat =
-        "cpu  4705 150 1120 16250 520 0 30 0 0 0\ncpu0 1175 37 280 4062 130 0 8 0 0 0\nintr 12345\n";
-
     [TestMethod]
-    public void CpuTicksCountIdleAndIowaitAsIdleAndIgnoreGuestTime()
+    public void CgroupV2ParsersAcceptOnlyNonNegativeUsageValues()
     {
-        var ticks = HostMetricsParser.ParseCpuTicks(ProcStat);
-
-        Assert.IsNotNull(ticks);
-        Assert.AreEqual(4705 + 150 + 1120 + 16250 + 520 + 30, ticks.Value.Total);
-        Assert.AreEqual(4705 + 150 + 1120 + 30, ticks.Value.Busy);
+        Assert.AreEqual(42_000L, CgroupV2Parser.ParseCpuUsageMicroseconds("user_usec 100\nusage_usec 42000\n"));
+        Assert.AreEqual(1_024L, CgroupV2Parser.ParseMemoryBytes("1024\n"));
+        Assert.IsNull(CgroupV2Parser.ParseCpuUsageMicroseconds("usage_usec -1"));
+        Assert.IsNull(CgroupV2Parser.ParseMemoryBytes("not-a-number"));
+        var io = CgroupV2Parser.ParseIoBytes("8:0 rbytes=123 wbytes=456 rios=1 wios=2\n");
+        Assert.AreEqual(123L, io!.ReadBytes);
+        Assert.AreEqual(456L, io.WriteBytes);
+        Assert.IsNull(CgroupV2Parser.ParseIoBytes("8:0 rios=1 wios=2"));
     }
 
     [TestMethod]
-    public void CpuPercentIsTheBusyShareBetweenTwoReadings()
+    public void ContainerMountsSelectTheFilesystemAtTheDeepestVisibleMount()
     {
-        var percent = HostMetricsParser.CpuPercent((100, 1000), (400, 1600));
+        var mounts = ContainerMounts.Parse(
+        [
+            "24 23 0:21 / / rw,relatime - overlay overlay rw",
+            "25 24 0:22 / /media rw,relatime - ext4 /dev/sda1 rw",
+            "26 25 0:23 / /media/archive rw,relatime - cifs //nas/archive rw"
+        ]);
 
-        Assert.AreEqual(50d, percent);
-        Assert.IsNull(HostMetricsParser.CpuPercent((100, 1000), (100, 1000)), "No time passed, no figure.");
-        Assert.IsNull(HostMetricsParser.CpuPercent((500, 1000), (400, 1600)), "Counters that went backwards are dropped.");
+        Assert.AreEqual("cifs", mounts.Where(mount => "/media/archive/shows".StartsWith(mount.MountPoint, StringComparison.Ordinal)).OrderByDescending(mount => mount.MountPoint.Length).First().FileSystemType);
     }
 
     [TestMethod]
-    [DataRow(null)]
-    [DataRow("")]
-    [DataRow("cpu0 1 2 3 4 5")]
-    [DataRow("cpu  1 2 3")]
-    [DataRow("cpu  a b c d e")]
-    public void UnreadableCpuLinesGiveNoFigure(string? text) =>
-        Assert.IsNull(HostMetricsParser.ParseCpuTicks(text));
-
-    [TestMethod]
-    public void MemInfoReportsBytesFromKibibytes()
+    public async Task StackSamplerKeepsJularrAndPostgresSeparateAndCalculatesCpuRates()
     {
-        var memory = HostMetricsParser.ParseMemInfo(
-            "MemTotal:       16384000 kB\nMemFree:         1000000 kB\nMemAvailable:    8192000 kB\nBuffers: 1 kB\n");
+        var source = new FakeResourceSource();
+        var sampler = new StackResourceTelemetrySampler(source, TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<StackResourceTelemetrySampler>.Instance);
 
-        Assert.IsNotNull(memory);
-        Assert.AreEqual(16384000L * 1024, memory.Value.TotalBytes);
-        Assert.AreEqual(8192000L * 1024, memory.Value.AvailableBytes);
-        Assert.IsNull(HostMetricsParser.ParseMemInfo("MemTotal: 100 kB\n"), "Without MemAvailable memory use is unknown.");
-        Assert.IsNull(HostMetricsParser.ParseMemInfo("MemTotal: 100 kB\nMemAvailable: 200 kB\n"));
-    }
+        var first = await sampler.SampleAsync(CancellationToken.None);
+        await Task.Delay(20);
+        var second = await sampler.SampleAsync(CancellationToken.None);
 
-    [TestMethod]
-    public void LoadAverageReadsTheThreeLeadingNumbers()
-    {
-        var load = HostMetricsParser.ParseLoadAverage("0.73 0.71 0.69 2/512 12345\n");
-
-        Assert.IsNotNull(load);
-        Assert.AreEqual(0.73, load.One);
-        Assert.AreEqual(0.71, load.Five);
-        Assert.AreEqual(0.69, load.Fifteen);
-        Assert.IsNull(HostMetricsParser.ParseLoadAverage("0.73 x 0.69"));
-        Assert.IsNull(HostMetricsParser.ParseLoadAverage(null));
-    }
-
-    [TestMethod]
-    public void RatesAreBytesPerSecondAndSkipRestartedCounters()
-    {
-        Assert.AreEqual(2_000d, HostMetricsParser.Rate(1_000, 11_000, TimeSpan.FromSeconds(5)));
-        Assert.IsNull(HostMetricsParser.Rate(11_000, 1_000, TimeSpan.FromSeconds(5)));
-        Assert.IsNull(HostMetricsParser.Rate(0, 100, TimeSpan.Zero));
-    }
-
-    [TestMethod]
-    public async Task TheSamplerRecordsReadingsAndTheSecondOneCarriesProcessCpu()
-    {
-        var sampler = new HostTelemetrySampler(TimeProvider.System, NullLogger<HostTelemetrySampler>.Instance);
-
-        var first = sampler.Sample();
-        Assert.IsNull(first.ProcessCpuPercent, "One reading has no rate.");
-        Assert.IsTrue(first.ProcessWorkingSetBytes > 0);
-
-        await Task.Delay(50);
-        var second = sampler.Sample();
-        Assert.IsNotNull(second.ProcessCpuPercent);
-        Assert.IsTrue(second.ProcessCpuPercent is >= 0 and <= 100);
-
-        Assert.AreEqual(0, sampler.GetSnapshot().History.Count, "Only the hosted loop records into the history.");
-        await sampler.StartAsync(CancellationToken.None);
-        try
-        {
-            var deadline = DateTime.UtcNow.AddSeconds(10);
-            while (sampler.GetSnapshot().Current is null && DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(20);
-            }
-
-            Assert.IsNotNull(sampler.GetSnapshot().Current, "The loop takes its first reading right away.");
-        }
-        finally
-        {
-            await sampler.StopAsync(CancellationToken.None);
-        }
+        Assert.IsNull(first.Jularr!.CpuPercent, "The first reading only establishes CPU baselines.");
+        Assert.AreEqual(100, first.Jularr.MemoryBytes);
+        Assert.AreEqual(200, first.PostgreSql!.MemoryBytes);
+        Assert.IsTrue(second.Jularr!.CpuPercent is > 0);
+        Assert.IsTrue(second.PostgreSql!.CpuPercent is > 0);
+        Assert.IsTrue(second.Jularr.ReadBytesPerSecond is > 0);
+        Assert.IsTrue(second.Jularr.WriteBytesPerSecond is > 0);
+        Assert.AreEqual(300, second.TotalMemoryBytes);
     }
 
     [TestMethod]
@@ -221,4 +168,18 @@ public sealed class AdminDashboardTests
             new PlaybackQualityResolution(PlaybackQualityPreset.Auto, PlaybackNetworkClass.Local, null, PlaybackLimitSource.None, null, null),
             [],
             PlaybackCapabilitySupport.Confirmed);
+
+    private sealed class FakeResourceSource : IStackResourceSource
+    {
+        private int sample;
+
+        public Task<CgroupResourceUsage?> ReadJularrAsync(CancellationToken cancellationToken)
+        {
+            var value = Interlocked.Increment(ref sample) * 10_000L;
+            return Task.FromResult<CgroupResourceUsage?>(new CgroupResourceUsage(value, 100, value, value / 2, value / 4, value / 8));
+        }
+
+        public Task<CgroupResourceUsage?> ReadPostgreSqlAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<CgroupResourceUsage?>(new CgroupResourceUsage(Interlocked.Increment(ref sample) * 10_000L, 200, ReadBytes: 10_000, WriteBytes: 2_000));
+    }
 }

@@ -162,7 +162,7 @@ internal static class AdminServerLoad
                 }
 
                 // DriveInfo wants a root ("/" or "C:\"), not an arbitrary path inside the volume.
-                var root = Path.GetPathRoot(candidate);
+                var root = OperatingSystem.IsWindows() ? Path.GetPathRoot(candidate) : candidate;
                 if (string.IsNullOrEmpty(root))
                 {
                     continue;
