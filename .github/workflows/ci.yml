@@ -317,13 +317,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Detect release commit
+      - name: Detect release version change
         id: release_commit
         shell: bash
         run: |
           set -euo pipefail
-          SUBJECT="$(git log -1 --pretty=%s)"
-          if [[ "$SUBJECT" == release:* ]]; then
+          VERSION_FILE="src/Jularr.Web/Jularr.Web.csproj"
+          if ! git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          elif ! git diff --quiet HEAD^ HEAD -- "${VERSION_FILE}"; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_release=false" >> "$GITHUB_OUTPUT"
@@ -415,3 +417,16 @@ jobs:
             --title "Jularr ${VERSION}" \
             --prerelease \
             --generate-notes
+
+  # Reuse the Android release workflow only after the prerelease exists. This
+  # avoids a separate workflow_run event for every CI run (most of which used
+  # to do no work), while still attaching signed APKs to real releases.
+  android-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish.outputs.is_release == 'true'
+    needs:
+      - publish
+      - release
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+    permissions:
+      contents: write
