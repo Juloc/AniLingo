@@ -437,7 +437,7 @@ Operational flow:
 To-Do can open two distinct mapping flows:
 
 1. **Download Assignment** — for one or more files from a completed download job. Desktop is a compact editable table with one file/episode per row. Binding spec: `docs/mockups/admin-download-assignment/SPEC.md`.
-2. **Folder / Library Import Mapping** — for folders/files discovered by Library Scan / Reconciliation that cannot be associated reliably. This supports batch and per-file mapping. Binding spec: `docs/mockups/admin-folder-import-mapping/SPEC.md`.
+2. **Library Reconciliation / Folder Import Mapping** — a dedicated multi-step Admin page for folders/files discovered by Library Scan / Reconciliation that cannot be associated reliably. It supports expandable folder trees, split/merge, batch/per-file mapping, organization policy, rename/move dry-run and execution. Binding spec: `docs/mockups/admin-folder-import-mapping/SPEC.md`.
 
 Both flows map into the canonical media hierarchy. Neither asks the admin to type raw database IDs or arbitrary destination paths as the normal UX.
 
@@ -625,7 +625,7 @@ Approve at minimum:
 14. Admin dashboard
 15. Admin media detail
 16. Wanted/Missing + Manual Search
-17. Activity / To-Do + Download Assignment + Folder/Library Mapping
+17. Activity / To-Do + Download Assignment + Library Reconciliation wizard
 18. Storage/path browser
 19. Providers/settings
 20. AI admin
