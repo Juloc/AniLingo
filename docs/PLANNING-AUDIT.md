@@ -20,7 +20,6 @@ Library currently uses `README.md` as its binding draft instead of `SPEC.md`; th
 
 Required before broad feature implementation:
 
-- Audiobook Detail
 - Player
 - Reader
 - Calendar
