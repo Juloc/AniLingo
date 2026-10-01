@@ -1,10 +1,12 @@
 # Audiobook Detail — Clean Design
 
-Status: **planned UX baseline; ready for visual mockup review**.
+Status: **approved Light-mode UX direction; binding planning specification**.
 
 This is the binding consumer detail-page specification for Audiobooks. It follows the shared Jularr media-detail skeleton but keeps audio-specific progress, narration and chapter behavior explicit.
 
-Visual mockups may refine composition and spacing. This text remains authoritative for information hierarchy, canonical data semantics, actions and states.
+The approved Light-mode mockup establishes the current visual direction: shared Jularr detail-page modules, wide media Hero, compact fact strip, optional Parts rail, chapter list, Continue/Listen card, Editions & Languages card, About/Details, Related Works and More Like This.
+
+The uploaded image in this mockup folder is the visual reference once present. This text remains authoritative for canonical data semantics, interaction, responsive behavior and edge states.
 
 ## Purpose
 
@@ -79,13 +81,14 @@ Single scroll page. No major tab bar.
 Recommended order:
 
 1. Hero
-2. Continue Listening
-3. Chapters
-4. Editions / Narrations & Languages
-5. About
-6. Related Written Work / Related Works
-7. More Like This
-8. Details only when useful
+2. compact Hero fact strip
+3. optional Parts / presentation-group rail
+4. Continue Listening
+5. Chapters for the selected Part/group
+6. Editions / Narrations & Languages
+7. About + compact Details
+8. Related Written Work / Related Works
+9. More Like This
 
 Sections without meaningful data disappear.
 
@@ -131,7 +134,25 @@ Priority:
 
 Do not stretch low-resolution cover art without treatment.
 
-## 2. Continue Listening
+## 2. Parts / presentation groups
+
+Audiobooks may expose larger listening groups such as **Part 1, Part 2, Part 3** when the source edition or canonical presentation has meaningful grouping.
+
+This uses the shared presentation-group concept or canonical structure where appropriate. It must not create a separate AudiobookPart identity model.
+
+Each Part item may show:
+
+- title/order;
+- optional artwork/backdrop crop;
+- duration;
+- compact progress;
+- selected state.
+
+Desktop uses a horizontal rail. Mobile uses a swipeable rail.
+
+If the audiobook has no meaningful Parts, omit the rail and show Chapters directly.
+
+## 3. Continue Listening
 
 Primary personal-state card directly below the Hero.
 
@@ -163,7 +184,7 @@ When there is no progress:
 Optional secondary action:
 - `Start from beginning` in overflow, not as a second dominant button.
 
-## 3. Chapters
+## 4. Chapters
 
 Chapters are the primary structural navigation when reliable chapter structure exists.
 
@@ -223,7 +244,7 @@ Do not invent chapters from arbitrary file names in the UI.
 
 Show a single continuous listening experience or the best canonical track structure available.
 
-## 4. Editions / Narrations & Languages
+## 5. Editions / Narrations & Languages
 
 This section is central to Audiobooks and uses canonical Edition/Version semantics.
 
@@ -275,7 +296,7 @@ When permitted:
 
 Switching editions should preserve equivalent canonical listening position when structural mapping is known. If mapping is unsafe, do not guess; start/ask explicitly rather than silently jumping to the wrong chapter.
 
-## 5. About
+## 6. About
 
 Show:
 
@@ -287,7 +308,7 @@ Long text uses `Read More`.
 
 Avoid repeating all Hero metadata.
 
-## 6. Related Written Work / Related Works
+## 7. Related Written Work / Related Works
 
 Use canonical WorkRelation.
 
@@ -305,7 +326,7 @@ When a written counterpart exists, make it easy to open its Reading Detail page.
 
 Do not create a second duplicate book record merely because the audiobook exists.
 
-## 7. More Like This
+## 8. More Like This
 
 Simple Discover-style recommendation row.
 
@@ -318,7 +339,7 @@ Cards should remain lightweight:
 
 Do not use admin or file-quality details.
 
-## 8. Details
+## 9. Details
 
 Only useful secondary facts:
 
@@ -422,29 +443,36 @@ Information hierarchy remains identical between themes.
 
 ## Desktop
 
-Recommended composition:
+Approved Light composition:
 
-- wide Hero with integrated cover
-- Continue Listening immediately below/near Hero
-- main chapter list as dominant content
-- right/secondary column may hold edition/narration and About cards if width permits
-- Related/Similar rails below
+- persistent Jularr sidebar/top search shell consistent with the other consumer mockups;
+- wide artwork Hero with one integrated cover, title, author, summary and primary actions;
+- Hero fact strip directly below with rating/community only when globally supported, runtime, narrator, publisher, primary spoken language and available-language summary;
+- optional horizontal **Parts** rail below the Hero;
+- two-column content region:
+  - large left column = `Chapters — <selected Part>`;
+  - compact right column = `Listen`/Continue card followed by `Editions & Languages`;
+- About and compact Details below the chapter area;
+- Related Works and More Like This as compact artwork rows near the bottom;
+- chapter rows remain calm and list-like rather than large media cards;
 - compact hover secondary actions allowed, never required
 
 Do not imitate a music-library table full of file metadata.
 
 ## Mobile
 
-Recommended composition:
+Approved Light composition:
 
-- compact vertical Hero
-- prominent Continue/Listen action
-- concise narrator/language/duration facts
-- Continue Listening card
-- chapters as touch-sized rows
-- narration/language selector as card or sheet
-- About
-- Related/Similar horizontal rails
+- artwork-led compact Hero with integrated cover and title;
+- rating/runtime/narrator as a short fact row;
+- prominent Continue Listening and My List actions;
+- optional compact **section jump bar** such as Parts / Chapters / Details / More;
+- the jump bar scrolls to sections on the same page; it is not a separate tabbed information architecture and must not duplicate page state;
+- swipeable Parts rail when meaningful;
+- Chapters as touch-sized list rows with play action and duration;
+- Editions card below chapters with active edition clearly selected;
+- About/Details and Related/Similar continue on the same scroll page;
+- entering playback opens the dedicated audio Player
 
 No dense metadata table.
 
@@ -625,30 +653,33 @@ The basic Detail page must work without optional integrations.
 - no invented chapters from unreliable filenames
 - no desktop table squeezed onto Mobile
 - no empty placeholder sections
-- no tab-heavy layout hiding Chapters/Continue
+- no desktop tab-heavy layout hiding Chapters/Continue
+- no Mobile section jump control that becomes separate duplicated page state
 - no different acquisition workflow just for Audiobooks
 
 ## Mockup deliverables
 
-Initial visual review should cover:
+The current approved Light mockup covers the required initial **Desktop + Mobile ready state** and is the baseline for implementation planning.
 
-1. Desktop Light ready state:
-   - active progress
-   - chapter list
-   - narrator/language edition selector
-   - related written work
-2. Mobile Light ready state
-3. one no-local-audio/request state
-4. one alternate-narration or preferred-language-unavailable state
-5. TV focus state because audio playback is a valid TV workflow
+It establishes:
 
-After Light is approved, derive Dark using the same information hierarchy rather than redesigning the page.
+- shared modules with other Jularr media-detail pages;
+- wide Hero + compact facts;
+- Parts rail;
+- selected-Part chapter list;
+- dedicated Continue/Listen card;
+- compact Editions & Languages selector;
+- About + Details;
+- Related Works + More Like This;
+- corresponding Mobile stacking/order.
 
-Suggested filenames:
+Still needed later only where useful:
 
-- `desktop-light.png`
-- `mobile-light.png`
-- `tv-dark.png`
-- additional state mockups only where they communicate real behavior
+- Dark-mode derivation using the exact same hierarchy;
+- no-local-audio / Request state;
+- alternate narration or preferred-language-unavailable state;
+- TV focus state because audiobook playback is a valid TV workflow.
+
+Do not produce duplicate mockups merely to restate the same modules.
 
 Text specification wins over images on conflict.
