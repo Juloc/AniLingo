@@ -3,7 +3,6 @@
 
   const INSTALL_DISMISS_KEY = "anilingo.pwa.installDismissedUntil";
   const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
-  const UPDATE_NOTICE_WORKER_KEY = "jularr.pwa.updateNoticeWorker";
   let deferredInstallPrompt = null;
 
   // Localized shell text is rendered by the server from the UI catalog
@@ -237,71 +236,6 @@
     }, 2500);
   };
 
-  const activateWaitingServiceWorker = worker => new Promise(resolve => {
-    if (!worker) {
-      resolve(false);
-      return;
-    }
-
-    if (worker.state === "activated") {
-      resolve(true);
-      return;
-    }
-
-    let finished = false;
-    const finish = activated => {
-      if (finished) {
-        return;
-      }
-      finished = true;
-      window.clearTimeout(timeout);
-      worker.removeEventListener("statechange", onStateChange);
-      resolve(activated);
-    };
-    const onStateChange = () => {
-      if (worker.state === "activated") {
-        finish(true);
-      } else if (worker.state === "redundant") {
-        finish(false);
-      }
-    };
-    const timeout = window.setTimeout(() => finish(false), 5000);
-
-    worker.addEventListener("statechange", onStateChange);
-    worker.postMessage({ type: "SKIP_WAITING" });
-  });
-
-  const offerServiceWorkerUpdate = worker => {
-    if (!worker || !navigator.serviceWorker.controller) {
-      return;
-    }
-
-    // A waiting worker remains waiting through normal document navigation.
-    // Remember its immutable script URL so re-registering on the next page
-    // never reopens the same notice. A later build has a different URL and
-    // is therefore still announced once.
-    const workerIdentity = worker.scriptURL || "";
-    if (workerIdentity && safeLocalStorageGet(UPDATE_NOTICE_WORKER_KEY) === workerIdentity) {
-      return;
-    }
-    if (workerIdentity) {
-      safeLocalStorageSet(UPDATE_NOTICE_WORKER_KEY, workerIdentity);
-    }
-
-    showNotice({
-      id: "pwa-update-notice",
-      message: shellLabel("pwa.update.ready"),
-      primaryLabel: shellLabel("pwa.update.action"),
-      secondaryLabel: shellLabel("pwa.update.later"),
-      onPrimary: async () => {
-        const activated = await activateWaitingServiceWorker(worker);
-        if (activated) {
-          window.location.reload();
-        }
-      }
-    });
-  };
-
   const isVersionedShellAsset = url =>
     url
     && url.origin === window.location.origin
@@ -363,26 +297,8 @@
         workerUrl,
         { scope: "/", updateViaCache: "none" });
 
-      if (registration.waiting) {
-        offerServiceWorkerUpdate(registration.waiting);
-      }
-
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        if (!worker) {
-          return;
-        }
-
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            offerServiceWorkerUpdate(worker);
-          }
-        });
-      });
-
       syncCurrentAssets(registration);
       void navigator.serviceWorker.ready.then(syncCurrentAssets).catch(() => {});
-      void registration.update();
     } catch {
       // PWA support is progressive enhancement and must never block Jularr.
     }

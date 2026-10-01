@@ -40,11 +40,6 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") {
-    self.skipWaiting();
-    return;
-  }
-
   if (event.data?.type === "CACHE_CURRENT_ASSETS") {
     event.waitUntil(cacheCurrentAssets(event.data.urls));
   }
