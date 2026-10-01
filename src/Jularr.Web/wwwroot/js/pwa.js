@@ -3,6 +3,7 @@
 
   const INSTALL_DISMISS_KEY = "anilingo.pwa.installDismissedUntil";
   const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
+  const UPDATE_NOTICE_WORKER_KEY = "jularr.pwa.updateNoticeWorker";
   let deferredInstallPrompt = null;
 
   // Localized shell text is rendered by the server from the UI catalog
@@ -275,6 +276,18 @@
       return;
     }
 
+    // A waiting worker remains waiting through normal document navigation.
+    // Remember its immutable script URL so re-registering on the next page
+    // never reopens the same notice. A later build has a different URL and
+    // is therefore still announced once.
+    const workerIdentity = worker.scriptURL || "";
+    if (workerIdentity && safeLocalStorageGet(UPDATE_NOTICE_WORKER_KEY) === workerIdentity) {
+      return;
+    }
+    if (workerIdentity) {
+      safeLocalStorageSet(UPDATE_NOTICE_WORKER_KEY, workerIdentity);
+    }
+
     showNotice({
       id: "pwa-update-notice",
       message: shellLabel("pwa.update.ready"),
@@ -318,19 +331,11 @@
       .map(url => url.pathname + url.search))];
   };
 
-  const hashBuildSignature = value => {
-    let hash = 2166136261;
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16).padStart(8, "0");
-  };
-
   const serviceWorkerBuildKey = () => {
-    const appVersion = document.documentElement.dataset.appVersion || "unknown";
-    const assets = currentFingerprintedAssets().slice().sort().join("|");
-    return appVersion + "-" + hashBuildSignature(assets);
+    // Page-specific scripts are intentionally cached through CACHE_CURRENT_ASSETS,
+    // but must not change the registration URL. Otherwise navigating between
+    // pages creates a new waiting worker and an endless update prompt.
+    return document.documentElement.dataset.appVersion || "unknown";
   };
 
   const syncCurrentAssets = registration => {
