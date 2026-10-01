@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Canonical application/release version; changing this file is release intent for CI. -->
     <Version>0.1.0-alpha.75</Version>
   </PropertyGroup>
 
