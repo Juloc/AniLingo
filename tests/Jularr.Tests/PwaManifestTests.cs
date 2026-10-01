@@ -70,11 +70,22 @@ public sealed class PwaManifestTests
         StringAssert.Contains(serviceWorker, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(serviceWorker, "cache: \"reload\"");
         StringAssert.Contains(serviceWorker, "putLatestAsset");
-        StringAssert.Contains(serviceWorker, "cached.pathname === current.pathname");
+        StringAssert.Contains(serviceWorker, "PREVIOUS_CACHE_VERSION");
+        StringAssert.Contains(serviceWorker, "offline-media-worker.js?v=1");
+        StringAssert.Contains(serviceWorker, "\"/js/offline-library.js\"");
+        StringAssert.Contains(serviceWorker, "\"/js/offline-library-storage.js\"");
+        StringAssert.Contains(serviceWorker, "startsWith(\"/_offline-media/\")");
+        Assert.IsFalse(serviceWorker.Contains("clients.claim()", StringComparison.Ordinal));
+        Assert.IsFalse(serviceWorker.Contains("offline-review.js", StringComparison.Ordinal));
         StringAssert.Contains(serviceWorker, "request.mode === \"navigate\"");
         Assert.IsFalse(serviceWorker.Contains("\"/Learn", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("\"/Library", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("handler=Media", StringComparison.Ordinal));
+
+        var offlineShell = File.ReadAllText(Path.Combine(webRoot, "offline.html"));
+        StringAssert.Contains(offlineShell, "/js/offline-library.js");
+        StringAssert.Contains(offlineShell, "/js/offline-library-storage.js");
+        Assert.IsFalse(offlineShell.Contains("offline-review", StringComparison.Ordinal));
 
         var pwaRuntime = File.ReadAllText(
             Path.Combine(webRoot, "js", "pwa.js"));

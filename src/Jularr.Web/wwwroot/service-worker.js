@@ -1,9 +1,18 @@
 // Legacy prefix kept after the Jularr rename so activation still finds and deletes older caches.
 const CACHE_PREFIX = "anilingo-static-";
-const CACHE_VERSION = CACHE_PREFIX + "v5";
+const CACHE_VERSION = CACHE_PREFIX + "v6";
+// Keeping the immediately preceding shell lets already-open tabs finish using the
+// assets they were rendered with.  The worker deliberately does not claim those
+// tabs; an update becomes active only after the user accepts it in pwa.js.
+const PREVIOUS_CACHE_VERSION = CACHE_PREFIX + "v5";
 const PRECACHE = [
   "/offline.html",
-  "/js/offline-review.js",
+  "/js/offline-media.js",
+  "/js/offline-media-storage.js",
+  "/js/offline-library.js",
+  "/js/offline-library-storage.js",
+  "/js/offline-media-worker.js?v=1",
+  "/js/offline-media-catalog.js",
   "/brand/jularr-mark.svg",
   "/icons/jularr-192.png",
   "/icons/jularr-512.png",
@@ -11,6 +20,8 @@ const PRECACHE = [
   "/icons/apple-touch-icon.png",
   "/manifest.webmanifest"
 ];
+
+importScripts("/js/offline-media-worker.js?v=1");
 
 self.addEventListener("install", event => {
   event.waitUntil(
@@ -24,10 +35,11 @@ self.addEventListener("activate", event => {
     caches.keys()
       .then(keys => Promise.all(
         keys
-          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+          .filter(key => key.startsWith(CACHE_PREFIX)
+            && key !== CACHE_VERSION
+            && key !== PREVIOUS_CACHE_VERSION)
           .map(key => caches.delete(key))
       ))
-      .then(() => self.clients.claim())
   );
 });
 
@@ -54,6 +66,14 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // Private package bytes are never written to CacheStorage.  The module below
+  // obtains them from profile-scoped IndexedDB and can answer video/audio Range
+  // requests without a network connection.
+  if (url.pathname.startsWith("/_offline-media/")) {
+    event.respondWith(self.JularrOfflineMediaWorker.respond(request, url));
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(() => caches.match("/offline.html"))
@@ -68,11 +88,9 @@ self.addEventListener("fetch", event => {
   event.respondWith(networkFirstStatic(request));
 });
 
-// App shell only. Offline library content (manifests, chapters, assets under
-// /api/client/v1/offline-library/**) is intentionally never matched here: it
-// lives in IndexedDB/OPFS (wwwroot/js/offline-library-storage.js), a separate
-// storage area this cache's version bumps/cleanup never touch. Do not add
-// offline-library paths to this allowlist (#221).
+// App shell only. Private library manifests, chapters and assets are intentionally
+// never matched here: they live in IndexedDB/OPFS, a separate storage area this
+// cache's version bumps and cleanup never touch.
 function isStaticAsset(pathname) {
   return pathname === "/manifest.webmanifest"
     || pathname.startsWith("/css/")
@@ -125,16 +143,7 @@ async function cacheCurrentAssets(urls) {
 }
 
 async function putLatestAsset(cache, request, response) {
-  const current = new URL(request.url);
-  const keys = await cache.keys();
-
-  await Promise.all(keys
-    .filter(key => {
-      const cached = new URL(key.url);
-      return cached.pathname === current.pathname
-        && cached.href !== current.href;
-    })
-    .map(key => cache.delete(key)));
-
+  // Fingerprinted asset URLs are immutable.  Retaining each URL is essential
+  // for old HTML/tabs during a staged service-worker update.
   await cache.put(request, response);
 }

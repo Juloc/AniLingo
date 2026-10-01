@@ -46,6 +46,7 @@ else if (Model.Playback.Media is { } media)
 {
     <section class="player-panel"
              data-episode-player
+             data-episode-id="@Model.EpisodeId"
              data-duration-seconds="@(media.DurationSeconds?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
              data-playback-plan-url="@ClientApiRoutes.PlaybackPlan(Model.EpisodeId)"
              data-app-version="@Jularr.Web.Features.Appearance.AppBuildInfo.Version"
@@ -368,6 +369,10 @@ else if (Model.Playback.Media is { } media)
             </div>
 
             <div class="player-error" data-player-error hidden></div>
+        </div>
+        <div class="reader-menu-offline">
+            <button class="button" type="button" data-offline-episode-save="@Model.EpisodeId">@ui["offlineLibrary.action.saveButton"]</button>
+            <small data-offline-media-status></small>
         </div>
 
         @if (Model.Controls is { } controlsData)

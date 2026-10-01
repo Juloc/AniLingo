@@ -400,6 +400,8 @@ builder.Services.AddScoped<MediaSegmentSidecarImporter>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
 builder.Services.AddScoped<ClientApiOfflineService>();
+builder.Services.AddSingleton<OfflinePortableRenditionService>();
+builder.Services.AddScoped<ClientApiOfflineMediaPackageService>();
 builder.Services.AddScoped<OfflineProgressReconciler>();
 builder.Services.AddScoped<OfflineLibraryQueries>();
 builder.Services.AddScoped<OfflineLibraryProgressReconciler>();
@@ -709,6 +711,7 @@ app.MapClientApiV1();
 app.MapClientApiPlaybackPlanV1();
 app.MapAcquisitionApiV1();
 app.MapClientApiOfflineV1();
+app.MapClientApiOfflineMediaPackageV1();
 app.MapClientApiOfflineLibraryV1();
 app.MapClientApiOfflinePrefetchV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)

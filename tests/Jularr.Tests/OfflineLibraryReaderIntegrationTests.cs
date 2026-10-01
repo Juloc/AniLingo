@@ -73,6 +73,17 @@ public sealed class OfflineLibraryReaderIntegrationTests
     }
 
     [TestMethod]
+    public void GlobalLayoutAndEpisodePlayerExposeTheBinaryOfflinePackageFlow()
+    {
+        var layout = ReadPage("Shared", "_Layout.cshtml");
+        var episode = ReadPage("Library", "Episode.cshtml");
+        StringAssert.Contains(layout, "js/offline-media-manager.js");
+        StringAssert.Contains(layout, "js/offline-media-ui.js");
+        StringAssert.Contains(episode, "data-offline-episode-save");
+        StringAssert.Contains(episode, "data-episode-id");
+    }
+
+    [TestMethod]
     public void AccountFooterRendersTheGlobalDownloadIndicator()
     {
         var view = ReadPage("Shared", "_AppAccountFooter.cshtml");
