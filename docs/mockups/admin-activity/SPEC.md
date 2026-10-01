@@ -1,8 +1,13 @@
 # Admin Activity / To-Do — V1
 
-Status: planning direction updated. This screen owns live operational work and manual attention flows, including import review.
+Status: approved operational direction. This screen owns live operational work and manual attention flows, including import review.
 
 Global UX rules: `docs/UX.md`
+
+Existing visual reference:
+- `file_00000000f010821098793669d1a356ca.png` — Activity / To-Do Admin screen shell and layout reference.
+
+The existing screen reference remains valid for Activity / To-Do. The Import Review / Assignment dialog is part of this screen flow and may receive its own focused dialog mockup; it is not a separate page.
 
 ## Purpose
 
