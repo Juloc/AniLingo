@@ -1,247 +1,443 @@
 # Admin Manual Search / Acquisition Dialog — V1
 
-Status: approved planning direction; mockup required before implementation.
+Status: **approved UX direction**. Desktop and Mobile mockups are binding visual references.
 
-Global UX rules: `docs/UX.md`.
-Wanted contract: `docs/mockups/admin-wanted/SPEC.md`.
+Global UX rules: `docs/UX.md`  
+Wanted contract: `docs/mockups/admin-wanted/SPEC.md`
+
+Approved visual references:
+- Desktop: `file_0000000014508246b464e74277c1feed.png`
+- Mobile: `file_00000000b6108243b429b2ff75d3e44c.png`
+
+If an image and this specification conflict, this specification wins.
 
 ## Purpose
 
-Manual Search is the **Search tab of the reusable Admin Acquisition dialog** for one canonical acquisition target.
+Manual Search is the Admin surface for inspecting concrete external release candidates and manually selecting one for an existing canonical acquisition target.
 
-It is reachable from:
+It is the **Search tab of the reusable Acquisition dialog/sheet**, not an independent media model or acquisition pipeline.
+
+Entry points include:
 - Admin Wanted
 - Admin Media Detail
 - other authorized Admin acquisition actions
 
-It is not a separate acquisition pipeline and does not need a standalone full-page route for V1.
+The screen must answer quickly:
+- What exactly are we searching for?
+- Which indexer/provider produced each candidate?
+- How did Jularr parse the candidate?
+- Does it match the requested episode/season/unit?
+- How well does it satisfy the active profile + language policy?
+- Why is it accepted, warned or rejected?
+- What will be grabbed if the admin selects it?
 
-## Dialog tabs
+## Primary structure
 
 Exactly three primary tabs:
-1. Search
-2. Current
-3. History
+1. **Suche**
+2. **Aktuell**
+3. **Verlauf**
 
-Search opens by default when the dialog is launched through Manual Search.
+`Suche` opens by default when Manual Search is invoked.
 
-## Search header
+### Suche
+External normalized ReleaseCandidates, filters, scoring, selection and grab.
 
-Always show:
-- target Work
-- target Structure/unit
+### Aktuell
+Current canonical target, monitoring/profile/language requirements and existing local state.
+
+### Verlauf
+Search, decision, grab, handoff, import, failure and blocklist history scoped to the same acquisition target.
+
+Do not create additional top-level tabs for score, files, indexers or diagnostics.
+
+## Target context header
+
+The header is compact and operational. No consumer-style hero.
+
+Show:
+- small artwork thumbnail
+- Work title
+- requested Structure/unit, e.g. `S01E03 · We Need a Hero`
+- acquisition state, e.g. `Fehlend`
 - effective acquisition profile
-- target language(s)
-- monitored/acquisition state
-- Search/Refresh
+- target languages
+- last search time where useful
+- primary `Suche starten` / refresh action
 
-Profile and language may be temporarily changed for the current search. Temporary values re-score results but do not silently mutate the saved target configuration.
+The target identity must remain visible while reviewing results.
 
-## Candidate table
+Temporary search overrides may change profile/language evaluation for this search, but must never silently mutate persisted media settings.
 
-Desktop uses a dense configurable table.
+## Search toolbar
 
-Default columns:
-- decision state
-- effective-profile score
-- title
-- source/indexer
-- age
-- size
+Desktop uses one compact toolbar above the table:
+- text search within returned results
+- Filter
+- Sortierung
+- Indexer
+- Typ
+- Qualität
+- Spalten
+
+Active filters appear directly below as removable compact tags.
+
+Mobile uses:
+- result search field
+- Filter button
+- horizontally wrapping/scrolling compact controls for Typ, Qualität, Sprache, Score and Sortierung
+
+Filters may include:
+- eligible / warning / rejected
+- score range
 - quality
 - language
 - audio
 - subtitles
+- size
+- age
+- source/indexer
 - release group
 - release type
-- parsed target
-- match confidence
-- action
-
-Release type explicitly distinguishes:
-- single unit
-- multi-unit
-- season/collection pack
-
-Optional columns may expose additional indexer metadata.
-
-A column chooser controls optional columns. Do not force every available provider field into the default layout.
-
-## Filtering and sorting
-
-All meaningful candidate fields must be filterable where useful:
-- decision state
-- score
-- quality
-- language
-- audio
-- subtitles
-- size
-- age
-- source/indexer
-- group
-- release type / season pack
-- match confidence
+- season pack / multi-unit
+- parsed identity / match state
 - rejection reason
 
-Default order:
-1. effective-profile score
-2. eligible before warning before rejected
-3. configured source preference
+Successful results from available indexers remain usable when another indexer fails.
 
-## Score model
+## Desktop results
 
-The main score is always contextual to the selected **profile + language target**.
+Desktop is a dense Admin table and uses most of the dialog width.
 
-It may include:
+Default columns:
+- Score
+- Release
+- Typ
+- Indexer
+- Alter
+- Größe
+- Qualität
+- Sprache
+- Audio / Subs
+- Parsed
+- Match
+- Aktion
+
+A column chooser may expose additional normalized metadata.
+
+Do not permanently show every provider-native field.
+
+### Release row
+
+A row can use a secondary line for:
+- normalized release title
+- pack/episode coverage
+- parsed identity
+- concise diagnostic reason
+
+The complete raw title remains available in candidate details.
+
+### Selection
+
+Selecting a row:
+- gives it a restrained selected border/state
+- opens or updates the right-side candidate detail drawer
+- does not immediately grab it
+
+The actual grab/download action remains explicit.
+
+## Desktop candidate detail drawer
+
+The selected release opens in a narrow right-side Admin drawer.
+
+Show:
+- release title
+- source/indexer
+- release type
+- normalized parsed identity
+- season/episode/unit coverage
+- quality
+- languages
+- audio/subtitles
+- size
+- release group where available
+- total effective score
+- score breakdown
+- exact match/warning/rejection reasons
+- episode/unit coverage where relevant
+- primary `Auswählen und laden` action
+
+For a season pack, coverage such as `E01–E12` must be directly visible.
+
+The drawer replaces permanent large explanatory cards below the table.
+
+## Mobile results
+
+Mobile is a full-screen Admin acquisition surface, not a tiny desktop modal.
+
+Each candidate is a dense stacked Admin card containing:
+- selection control
+- score
+- release title
+- release type
+- indexer
+- age
+- size
+- quality
+- language/audio/subtitle metadata
+- parsed identity
+- match/warning/rejection reason
+- expand/detail affordance
+
+The selected candidate receives only a restrained outline/selection state.
+
+A sticky bottom action area summarizes the selected candidate and exposes `Auswählen und laden`.
+
+No large decorative artwork or consumer-style media cards.
+
+## Tag / chip visual contract
+
+This is binding.
+
+All compact metadata/status tags use the same clean visual grammar:
+
+- **no visible filled background**
+- transparent or same background as the parent surface
+- thin rounded border
+- compact radius/pill shape
+- small **outline/line icon**
+- short text label
+- restrained color only on border, icon and/or text when semantic color is needed
+
+Examples:
+- outline stack icon + `Season Pack`
+- outline monitor icon + `1080p`
+- outline globe icon + `JA`
+- outline audio icon + `AAC`
+- outline check icon + `Passend`
+- outline warning icon + `Niedrigere Qualität`
+- outline X/error icon + `Falsche Episode`
+
+### Icons
+
+Icons inside tags are also line/outline icons.
+
+Do **not** put icons inside solid colored circles/disks.
+
+Do not use:
+- solid green circles behind checkmarks
+- solid red circles behind X icons
+- filled pastel pills
+- large green/red status boxes
+- saturated badge backgrounds
+
+Semantic state is expressed through subtle border/icon/text color plus the written label.
+
+Primary CTA buttons may remain filled with the Jularr accent; this rule applies to metadata/status tags, not primary actions.
+
+## Score
+
+The visible score is contextual to the current **profile + language target**.
+
+It is not an intrinsic property of a release.
+
+The score may include:
+- title/identity match
+- season/episode/unit match
 - quality preference
 - language policy
 - audio/subtitle requirements
-- custom release preferences
-- source preference
+- custom format/release preferences
+- source/indexer preference
 - season-pack preference
 - size/age rules
-- other profile-owned criteria
+- other profile-owned rules
 
-Candidate detail shows the full score breakdown.
+The selected candidate drawer exposes a score breakdown.
 
-Optional comparison columns can show scores from other configured profiles. These are secondary comparison data and never replace the main effective score.
+Optional comparison against other configured profiles may exist later, but the active profile score remains primary.
+
+## Season packs and multi-unit releases
+
+Season packs are first-class candidate types.
+
+Clearly show:
+- release type: `Season Pack`
+- parsed season
+- detected episode count, e.g. `12/12`
+- coverage, e.g. `E01–E12`
+- total size
+- target episode inclusion
+- active pack preference contribution to score where applicable
+
+Example:
+`Season Pack · S01 · 12/12 · E01–E12 · enthält Ziel E03`
+
+A complete pack may score above a single episode if the active profile prefers packs.
+
+A partial or wrong-season pack remains visible and receives a warning/rejection reason.
 
 ## Rejected and suspicious candidates
 
-Rejected results remain visible by default.
+Manual Search is also diagnostic.
 
-This includes candidates Jularr believes are:
-- wrong episode/unit
+Returned candidates that can be normalized enough to display remain visible even when Jularr would not auto-grab them.
+
+Examples:
+- wrong episode
 - wrong season
-- ambiguous
-- already satisfied by a better local file
-- below profile minimum
-- wrong language
-- blocked
+- ambiguous parsed identity
+- language mismatch
+- below required quality
+- outside size rules
+- blocked release/group
 - previously failed
+- local file already preferred
 
-Rows show a compact warning/rejection indicator and exact reasons are available in row detail.
+For identity mismatch show both:
+- requested canonical target
+- parsed candidate target
 
-For identity mismatch, show:
-- requested canonical unit
-- parsed candidate unit
-- confidence
-- reason for mismatch
+Examples:
+- requested `S01E03`, parsed `S01E04` → `Falsche Episode`
+- requested Season 1, parsed Season 2 → `Falsche Staffel`
 
-Automatic acquisition cannot choose an identity-mismatched candidate.
+Identity-invalid candidates can never be selected automatically.
 
-An authorized manual override may be possible for reviewable warnings. Identity override requires explicit confirmation and explicit target mapping.
+A manual override, if policy allows one later, requires explicit confirmation and explicit target mapping. It must not silently retrain parsing or change canonical IDs.
 
 Hard safety/integrity failures remain non-overridable.
 
-## Candidate detail drawer
-
-Shows:
-- raw release title
-- normalized parsed fields
-- provider/indexer
-- age/publish time
-- size
-- quality
-- languages
-- audio
-- subtitles
-- group
-- release type
-- parsed units
-- target match
-- score breakdown
-- rejection/warning reasons
-- prior failure/blocklist evidence
-- grab action
-
-Raw provider data is diagnostic only.
-
 ## Current tab
 
-Shows existing target state:
-- canonical identity
-- monitored state
+Show factual target/current-state information:
+- canonical Work / Structure/unit
+- monitoring state
 - active profile
 - target languages
-- desired Version/Edition
-- current local Asset/File if present
-- existing quality/audio/subtitle/language state
-- why this target is Wanted
+- desired Edition/Version where applicable
+- current local Asset/File where present
+- current quality
+- current audio/subtitles/languages
+- why this target is missing/wanted/upgrading
+
+This tab is context, not a second metadata editor.
 
 ## History tab
 
-Shows target-scoped acquisition history:
-- search
-- automatic decision
-- manual grab
-- override
-- download handoff
-- import
-- failure
-- blocklist
-
-Each event records profile/language context, actor and timestamp.
-
-## Responsive
-
-Desktop:
-- large dialog
-- full configurable table
-- detail drawer
-
-Tablet:
-- wide sheet
-- reduced default columns
-- candidate detail sheet
-
-Mobile:
-- full-screen sheet
-- candidate cards instead of dense table
-- filters in sheet
-- same scoring/rejection information
-- no hover-only affordances
-
-TV:
-- unsupported
+Show target-scoped events:
+- searches
+- automatic decisions
+- manual selections
+- authorized overrides
+- download-client handoff
+- import outcome
+- failures
+- blocklist events
+- actor
+- timestamp
+- profile/language context used for the decision
 
 ## Light / Dark
 
-Both first-class.
+Both themes are required.
 
-Keep Admin styling compact and restrained. Warning/rejection colors supplement text/icons; color is never the only signal.
+The approved references currently define the light Admin composition.
 
-## Loading / Empty / Error / Partial
+Dark mode must preserve:
+- hierarchy
+- table/card density
+- transparent/outline tag grammar
+- semantic border/icon/text colors
+- readable selected/focus states
 
-Required states:
-- searching
+Do not convert outline tags into filled badges in Dark mode.
+
+## Platform behavior
+
+### Desktop
+- large centered dialog
+- compact target header
+- dense configurable table
+- right-side candidate detail drawer
+- keyboard/mouse friendly
+- no information dependent solely on hover
+
+### Tablet
+- large sheet/dialog
+- reduced default columns or split list/detail
+- touch-sized controls
+- same candidate and scoring model
+
+### Mobile
+- full-screen Admin surface
+- dense candidate cards
+- filter controls adapted for touch
+- expandable details
+- sticky selected-candidate action area
+- minimum touch targets follow global UX rules
+
+### TV
+Unsupported for Admin Manual Search.
+
+## Loading / Empty / Error / Partial states
+
+Required:
+- search loading
 - no candidates
-- mixed eligible/rejected
-- all rejected
-- partial provider failure
-- provider timeout/rate limit
+- candidates found
+- mixed eligible/warning/rejected
+- all candidates rejected
+- partial indexer failure
+- indexer timeout
+- rate limit
 - malformed candidate
-- ambiguous target
+- ambiguous parsed identity
+- selection changed
 - grab queued
-- grab error
+- grab failed
+- forbidden/insufficient permission
 
-Successful results from one source remain usable when another source fails.
+Partial provider failure must not discard valid candidates from providers that succeeded.
 
-## Domain constraints
+## Domain / architecture constraints
 
-- Search target references the canonical media hierarchy.
-- ReleaseCandidate remains temporary external acquisition evidence.
-- A release does not become a Version/Asset/File until the later acquisition/import workflow establishes it.
-- Identity acceptance precedes profile ranking.
-- Scoring must not create media identity.
+- The search target references canonical `Work -> Structure -> Edition -> Version -> Asset/File -> Track`.
+- ReleaseCandidate is temporary external acquisition evidence.
+- Provider/indexer-native fields are provenance/diagnostics, not canonical identity.
+- A candidate does not become a Version/Asset/File merely because it appeared in search.
+- Canonical identity validation happens before profile quality can make a candidate eligible.
+- Scoring evaluates suitability; it must not create or redefine media identity.
+- Search, automatic acquisition and manual acquisition must use the same normalized candidate/scoring pipeline.
+
+## Actions
+
+Allowed actions include:
+- start/refresh search
+- change filters/sort/columns
+- inspect candidate
+- select candidate
+- explicit grab/download when authorized
+- inspect source/indexer health on provider failure
+- return to Wanted/Media Detail context
+
+Selection and download are distinct actions.
 
 ## Must not implement
 
-- No hidden rejected rows by default.
-- No quality score used to override wrong identity automatically.
+- No separate Anime/Series/Movie manual-search cores.
+- No standalone duplicate acquisition pipeline.
+- No hidden rejected results by default.
+- No automatic grab of an identity-mismatched candidate.
+- No quality/profile score overriding invalid identity.
+- No opaque score without inspectable reasoning.
 - No global intrinsic release score.
-- No silent persistent profile/language change from temporary search controls.
-- No provider-specific parallel release models.
-- No automatic parser learning from a force-grab.
+- No silent persistent profile/language changes from temporary search context.
+- No provider-native candidate persisted directly as canonical Version before acquisition/import.
+- No silent parser learning from manual force-grab.
+- No arbitrary provider-specific default column wall.
+- No consumer-facing release table.
+- No filled-background metadata/status tags.
+- No solid-circle tag icons.
+- No large success/error color blocks.
 - No desktop-only hover dependency.
