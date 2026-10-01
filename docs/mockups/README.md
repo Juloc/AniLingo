@@ -35,7 +35,6 @@ Agents must not redesign an approved screen during implementation without updati
 - `admin-activity/SPEC.md`
 - `admin-history/SPEC.md`
 - `admin-manual-search/SPEC.md`
-- `admin-imports/SPEC.md`
 - `admin-storage/SPEC.md`
 - `admin-providers/SPEC.md`
 - `admin-ai/SPEC.md`
