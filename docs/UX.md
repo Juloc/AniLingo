@@ -432,12 +432,14 @@ There is no standalone permanent Imports page in V1.
 Operational flow:
 - active downloads and import processing appear in Admin Activity;
 - successful completion appears in History;
-- failed/ambiguous imports that require human intervention appear in To-Do;
-- To-Do opens an Import Review / Assignment dialog.
+- failed/ambiguous work that requires human intervention appears in To-Do.
 
-The Import Review dialog can correct canonical Work/Structure/Edition/Version assignment and supported parsed release metadata such as release group, quality and languages. Jularr prefills detected values.
+To-Do can open two distinct mapping flows:
 
-Destination is normally derived from the canonical assignment plus configured LibraryRoot/storage policy. The normal UX does not ask the admin to type arbitrary server paths.
+1. **Download Assignment** — for one or more files from a completed download job. Desktop is a compact editable table with one file/episode per row. Binding spec: `docs/mockups/admin-download-assignment/SPEC.md`.
+2. **Folder / Library Import Mapping** — for folders/files discovered by Library Scan / Reconciliation that cannot be associated reliably. This supports batch and per-file mapping. Binding spec: `docs/mockups/admin-folder-import-mapping/SPEC.md`.
+
+Both flows map into the canonical media hierarchy. Neither asks the admin to type raw database IDs or arbitrary destination paths as the normal UX.
 
 ## 23. Storage admin
 
@@ -623,7 +625,7 @@ Approve at minimum:
 14. Admin dashboard
 15. Admin media detail
 16. Wanted/Missing + Manual Search
-17. Activity / To-Do + Import Review dialog
+17. Activity / To-Do + Download Assignment + Folder/Library Mapping
 18. Storage/path browser
 19. Providers/settings
 20. AI admin
