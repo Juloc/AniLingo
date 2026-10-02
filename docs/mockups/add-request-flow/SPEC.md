@@ -8,9 +8,9 @@ It must stay media-independent and must not expose indexers, download clients, r
 
 ## Purpose
 
-One adaptive flow handles:
+One compact flow handles:
 
-- discover-only media not yet in Jularr;
+- a media item the user has already selected on a calling surface;
 - canonical Works already known but not locally available;
 - normal-user requests with optional approval;
 - privileged requests that may be auto-approved immediately;
@@ -26,14 +26,7 @@ The same flow opens from Discover, Search, Detail, Calendar, Watchlist and Relat
 
 If a canonical Work already exists, skip identity resolution.
 
-If entry is a provider result:
-1. resolve the provider candidate;
-2. check existing canonical identities;
-3. link to an existing Work when matched;
-4. create through the canonical identity-resolution path only when safe;
-5. continue the flow.
-
-Ambiguous identity must not be auto-created. Normal users see a simple needs-review/unavailable state; Admin resolves ambiguity elsewhere.
+The Request dialog never performs media search or title selection. The calling surface must hand it a resolved canonical Work/target. If a Discover/Search provider result is not yet safely resolved, that resolution happens before opening Request. Ambiguous identity must not open the Request dialog.
 
 If the desired target is already locally available, show Play/Read/Listen instead of pretending it needs acquisition.
 
@@ -74,12 +67,12 @@ Tablet:
 TV:
 - simplified Request flow only; complex unit selection may hand off to Web/Mobile.
 
-Logical stages:
-1. Scope
-2. Preferences
-3. Confirm
+There is no multi-step wizard. The normal flow has exactly two UI states:
 
-Stages collapse when unnecessary.
+1. **Request settings** — all relevant scope/preferences on one page.
+2. **Success** — summary of what was requested and its approval state.
+
+Large granular unit selection may temporarily open one focused selector subview, but returning from it restores the same Request settings page.
 
 ## Media header
 
@@ -187,26 +180,28 @@ Owner direct Add may create/update Wanted without moderation.
 
 Never create duplicate canonical Works.
 
-## Confirmation
+## Request settings page
 
-Final summary answers:
-- what;
-- scope;
-- language/edition;
-- monitoring behavior;
-- whether approval is required;
-- whether Jularr searches now or only monitors.
+All normal request choices are visible on one page beneath the compact media header.
 
-Primary button label:
+Recommended order:
+1. Scope, only when the media has meaningful selectable structure.
+2. Language / edition, only when relevant.
+3. Monitoring behavior, only when relevant.
+4. Optional privileged Advanced override, collapsed by default.
+5. Compact request summary near the footer when useful.
+
+Primary button:
 - **Request**
 
 Secondary:
-- Back when needed
 - Cancel
 
-Do not use generic `Submit`.
+There is no Next/Back wizard navigation.
 
-## Success and existing states
+The page must remain short by hiding irrelevant groups. A Movie with no edition/language decision may therefore show only a short summary and Request button.
+
+## Success state
 
 ### Submitted
 Show:
@@ -274,26 +269,26 @@ Server authorization is authoritative.
 
 ## Desktop layout
 
-- medium modal;
+One medium modal only:
 - MediaIdentityHeader;
-- compact Scope/Preferences groups;
-- selected-scope summary;
-- sticky Cancel + primary action footer;
-- no wizard sidebar.
+- all relevant Request settings in one scrollable content area;
+- compact Scope/Language/Edition/Monitoring groups;
+- sticky Cancel + Request footer;
+- no steps, stepper, wizard rail, Next or Back.
 
-Only show season/episode/chapter lists after the user asks for granular selection.
+Only show season/episode/chapter lists after the user asks for granular selection. Large granular lists may use a temporary focused selector dialog/sheet and return to the same Request modal.
 
 ## Mobile layout
 
-- full-height sheet/page;
+One full-height Request sheet/page:
 - compact media header;
-- one-column controls;
+- all relevant settings in one vertical page;
 - touch-sized rows;
-- focused selector subview for long unit lists;
-- sticky action;
-- contextual Back/Close.
+- focused selector subview only for long season/episode/chapter lists;
+- sticky Cancel/Request actions;
+- Close/contextual Back only for leaving the sheet or returning from a temporary selector.
 
-Do not squeeze the Desktop modal onto phone width.
+No numbered steps and no Next buttons.
 
 ## Loading and errors
 
@@ -338,7 +333,7 @@ Use one implementation of:
 - EditionSelector
 - MonitoringChoice
 - RequestStatus
-- ConfirmationSummary
+- RequestSummary
 - Dialog/Sheet shell
 
 Do not create separate Add and Request dialogs and do not create per-media Request dialog implementations.
@@ -362,9 +357,14 @@ Do not create separate Add and Request dialogs and do not create per-media Reque
 ## Mockup requirement
 
 Before implementation, review:
-1. Desktop Light — Anime/Series Request with scope + language; no Add/Request choice.
-2. Mobile Light — same Request as full-height sheet.
-3. Simple Movie Request showing collapsed one-screen behavior.
-4. Submitted state showing both possible outcomes: Waiting approval or Auto-approved.
+1. Desktop Light — one-page Anime/Series Request settings modal.
+2. Mobile Light — same one-page Request sheet.
+3. Simple Movie Request proving irrelevant groups disappear.
+4. Success state summarizing exactly what was requested and whether it is Waiting approval or Auto-approved.
 
 Text specification wins over mockup imagery on conflict.
+
+
+## Explicit flow simplification
+
+The Request dialog always starts from an already selected medium. It never contains Search, Discover results or title selection. Normal request configuration is one page. Successful submission replaces that page with a concise success summary. This is the binding interaction model.
