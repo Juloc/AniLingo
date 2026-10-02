@@ -42,8 +42,8 @@ public sealed class ReadModel(
     AppDbContext db,
     CurrentAccountContext account,
     OperationRunner operations,
-    IInstanceModuleService instanceModules,
-    ILogger<ReadModel> logger) : PageModel
+    ILogger<ReadModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelReaderChapter Chapter { get; private set; } = null!;
