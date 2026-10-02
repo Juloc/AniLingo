@@ -462,6 +462,15 @@ public sealed class ClientApiService(
             return null;
         }
 
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return new ClientCueResponse(
+                null,
+                fromMs,
+                toMs,
+                []);
+        }
+
         var cueSet = await playbackService.GetCueSetAsync(
             episodeId,
             trackId,
