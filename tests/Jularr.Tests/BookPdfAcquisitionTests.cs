@@ -632,6 +632,7 @@ public sealed class BookPdfAcquisitionTests
                 });
             collection.AddSingleton<IDownloadClient>(provider => new SabnzbdDownloadClient(provider.GetRequiredService<ISabnzbdClient>()));
             collection.AddSingleton<IndexerSearchCoordinator>();
+            collection.AddSingleton<BookSearchCoordinator>();
             collection.AddSingleton<DownloadClientSelector>();
             collection.AddSingleton<DownloadClientSubmissionService>();
             collection.AddSingleton<SabnzbdDownloadService>();
