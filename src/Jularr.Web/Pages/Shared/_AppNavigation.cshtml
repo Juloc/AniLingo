@@ -3,13 +3,16 @@
 @using Jularr.Web.Features.Instance
 @using Jularr.Web.Features.Learning
 @using Jularr.Web.Features.Shell
+@using Microsoft.Extensions.DependencyInjection
 @inject AppDbContext LearningNavigationDb
 @inject IAppShellService AppShell
-@inject IInstanceModuleService InstanceModules
 @{
     var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
     var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-    var instanceSettings = await InstanceModules.GetAsync(Context.RequestAborted);
+    var instanceModules = Context.RequestServices.GetService<IInstanceModuleService>();
+    var instanceSettings = instanceModules is null
+        ? InstanceModuleSettings.Default
+        : await instanceModules.GetAsync(Context.RequestAborted);
     var enabledModules = instanceSettings.Modules
         .Where(pair => pair.Value)
         .Select(pair => pair.Key)
