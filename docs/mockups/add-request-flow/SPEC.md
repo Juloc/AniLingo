@@ -138,11 +138,13 @@ Movie/video edition or cut appears only when it is a real user-facing distinctio
 
 Never expose technical release candidates here.
 
-### Monitoring
+### Acquisition monitoring
 Where meaningful:
-- Monitor selected scope;
-- Search now when approved/permitted;
-- Monitor only / wait for future availability.
+- monitor future releases within the selected scope;
+- search now when approved/permitted;
+- monitor only / wait for future availability.
+
+This is **acquisition monitoring only**. It is not the user's personal Watching/Reading/Listening status, Watchlist/Merkliste state, playback progress or external-provider list status.
 
 ### Acquisition profile
 Normal user: hidden.
@@ -187,9 +189,11 @@ All normal request choices are visible on one page beneath the compact media hea
 Recommended order:
 1. Scope, only when the media has meaningful selectable structure.
 2. Language / edition, only when relevant.
-3. Monitoring behavior, only when relevant.
+3. Acquisition monitoring for future releases, only when relevant.
 4. Optional privileged Advanced override, collapsed by default.
 5. Compact request summary near the footer when useful.
+
+Do not include personal media-list controls such as `Watching`, `Planning`, `Completed`, `Add to Watchlist`, `Add to list` or `Start watching automatically`.
 
 Primary button:
 - **Request**
@@ -225,6 +229,18 @@ Allow change only with capability.
 
 ### Already available
 Prefer Play/Read/Listen. A Request action is unnecessary unless the user is requesting a materially different language/edition that is not available.
+
+## Personal media state vs Request state
+
+Request/acquisition state and personal media state are separate concerns.
+
+- **Request/Acquisition state** answers whether Jularr should obtain/monitor media.
+- **Personal Jularr media state** answers whether the profile has saved, started, completed, rated or progressed through media.
+- **External sync state** (for example AniList) is an adapter over Jularr-owned personal state when the user enables synchronization under Settings > Connections.
+
+The Request dialog never edits AniList directly and never asks for a Watching/Reading status.
+
+External-provider sync must not become canonical ownership of Jularr user state.
 
 ## Consumer status projection
 
@@ -352,7 +368,10 @@ Do not create separate Add and Request dialogs and do not create per-media Reque
 - no duplicate acquisition solely from multiple requesters;
 - no ambiguous auto-created Work;
 - no forced long wizard for simple media;
-- no technical Operations log.
+- no technical Operations log;
+- no Watchlist/Merkliste or Watching/Reading/Listening status controls;
+- no AniList/MAL sync controls;
+- no `Start watching automatically` or equivalent personal-consumption action.
 
 ## Mockup requirement
 
