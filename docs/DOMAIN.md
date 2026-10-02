@@ -4,7 +4,7 @@ Status: planning baseline. This document defines the target domain before furthe
 
 ## 1. Principles
 
-- One canonical media/content model for Anime, TV, Movie, Manga, Light Novel, Book, Audiobook and the additional library domains required by the full Usenet platform scope (music, games, software and generic content).
+- One canonical media model for Anime, TV, Movie, Manga, Light Novel, Book and Audiobook.
 - Media-type-specific data exists only where the concept is genuinely different.
 - Provider metadata never defines identity by itself.
 - Physical files are separate from logical works, editions and releases.
@@ -214,40 +214,6 @@ Wanted -> Search -> Candidate scoring -> Grab -> Download -> Import -> Version/A
 ```
 
 Anime, TV, Movies, Books, Manga and Light Novels must not each implement a separate acquisition engine.
-
-### Full Usenet / Arr-stack product scope
-
-Jularr's target is a self-contained Usenet acquisition platform, not merely an orchestrator around SABnzbd/NZBGet or separate Arr applications.
-
-The universal acquisition pipeline must cover:
-- movies, TV and anime;
-- manga, comics, books, light novels and magazines;
-- music and audiobooks;
-- games across supported platforms, including platform/region/version metadata and browser play through emulator adapters where technically possible;
-- software, installers, operating-system images and other versioned application artifacts;
-- archives, datasets, backups and other generic downloads that do not belong to a specialized library.
-
-Required product capabilities:
-- indexer aggregation/search and normalized release candidates;
-- native NZB/NNTP downloading;
-- queueing, priorities, pause/resume, retry/failover, bandwidth limits and multiple Usenet servers;
-- yEnc/article assembly and persistent resumable download state;
-- verification/repair and archive extraction through replaceable tool adapters;
-- password handling, duplicate detection and download history;
-- identification, post-processing, renaming, target routing and import;
-- specialized libraries when the content type is known, with a Generic Downloads fallback when it is not;
-- one shared automation/profile engine for monitoring, quality/language/version rules and upgrades across content types where those concepts apply.
-
-External download clients may remain optional compatibility/migration adapters, but the target architecture must not require SABnzbd, NZBGet, Sonarr, Radarr, Lidarr, Readarr or Prowlarr for normal operation.
-
-Canonical end-to-end flow:
-
-```text
-Search -> Candidate -> Grab -> Native Download -> Verify/Repair -> Extract
-       -> Identify -> Post-process -> Import -> Library/Generic Downloads -> Consume/Launch
-```
-
-Content-specific modules may specialize metadata, naming, consumption and launch behavior, but must reuse this common acquisition spine.
 
 ## 11. User/profile state
 
