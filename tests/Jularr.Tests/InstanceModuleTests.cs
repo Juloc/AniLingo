@@ -91,6 +91,9 @@ public sealed class InstanceModuleTests
         CollectionAssert.AreEquivalent(
             new[] { InstanceModule.Manga },
             InstanceModuleRoutes.Resolve(new PathString("/Discover/MangaImport")).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { InstanceModule.Book },
+            InstanceModuleRoutes.Resolve(new PathString("/Settings/Books")).ToArray());
 
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
