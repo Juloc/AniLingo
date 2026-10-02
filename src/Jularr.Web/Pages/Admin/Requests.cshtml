@@ -233,7 +233,7 @@
                                         </form>
                                     }
                                     @if (request.Kind == MediaAcquisitionKind.Book
-                                        && request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed)
+                                        && request.Status is (AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed))
                                     {
                                         <a class="button"
                                            asp-page="/Admin/BookManualSearch"
