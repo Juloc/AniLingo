@@ -88,6 +88,9 @@ public sealed class InstanceModuleTests
         CollectionAssert.AreEquivalent(
             new[] { InstanceModule.Tracking },
             InstanceModuleRoutes.Resolve(new PathString("/Settings/AniList")).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { InstanceModule.Manga },
+            InstanceModuleRoutes.Resolve(new PathString("/Discover/MangaImport")).ToArray());
 
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
