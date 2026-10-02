@@ -187,6 +187,24 @@ Translation providers are pluggable: local/self-hosted engines can be default; o
 
 Metadata providers return candidates/evidence. They do not own canonical records.
 
+External provider responses that Jularr has consumed are persisted locally as provider evidence/snapshots rather than treated as request-scoped ephemeral data.
+
+Conceptual `ProviderEntitySnapshot`:
+- Provider
+- EntityKind
+- ExternalId
+- normalized searchable fields
+- provider payload snapshot where allowed/useful
+- FetchedAt / RefreshedAt
+- stale/refresh metadata
+- optional resolved WorkId
+
+A snapshot may be stale but remains locally readable. Provider availability must not be required merely to render previously fetched media/list data.
+
+When a user action needs durable canonical identity (for example Collection membership, Request, Watchlist or Library linkage), Jularr resolves the provider entity to a canonical Work. If no matching Work exists and the provider identity is sufficiently unambiguous, Jularr may create a minimal canonical Work and attach a `WorkExternalIdentity`. The external ID is evidence/linkage, never the internal Work ID.
+
+Cross-provider duplicates are resolved/merged through canonical identity tooling rather than by making provider IDs the canonical key.
+
 Pipeline:
 
 ```text
@@ -344,9 +362,30 @@ Server AI availability and personal user AI configuration are policy/configurati
 
 ## 16. Collections and discovery
 
-Collections reference `Work` IDs across media types.
+Collections reference local canonical `Work` IDs across media types.
 
-Discovery results are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
+Collection kinds may include:
+- Manual
+- Smart
+- Linked external list
+- Built-in/derived
+- Franchise/relation views
+
+A Linked external Collection synchronizes provider list membership into local Jularr state. It never depends on live provider calls for rendering.
+
+Sync flow:
+
+```text
+External list
+→ persist provider list/item snapshots
+→ resolve/create local canonical Work identities
+→ update local Collection membership by WorkId
+→ render entirely from local Jularr state
+```
+
+If an external item cannot yet be safely merged with an existing Work, its provider evidence remains persisted locally until mapping is resolved. Provider refreshes update evidence/provenance without replacing stable local identity.
+
+Discovery results are persisted provider candidates/evidence after fetch. A user can discover media not yet locally available without creating a second library model.
 
 Recommendations should also return canonical/resolvable Work references.
 
