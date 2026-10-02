@@ -70,7 +70,7 @@
         <div class="admreq-selects">
             <select name="type" aria-label="@ui["admin.requests.filter.type"]">
                 <option value="">@ui["admin.requests.filter.type"]</option>
-                @foreach (var kind in Enum.GetValues<MediaAcquisitionKind>())
+                @foreach (var kind in Model.EnabledKinds)
                 {
                     var kindName = AcquisitionAccessNames.Kind(kind);
                     <option value="@kindName" selected="@(filter.Kind == kind)">@ui["admin.requests.kind." + kindName]</option>
@@ -385,7 +385,7 @@
             <fieldset class="auto-rule-field">
                 <legend>@ui["admin.requests.column.media"]</legend>
                 <div class="auto-rule-checks">
-                    @foreach (var kind in Enum.GetValues<MediaAcquisitionKind>())
+                    @foreach (var kind in Model.EnabledKinds)
                     {
                         var kindName = AcquisitionAccessNames.Kind(kind);
                         <label><input type="checkbox" name="kinds" value="@kindName" /> @ui["admin.requests.kind." + kindName]</label>
