@@ -61,9 +61,10 @@ public sealed class BookAcquisitionExecutor(
         string? opdsNote = null;
         try
         {
+            var opdsQuery = BookWorkSearch.MainTitle(payload.Title);
             var offers = await books.SearchOpdsAsync(
                 null,
-                payload.Title,
+                opdsQuery,
                 cancellationToken);
             var offer = offers.FirstOrDefault(candidate =>
                 BookWorkSearch.SameWork(
@@ -76,7 +77,7 @@ public sealed class BookAcquisitionExecutor(
             {
                 var workId = await books.ImportOpdsBookAsync(
                     offer.SourceId,
-                    payload.Title,
+                    opdsQuery,
                     offer.Key,
                     cancellationToken);
                 return new AcquisitionExecution(
