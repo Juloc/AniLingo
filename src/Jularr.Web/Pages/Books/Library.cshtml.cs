@@ -17,8 +17,8 @@ public sealed class LibraryModel(
     BookCatalogService books,
     CurrentAccountContext account,
     BackgroundJobQueue jobs,
-    IInstanceModuleService instanceModules,
-    ILogger<LibraryModel> logger) : PageModel
+    ILogger<LibraryModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookLibraryDetail Book { get; private set; } = null!;
