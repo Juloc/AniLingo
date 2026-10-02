@@ -20,7 +20,7 @@ public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext account,
     IAppShellService appShell,
-    IInstanceModuleService instanceModules) : PageModel
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<UiNavigationItem> Links { get; private set; } = [];
@@ -32,7 +32,9 @@ public sealed class IndexModel(
     public async Task<IActionResult> OnGetAsync(string? section, CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        var instanceSettings = await instanceModules.GetAsync(cancellationToken);
+        var instanceSettings = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
         var enabledModules = instanceSettings.Modules
             .Where(pair => pair.Value)
             .Select(pair => pair.Key)
