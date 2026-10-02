@@ -148,6 +148,114 @@ public sealed class BookSearchCoordinatorTests
         }
     }
 
+    [TestMethod]
+    public async Task SearchChecksGutenbergEvenWhenMetadataAlreadyFoundTheWork()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "jularr-book-gutenberg-"
+            + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            await using var db = new AppDbContext(
+                new DbContextOptionsBuilder<AppDbContext>()
+                    .UseSqlite($"Data Source={Path.Combine(root, "search.db")}")
+                    .Options);
+
+            using var client = new HttpClient(
+                new DelegateHttpMessageHandler(request =>
+                {
+                    var uri = request.RequestUri
+                        ?? throw new AssertFailedException("Request URI was missing.");
+
+                    return uri.Host switch
+                    {
+                        "openlibrary.org" => JsonResponse(
+                            """
+                            {
+                              "docs": [
+                                {
+                                  "key": "/works/OLTREASUREW",
+                                  "title": "Treasure Island",
+                                  "author_name": ["Robert Louis Stevenson"],
+                                  "first_publish_year": 1883,
+                                  "edition_count": 100
+                                }
+                              ]
+                            }
+                            """),
+                        "www.googleapis.com" => JsonResponse("""{ "items": [] }"""),
+                        "id.wikisource.org" => JsonResponse("""{ "query": { "search": [] } }"""),
+                        "gutendex.com" => JsonResponse(
+                            """
+                            {
+                              "results": [
+                                {
+                                  "id": 120,
+                                  "title": "Treasure Island",
+                                  "authors": [{"name": "Stevenson, Robert Louis"}],
+                                  "subjects": ["Adventure stories"],
+                                  "summaries": [],
+                                  "formats": {
+                                    "application/epub+zip": "https://www.gutenberg.org/ebooks/120.epub3.images"
+                                  }
+                                }
+                              ]
+                            }
+                            """),
+                        _ => throw new AssertFailedException($"Unexpected request: {uri}")
+                    };
+                }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["Books:Opds:SettingsPath"] = Path.Combine(root, "opds-sources.json")
+                    })
+                .Build();
+            var books = new BookCatalogService(
+                client,
+                db,
+                new NoopBookTranslator(),
+                configuration);
+
+            var indexerStore = new IndexerStore(
+                new EphemeralDataProtectionProvider(),
+                new DirectoryInfo(root));
+            var indexers = new IndexerSearchCoordinator(
+                new Dictionary<IndexerType, IIndexer>(),
+                indexerStore,
+                new AcquisitionHealthStore(new DirectoryInfo(root)),
+                NullLogger<IndexerSearchCoordinator>.Instance);
+            var coordinator = new BookSearchCoordinator(
+                books,
+                indexers,
+                NullLogger<BookSearchCoordinator>.Instance);
+
+            var response = await coordinator.SearchAsync(
+                "Treasure Island",
+                CancellationToken.None);
+
+            var result = Assert.ContainsSingle(response.Items);
+            Assert.IsTrue(result.Availability.DirectOrFree);
+            Assert.IsTrue(result.Book.CanAcquire);
+            CollectionAssert.Contains(
+                result.Book.Identities.ToArray(),
+                "ol-OLTREASUREW");
+            Assert.AreEqual("Project Gutenberg", result.Book.SourceName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
         {
