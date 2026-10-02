@@ -1,0 +1,317 @@
+using Jularr.Web.Features.Acquisition.Indexers;
+using Jularr.Web.Features.Acquisition.Prowlarr;
+
+namespace Jularr.Web.Features.Books;
+
+/// <summary>
+/// Availability discovered while resolving one canonical book search result. Availability is
+/// external evidence only; it never creates a Work/Edition/Version by itself.
+/// </summary>
+public sealed record BookSearchAvailability(
+    bool DirectOrFree,
+    bool Opds,
+    bool Usenet,
+    int EligibleUsenetReleases);
+
+/// <summary>One canonical Books search result plus the acquisition sources currently known for it.</summary>
+public sealed record BookSearchItem(
+    BookCatalogItem Book,
+    BookSearchAvailability Availability);
+
+/// <summary>A provider/indexer problem that did not prevent other sources from answering.</summary>
+public sealed record BookSearchWarning(
+    string Source,
+    string Message);
+
+/// <summary>
+/// Application-level Books search. Catalog metadata, every enabled OPDS catalog and every enabled
+/// Usenet indexer are searched through their existing adapters, then normalized back into the
+/// canonical BookWorkSearch model. Usenet releases remain temporary acquisition candidates.
+/// </summary>
+public sealed class BookSearchCoordinator(
+    BookCatalogService books,
+    IndexerSearchCoordinator indexers,
+    ILogger<BookSearchCoordinator> logger)
+{
+    private const int ResultLimit = 24;
+
+    public async Task<BookSearchResponse> SearchAsync(
+        string? query,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            var browse = await books.SearchAsync(query, cancellationToken);
+            return new BookSearchResponse(
+                browse
+                    .Take(ResultLimit)
+                    .Select(book => new BookSearchItem(
+                        book,
+                        new BookSearchAvailability(book.CanAcquire, false, false, 0)))
+                    .ToArray(),
+                []);
+        }
+
+        var normalizedQuery = query.Trim();
+
+        // These source families are independent. Start all three before awaiting any of them so a
+        // slow metadata provider never serializes OPDS or indexer discovery.
+        var catalogTask = CaptureAsync(
+            "Book catalogs",
+            () => books.SearchAsync(normalizedQuery, cancellationToken),
+            Array.Empty<BookCatalogItem>(),
+            cancellationToken);
+        var opdsTask = CaptureAsync(
+            "OPDS",
+            () => books.SearchOpdsAsync(null, normalizedQuery, cancellationToken),
+            Array.Empty<BookOpdsCatalogItem>(),
+            cancellationToken);
+        var usenetTask = CaptureUsenetPoolAsync(normalizedQuery, cancellationToken);
+
+        await Task.WhenAll(catalogTask, opdsTask, usenetTask);
+
+        var catalog = catalogTask.Result.Value;
+        var opds = opdsTask.Result.Value;
+        var opdsCatalog = opds.Select(ToCatalogItem).ToArray();
+
+        // OPDS participates in the exact same title/author work merge as metadata providers. It
+        // stays provenance on the resulting work instead of becoming a parallel library identity.
+        var works = BookWorkSearch.Rank(
+                normalizedQuery,
+                catalog,
+                opdsCatalog)
+            .Take(ResultLimit)
+            .ToArray();
+
+        var usenet = usenetTask.Result.Value;
+        var items = works.Select(work =>
+        {
+            var opdsAvailable = opds.Any(offer =>
+                BookWorkSearch.SameWork(
+                    work.Title,
+                    work.Author,
+                    offer.Title,
+                    offer.Author));
+
+            // Identity/title matching is deliberately applied before an indexer release can count
+            // as available. A high quality release for another book is therefore never surfaced.
+            var ranked = BookReleaseSelector.Rank(
+                usenet.Releases,
+                work.Title,
+                work.Author);
+            var eligible = ranked.Count(candidate =>
+                candidate.Score > 0
+                && candidate.Release.InternalDownloadUri is not null);
+
+            return new BookSearchItem(
+                work,
+                new BookSearchAvailability(
+                    work.CanAcquire,
+                    opdsAvailable,
+                    eligible > 0,
+                    eligible));
+        }).ToArray();
+
+        var warnings = new List<BookSearchWarning>();
+        AddWarning(warnings, catalogTask.Result.Warning);
+        AddWarning(warnings, opdsTask.Result.Warning);
+        AddWarning(warnings, usenetTask.Result.Warning);
+        warnings.AddRange(usenet.Warnings.Select(warning =>
+            new BookSearchWarning(
+                warning.IndexerName,
+                string.IsNullOrWhiteSpace(warning.Query)
+                    ? warning.Message
+                    : $"{warning.Query}: {warning.Message}")));
+
+        return new BookSearchResponse(
+            items,
+            warnings
+                .Distinct()
+                .ToArray());
+    }
+
+    /// <summary>
+    /// Finds a directly-acquirable OPDS copy for a requested canonical work. Automatic
+    /// acquisition uses the same title/author identity rule as consumer search.
+    /// </summary>
+    public async Task<BookOpdsCatalogItem?> FindOpdsOfferAsync(
+        string title,
+        string? author,
+        CancellationToken cancellationToken)
+    {
+        var offers = await books.SearchOpdsAsync(
+            null,
+            title,
+            cancellationToken);
+
+        return offers.FirstOrDefault(offer =>
+            BookWorkSearch.SameWork(
+                title,
+                author,
+                offer.Title,
+                offer.Author));
+    }
+
+    /// <summary>Shared automatic/manual Books Usenet search path.</summary>
+    public Task<BookUsenetSearchResult> SearchUsenetAsync(
+        string title,
+        string? author,
+        CancellationToken cancellationToken) =>
+        BookUsenetSearch.SearchAsync(
+            indexers,
+            title,
+            author,
+            cancellationToken);
+
+    private async Task<SourceResult<UsenetPool>> CaptureUsenetPoolAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!await indexers.HasEnabledIndexerAsync(cancellationToken))
+            {
+                return new SourceResult<UsenetPool>(
+                    new UsenetPool([], [], false),
+                    null);
+            }
+
+            var result = await indexers.SearchCategoriesAsync(
+                [query],
+                entry => entry.Settings.EffectiveBookCategories,
+                cancellationToken);
+            var usedFallback = false;
+
+            if (result.Releases.Count == 0)
+            {
+                var fallback = await indexers.SearchCategoriesAsync(
+                    [query],
+                    _ => [],
+                    cancellationToken);
+                if (fallback.Releases.Count > 0)
+                {
+                    result = fallback;
+                    usedFallback = true;
+                }
+                else if (fallback.Warnings.Count > 0)
+                {
+                    result = new IndexerAnimeSearchResult(
+                        result.Releases,
+                        result.Warnings.Concat(fallback.Warnings).ToArray());
+                }
+            }
+
+            return new SourceResult<UsenetPool>(
+                new UsenetPool(
+                    result.Releases,
+                    result.Warnings,
+                    usedFallback),
+                null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IndexerException
+                or ProwlarrException
+                or HttpRequestException
+                or TaskCanceledException
+                or InvalidOperationException)
+        {
+            logger.LogWarning(
+                exception,
+                "Books Usenet availability search failed for {Query}",
+                query);
+            return new SourceResult<UsenetPool>(
+                new UsenetPool([], [], false),
+                new BookSearchWarning("Usenet", exception.Message));
+        }
+    }
+
+    private async Task<SourceResult<T>> CaptureAsync<T>(
+        string source,
+        Func<Task<T>> action,
+        T fallback,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new SourceResult<T>(
+                await action(),
+                null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException
+                or TaskCanceledException
+                or InvalidOperationException)
+        {
+            logger.LogWarning(
+                exception,
+                "Books search source {Source} failed",
+                source);
+            return new SourceResult<T>(
+                fallback,
+                new BookSearchWarning(source, exception.Message));
+        }
+    }
+
+    private static BookCatalogItem ToCatalogItem(BookOpdsCatalogItem item)
+    {
+        var identity =
+            "opds-"
+            + item.SourceId
+            + "-"
+            + Uri.EscapeDataString(item.Key);
+
+        var covers = string.IsNullOrWhiteSpace(item.CoverImageUrl)
+            ? Array.Empty<string>()
+            : new[] { item.CoverImageUrl! };
+
+        return new BookCatalogItem(
+            identity,
+            item.Title,
+            item.Author,
+            item.Description,
+            item.CoverImageUrl,
+            [],
+            null,
+            null,
+            null,
+            $"opds://{item.SourceId}/{Uri.EscapeDataString(item.Key)}",
+            item.SourceName,
+            null)
+        {
+            Identities = [identity],
+            Language = BookWorkSearch.NormalizeLanguageTag(item.Language),
+            CoverCandidates = covers
+        };
+    }
+
+    private static void AddWarning(
+        ICollection<BookSearchWarning> warnings,
+        BookSearchWarning? warning)
+    {
+        if (warning is not null)
+        {
+            warnings.Add(warning);
+        }
+    }
+
+    private sealed record SourceResult<T>(
+        T Value,
+        BookSearchWarning? Warning);
+
+    private sealed record UsenetPool(
+        IReadOnlyList<ProwlarrReleaseCandidate> Releases,
+        IReadOnlyList<IndexerSearchWarning> Warnings,
+        bool UsedCategoryFallback);
+}
+
+public sealed record BookSearchResponse(
+    IReadOnlyList<BookSearchItem> Items,
+    IReadOnlyList<BookSearchWarning> Warnings);
