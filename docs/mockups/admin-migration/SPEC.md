@@ -1,27 +1,544 @@
 # Admin Migration Center — V1
 
-Status: planning baseline for mockups.
+Status: approved planning direction; current Migration Center mockup is the visual baseline once uploaded to this folder.
+
+Global UX rules: `docs/UX.md`.
+
+If an image and this specification conflict, this specification wins.
 
 ## Purpose
-Safe preview-first migration from Jularr legacy/per-type data and supported external systems into canonical Media Core/Library/Progress/Acquisition state.
 
-## Page structure
-Migration sources -> scan -> mapping/conflicts -> dry-run preview -> explicit confirmation -> execution progress -> validation/report.
+Migration Center performs preview-first migration from older Jularr data and supported external systems into the canonical Jularr model.
 
-## Data / information
-Source IDs, proposed canonical Work/unit/Edition mappings, file/root mapping, provider identities, progress/history preservation, conflicts, skipped unsupported fields and validation counts.
+All imported media must end in:
 
-## Actions
-Connect/scan, map profiles/paths, resolve conflicts, run dry run, start migration, retry safe steps, export/view report.
+`Work -> Structure -> Edition -> Version -> Asset/File -> Track`
+
+Migration never keeps a legacy source model as a second long-term authority.
+
+## Main flow
+
+1. Übersicht
+2. Quelle wählen
+3. Verbindung & Scan
+4. Inhalte analysieren
+5. Mapping
+6. Optionen
+7. Zusammenfassung / Dry Run
+8. Ausführung
+9. Ergebnis
+
+## Supported migration source families
+
+### Alte Jularr Version
+
+Purpose:
+- migrate old Jularr/per-media-type databases and configuration into the current canonical model
+
+May import:
+- media/work identity
+- seasons/episodes/volumes/chapters
+- files/assets/tracks
+- provider IDs/provenance
+- library membership
+- monitoring/acquisition state
+- user accounts/groups where compatible
+- progress/history
+- requests
+- collections/lists
+- acquisition profiles/rules where compatible
+- provider/settings mappings
+- configuration
+
+Legacy tables are source evidence only and are not preserved as permanent runtime models.
+
+### Sonarr
+
+Purpose:
+- migrate Series/Anime automation state into Jularr without losing acquisition behavior
+
+The importer should use Sonarr API/data rather than infer everything from filenames.
+
+#### Sonarr media import
+
+Import where available:
+- Series identity and provider IDs
+- Series type
+- Seasons
+- Episodes
+- Episode files
+- root folder/source path
+- file path
+- quality
+- release group
+- language/media-info evidence where available
+- tags
+- alternate titles/provider identifiers where useful for resolution
+
+Series/season/episode data is mapped into the canonical Jularr hierarchy.
+
+#### Sonarr monitoring state
+
+Monitoring must be preserved where a meaningful Jularr equivalent exists.
+
+Import:
+- Series monitored/unmonitored state
+- Season monitored/unmonitored state
+- Episode monitored/unmonitored state
+- monitor-new-items / future-episode behavior where available
+- series-level monitoring mode when Sonarr exposes one
+
+Migration preview must show how Sonarr monitoring maps to Jularr monitoring/acquisition policy.
+
+Do not collapse all Sonarr monitoring into a single Work boolean if Sonarr has more specific season/episode state.
+
+#### Sonarr Quality Profiles
+
+Import Sonarr Quality Profiles into Jularr AcquisitionProfiles where semantically compatible.
+
+Preserve:
+- profile name
+- enabled/allowed qualities
+- quality ordering/preference
+- grouped/equivalent quality groups where representable
+- upgrades allowed
+- upgrade/cutoff quality
+- language preference where present
+- minimum/custom-format score thresholds where supported
+- upgrade-until custom-format score where supported
+
+Every imported profile must be previewed before creation/merge.
+
+If Jularr has a richer language/profile model, migration may split one Sonarr profile into:
+- a reusable quality/release profile
+- explicit target language settings
+
+The dry run must show this transformation.
+
+#### Sonarr Custom Formats / custom rules
+
+Import Sonarr Custom Formats and their profile-specific scores.
+
+Preserve, where supported:
+- Custom Format name
+- condition groups
+- release-title regex/terms
+- source
+- resolution
+- quality modifier
+- release group
+- language
+- size ranges
+- indexer flags
+- negate
+- required
+- other Sonarr condition attributes that have a safe Jularr equivalent
+- include-in-renaming metadata only if Jularr naming policy supports an equivalent
+
+Also import the score of each Custom Format **per Quality Profile**.
+
+Important:
+- the Custom Format definition and its score are separate concepts
+- score 0 remains informational where equivalent
+- negative/positive scores must preserve intent
+- minimum score / upgrade-until score belongs to the imported profile
+- unsupported conditions are not silently discarded; they appear in the migration report
+
+Jularr may translate Sonarr Custom Formats into native AcquisitionProfile scoring rules, but must not retain Sonarr-specific runtime logic as a parallel scoring engine.
+
+#### Sonarr tags and linked behavior
+
+Import tags and source associations where useful.
+
+Potential mappings include:
+- series tags
+- indexer/tag associations
+- delay-profile/tag relationships
+- other source policy associations
+
+Tags are not automatically treated as Jularr user-facing media tags.
+
+The importer resolves their operational meaning first.
+
+#### Sonarr paths
+
+Root folders are mapped to existing/new Jularr LibraryRoots.
+
+Do not blindly persist Sonarr paths as canonical identity.
+
+Remote/path mappings must be reviewed against Jularr Storage.
+
+Files are linked in place by default; copying/moving is a separate explicit option.
+
+#### Sonarr settings that may optionally migrate
+
+Only when Jularr has a clear semantic equivalent:
+- naming policy
+- quality definitions/size limits
+- delay/release timing policy
+- indexer configuration
+- download-client adapter configuration
+- selected media-management/import settings
+
+Secrets/credentials require explicit handling and must not be exposed in clear text.
+
+Unsupported settings are listed in the final report rather than silently ignored.
+
+### Radarr
+
+Purpose:
+- movie acquisition/library migration
+
+May import:
+- movie identity/provider IDs
+- existing files
+- monitored state
+- root folders
+- Quality Profiles
+- Custom Formats + per-profile scores
+- tags/policy associations
+- quality definitions
+- naming/import settings where compatible
+- indexer/download-client configuration where explicitly selected
+
+Movie data maps to canonical Work/Edition/Version/File structures rather than a dedicated Radarr-compatible core.
+
+### Jellyfin
+
+Purpose:
+- use a media server as evidence for existing libraries and user playback state
+
+May import:
+- library items
+- file paths
+- provider/external IDs
+- collections/playlists where compatible
+- users through explicit account mapping
+- watched/unwatched state
+- resume position
+- play count/history where supported
+- artwork/metadata references where useful
+
+Jellyfin is not an acquisition-policy source.
+
+Do not invent Quality Profiles/monitoring rules from Jellyfin playback data.
+
+### Plex
+
+Purpose:
+- migrate media-library identity and playback state
+
+May import:
+- library items
+- file locations
+- provider IDs/metadata evidence
+- collections/playlists where compatible
+- user/account mapping
+- watched state
+- resume position
+- playback history where available
+
+Plex libraries must be mapped to Jularr LibraryRoots/content types.
+
+Plex labels/collections are imported only when semantics are clear.
+
+### Emby
+
+Same general migration family as Jellyfin:
+- existing library/file identity
+- provider IDs
+- users/account mapping
+- watched/resume/history
+- collections/playlists where compatible
+
+Do not treat Emby metadata as a second permanent authority after canonical resolution.
+
+### Ordnerstruktur
+
+Purpose:
+- migrate an existing filesystem library without a source application
+
+Input:
+- configured safe Storage path / LibraryRoot
+
+Scan:
+- folders
+- files
+- sidecars
+- embedded metadata
+- filenames
+- media probe data
+
+Use the existing Library Reconciliation flow for unresolved mappings.
+
+This source can:
+- link files in place
+- optionally organize/rename via explicit preview
+- create canonical Work/Structure/File mappings
+
+It cannot import:
+- users
+- playback history
+- acquisition profiles
+unless provided by another source.
+
+### JSON / CSV
+
+Purpose:
+- structured import from exported data or custom migration datasets
+
+Supported conceptual records may include:
+- Works/external IDs
+- lists/collections
+- users
+- progress/history
+- requests
+- acquisition-profile mapping
+- path/file mapping
+
+Use a schema-mapping step:
+- source column
+- target field
+- transformation
+- required/optional
+- validation result
+
+Unknown columns are ignored only after explicit preview.
+
+### Andere Quelle / Expert Adapter
+
+Purpose:
+- migration extension point for sources not covered by built-in adapters
+
+A migration adapter must declare:
+- source type/version
+- supported entities
+- required credentials/input
+- normalized scan contract
+- mapping capabilities
+- validation rules
+
+It must output the same normalized migration plan as built-in sources.
+
+No adapter may write directly into legacy/per-source tables as a permanent model.
+
+## Connection & scan
+
+Source-specific connection page may include:
+- URL/endpoint
+- API key/token
+- local backup/file selection
+- safe folder selection
+- connection test
+- source-version detection
+
+Scan options depend on source.
+
+Examples:
+- media
+- seasons/episodes
+- files
+- metadata
+- users
+- progress
+- requests
+- profiles/rules
+- settings
+
+## Analyze contents
+
+Before mapping, show counts by entity.
+
+Examples:
+- Works/Series/Movies
+- Seasons
+- Episodes
+- Files
+- Users
+- Progress entries
+- Requests
+- Profiles
+- Custom Formats
+- Conflicts
+- Unknown/unmapped items
+
+The admin can inspect samples and unresolved records.
+
+## Mapping
+
+Mapping operates on normalized source records.
+
+Use tabs such as:
+- Automatic
+- Manual
+- Conflicts
+
+Mappings can include:
+- source Work -> canonical Work
+- source season/episode -> canonical Structure/unit
+- source root folder -> LibraryRoot
+- source user -> Jularr user
+- source Quality Profile -> AcquisitionProfile
+- source Custom Format -> native scoring rule
+- source monitoring state -> Jularr monitoring policy
+
+Never identify media by title alone when stronger IDs are available.
+
+## Import options
+
+Selectable entity groups:
+- Media
+- Metadata/provenance
+- Files/path links
+- Monitoring state
+- Acquisition Profiles
+- Custom Formats/rules
+- Users
+- Progress/history
+- Requests
+- Lists/collections
+- Provider/indexer settings
+- Download-client settings
+- Naming/media-management settings
+
+Options:
+- link files only
+- never move/delete source files by default
+- import missing metadata after migration
+- store detailed migration report
+
+## Conflict handling
+
+Conflict classes:
+- duplicate Work
+- multiple canonical matches
+- missing provider ID
+- source path unavailable
+- same file already linked
+- profile name collision
+- Custom Format/rule collision
+- incompatible rule condition
+- user collision
+- progress conflict
+- request conflict
+
+Resolution:
+- merge
+- use existing
+- create new
+- skip
+- manual mapping
+
+Rules are entity-specific; do not use one global overwrite switch for everything.
+
+## Dry Run
+
+Dry run is mandatory before mutating persistent state.
+
+Summary should include:
+- created
+- merged/updated
+- skipped
+- conflicts
+- manual mappings
+- unsupported source fields/settings
+
+Expandable sections show detailed planned changes.
+
+## Execution
+
+Migration runs as a resumable operational job where feasible.
+
+Show:
+- current phase
+- progress
+- counts
+- warnings/errors
+- concise log
+
+The source remains untouched by default.
+
+No source deletion or move unless explicitly configured for a filesystem migration step.
+
+## Result report
+
+Report:
+- created
+- updated/merged
+- skipped
+- conflicts remaining
+- unsupported fields
+- failed records
+- manual follow-up required
+- validation result
+
+For Sonarr/Radarr specifically, report profile/rule conversion separately:
+- Quality Profiles imported
+- Custom Formats imported
+- score mappings imported
+- unsupported conditions
+- monitoring states imported
+- tags/policies imported/skipped
 
 ## Light / Dark
+
 Both first-class Admin surfaces.
 
 ## Platforms
-Desktop primary; tablet/mobile can inspect status/reports but complex mapping is desktop-oriented. TV unsupported.
+
+Desktop primary.
+
+Tablet/mobile may:
+- start simple migrations
+- inspect scan/results
+- review status/report
+
+Complex mapping/profile-rule conversion is desktop-oriented.
+
+TV unsupported.
 
 ## States
-Not started, scanning, conflicts, dry-run ready, running, paused/retryable, failed, completed with warnings, validated.
+
+Required:
+- not started
+- connecting
+- connection failed
+- unsupported source version
+- scanning
+- scan partial
+- conflicts
+- mapping incomplete
+- dry run ready
+- running
+- paused/retryable
+- failed
+- completed with warnings
+- validated
+- source disappeared
+- permission denied
+
+## Architecture constraints
+
+- All media resolves into canonical Media Core.
+- Legacy/source-native IDs remain provenance/evidence.
+- Migration adapters emit normalized migration records/plans.
+- Acquisition settings migrate into native Jularr AcquisitionProfile/scoring contracts.
+- No Sonarr/Radarr scoring engine survives as runtime dependency.
+- Progress imports into Progress domain.
+- Users import through Accounts.
+- Files/paths import through Library + Storage contracts.
+- Migration may invoke Library Reconciliation for unresolved filesystem mapping.
+- Dry run and validation are required before destructive mutation.
 
 ## Must not implement
-No destructive big-bang migration, no title-only identity matching when stronger IDs exist, no source media deletion/move by default, no uncontrolled dual-write authority, no dropping bridges/tables before preservation validation passes.
+
+- No destructive big-bang migration.
+- No source-media deletion/move by default.
+- No title-only identity matching when stronger IDs exist.
+- No uncontrolled dual-write authority.
+- No permanent legacy/source tables as runtime authority.
+- No silent dropping of unsupported Custom Format/rule conditions.
+- No flattening all Sonarr monitor state into one Work boolean.
+- No copying Sonarr/Radarr settings blindly when Jularr lacks a semantic equivalent.
+- No plaintext secret exposure.
+- No skipping dry run for full migrations.
