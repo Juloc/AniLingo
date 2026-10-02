@@ -27,7 +27,8 @@ public sealed class AniListSyncReconciler(
     AniListRateLimitGate rateLimit,
     Func<string, AniListAccountService> serviceForProfile,
     TimeProvider timeProvider,
-    ILogger logger)
+    ILogger logger,
+    IReadOnlySet<string>? enabledMediaKinds = null)
 {
     /// <summary>Works evaluated per pass across all profiles; keeps well below AniList's rate limit.</summary>
     public const int BatchSize = 5;
@@ -78,7 +79,8 @@ public sealed class AniListSyncReconciler(
                 db,
                 profileId,
                 account.SyncEnabledAt.Value.UtcDateTime,
-                cancellationToken);
+                cancellationToken,
+                enabledMediaKinds);
 
             due.AddRange(checkpoints
                 .Where(checkpoint => IsDue(
