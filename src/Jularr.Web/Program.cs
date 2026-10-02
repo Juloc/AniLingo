@@ -708,10 +708,12 @@ app.UseAuthentication();
 // when an owner disables a module; background/service gates use the same canonical service.
 app.Use(async (context, next) =>
 {
-    if (InstanceModuleRoutes.TryResolve(context.Request.Path, out var module))
+    var requiredModules = InstanceModuleRoutes.Resolve(context.Request.Path);
+    if (requiredModules.Count > 0)
     {
         var modules = context.RequestServices.GetRequiredService<IInstanceModuleService>();
-        if (!await modules.IsEnabledAsync(module, context.RequestAborted))
+        var settings = await modules.GetAsync(context.RequestAborted);
+        if (requiredModules.Any(module => !settings.IsEnabled(module)))
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
