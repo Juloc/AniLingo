@@ -50,6 +50,9 @@ Collections are a dedicated Library subview, not a media type filter.
 - no admin rule syntax in normal user UI
 
 ### Collection detail
+
+Binding detail/edit specification: `docs/mockups/collection-detail-edit/SPEC.md`
+
 - same media-card grammar as normal Library
 - supports Filter, Sort and Grid/List
 - collection title + optional description
