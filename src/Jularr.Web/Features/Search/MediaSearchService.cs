@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Monitoring;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,7 +37,8 @@ namespace Jularr.Web.Features.Search;
 public sealed class MediaSearchService(
     AppDbContext db,
     MonitoringStore monitoring,
-    AcquisitionAccessStore requests)
+    AcquisitionAccessStore requests,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int DefaultLimit = 40;
     public const int MaxLimit = 100;
@@ -68,6 +70,14 @@ public sealed class MediaSearchService(
 
         var filters = request.Filters ?? MediaSearchFilters.None;
         var types = SearchableTypes(filters, request.VisibleMediaTypes);
+        if (instanceModules is not null)
+        {
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            types = types
+                .Where(type => instance.IsEnabled(MediaSearchTypes.ToInstanceModule(type)))
+                .ToArray();
+        }
+
         if (types.Count == 0)
         {
             return MediaSearchPage.Empty(limit, offset);
