@@ -1,5 +1,7 @@
+@using Jularr.Web.Features.Instance
 @using Jularr.Web.Features.Localization
 @using Jularr.Web.Features.Tracking
+@using Microsoft.Extensions.DependencyInjection
 @model ExternalProgressPanel
 @*
     Owner-only half of the shared AniList progress card (#519, part of epic #510): mapping state
@@ -11,6 +13,11 @@
 @{
     var ui = Model.Ui ?? UiTextBundle.English;
     var summary = Model.Summary;
+    var instanceModules = Context.RequestServices.GetService<IInstanceModuleService>();
+    var trackingEnabled = instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Tracking,
+            Context.RequestAborted);
     var (basisLabel, basisClass) = summary.MappingBasis switch
     {
         ExternalMappingBasis.NeedsReview => (ui["library.externalProgress.basis.needsReview"], "status-warn"),
@@ -21,6 +28,8 @@
         _ => (ui["library.externalProgress.basis.notMatched"], "")
     };
 }
+@if (trackingEnabled)
+{
 <div class="manage-mapping-status">
     <span class="status-pill @basisClass">@basisLabel</span>
     @if (!string.IsNullOrWhiteSpace(summary.ReviewReason))
@@ -42,3 +51,4 @@
         <a class="button" href="@Model.MappingUrl">@ui["library.externalProgress.editMappings"]</a>
     }
 </div>
+}
