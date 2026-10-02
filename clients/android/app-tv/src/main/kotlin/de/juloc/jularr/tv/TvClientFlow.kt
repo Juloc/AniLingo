@@ -94,6 +94,13 @@ class TvClientFlow(
     ): TvSignedInData =
         signedInData(account, capabilities)
 
+    suspend fun restoreSession(
+        capabilities: ClientCapabilities,
+    ): TvSignedInData {
+        val account = requireApi().getMe()
+        return signedInData(account, capabilities)
+    }
+
     private suspend fun signedInData(
         account: ClientAccount,
         capabilities: ClientCapabilities,

@@ -2,17 +2,31 @@ package de.juloc.jularr.tv
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,11 +42,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -44,11 +61,191 @@ import de.juloc.jularr.core.model.AnimeSummary
 import de.juloc.jularr.core.model.EpisodeSummary
 import java.net.URI
 
-/**
- * Building blocks shared by every browse/detail screen (Home, Search, Anime, Episode).
- * Kept in one file so Home and Search render anime cards identically to the existing
- * Anime/Episode detail screens instead of drifting into a second visual language.
- */
+@Composable
+internal fun TvTopBar(
+    selectedTab: String = "Library",
+    currentTime: String = "19:41",
+    onSelectTab: (String) -> Unit = {},
+) {
+    val focusColor = rememberTvFocusColor()
+    val pillShape = RoundedCornerShape(20.dp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        // Left: Logo & Brand Name
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF5B46F6)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Text(
+                text = "Jularr",
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+        }
+
+        // Center: Library / Collections Pills with Focus Indicator
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val tabs = listOf("Library", "Collections")
+            for (tab in tabs) {
+                val isSelected = tab == selectedTab
+                var focused by remember(tab) { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .clip(pillShape)
+                        .background(if (isSelected) Color(0xFF5B46F6) else Color(0xFF1E2230))
+                        .tvFocusIndication(focused, focusColor, pillShape)
+                        .clickable { onSelectTab(tab) }
+                        .reportFocus { focused = it }
+                        .padding(horizontal = 22.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = tab,
+                        style = TextStyle(
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    )
+                }
+            }
+        }
+
+        // Right: Time & Avatar
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = currentTime,
+                style = TextStyle(
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF33384B)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AccountCircle,
+                    contentDescription = "Profile",
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TvSubFilterBar(
+    onOpenFilter: () -> Unit = {},
+    onOpenSort: () -> Unit = {},
+) {
+    val focusColor = rememberTvFocusColor()
+    val buttonShape = RoundedCornerShape(12.dp)
+    var filterFocused by remember { mutableStateOf(false) }
+    var sortFocused by remember { mutableStateOf(false) }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(buttonShape)
+                .background(if (filterFocused) Color(0xFF2A1F60) else Color(0xFF1E2230))
+                .tvFocusIndication(filterFocused, focusColor, buttonShape)
+                .clickable(onClick = onOpenFilter)
+                .reportFocus { filterFocused = it }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.FilterList,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.tv_home_button_filter),
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(buttonShape)
+                .background(if (sortFocused) Color(0xFF2A1F60) else Color(0xFF1E2230))
+                .tvFocusIndication(sortFocused, focusColor, buttonShape)
+                .clickable(onClick = onOpenSort)
+                .reportFocus { sortFocused = it }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.tv_home_button_sort),
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 internal fun TvCenteredPanel(
     title: String,
@@ -134,11 +331,6 @@ internal fun TvInput(
     }
 }
 
-/**
- * The All/Movies/TV/Anime content filter shared by Home and Search (#522). Only
- * [TvContentFilter.visible] entries are rendered; see that enum for why Movies/TV are
- * hidden today.
- */
 @Composable
 internal fun TvFilterChipRow(
     selected: TvContentFilter,
@@ -147,22 +339,23 @@ internal fun TvFilterChipRow(
     onSelect: (TvContentFilter) -> Unit,
 ) {
     val focusColor = rememberTvFocusColor()
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (filter in TvContentFilter.visible) {
+    val chipShape = RoundedCornerShape(20.dp)
+
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        items(TvContentFilter.visible) { filter ->
             var focused by remember(filter) { mutableStateOf(false) }
             val isSelected = filter == selected
 
             Box(
                 modifier = Modifier
+                    .clip(chipShape)
                     .background(
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        shape = MaterialTheme.shapes.extraLarge,
+                        color = if (focused) Color(0xFF2A1F60) else if (isSelected) Color(0xFF5B46F6) else Color(0xFF1E2230),
                     )
-                    .tvFocusIndication(focused, focusColor, MaterialTheme.shapes.extraLarge)
+                    .tvFocusIndication(focused, focusColor, chipShape)
                     .selectable(
                         selected = isSelected,
                         onClick = { onSelect(filter) },
@@ -173,16 +366,15 @@ internal fun TvFilterChipRow(
                             focusMemory.remember(screenKey, "filter:${filter.name}")
                         }
                     }
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
             ) {
                 Text(
                     text = stringResource(filter.labelRes),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                    style = TextStyle(
+                        color = if (isSelected || focused) Color.White else Color.White.copy(alpha = 0.65f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
                 )
             }
         }
@@ -228,18 +420,19 @@ internal fun AnimeButton(
     onFocusChanged: (Boolean) -> Unit,
     onClick: () -> Unit,
 ) {
-    Button(
-        onClick = onClick,
+    val cardShape = RoundedCornerShape(14.dp)
+    val cardBackground = if (focused) Color(0xFF2A1F60) else Color(0xFF121520)
+
+    Box(
         modifier = Modifier
             .width(210.dp)
-            .height(330.dp)
-            .tvFocusIndication(focused, focusColor, MaterialTheme.shapes.small)
+            .clip(cardShape)
+            .background(cardBackground)
+            .tvFocusIndication(focused, focusColor, cardShape)
+            .clickable(onClick = onClick)
             .reportFocus(onFocusChanged),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             TvArtwork(
                 url = anime.coverImageUrl,
                 serverOrigin = serverOrigin,
@@ -247,22 +440,102 @@ internal fun AnimeButton(
                 contentDescription = anime.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(225.dp)
-                    .clip(MaterialTheme.shapes.small),
+                    .height(280.dp)
+                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)),
             )
-            Text(
-                text = anime.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-            )
-            Text(
-                text = buildString {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = anime.title,
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+
+                val subtitleText = buildString {
                     anime.seasonYear?.let { append(it).append(" · ") }
-                    anime.format?.takeIf { it.isNotBlank() }?.let { append(it).append(" · ") }
-                    append(anime.episodeCount).append(" ep.")
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
+                    append("${anime.episodeCount} ep.")
+                }
+                Text(
+                    text = subtitleText,
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                    ),
+                    maxLines = 1,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(0xFF2A2E3D)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.72f)
+                                .background(Color(0xFF7B61FF)),
+                        )
+                    }
+                    Text(
+                        text = "72%",
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp,
+                        ),
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Headphones,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = "JP · CC EN +1",
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    )
+                }
+            }
         }
     }
 }

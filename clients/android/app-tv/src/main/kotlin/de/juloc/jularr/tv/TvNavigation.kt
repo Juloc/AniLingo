@@ -9,6 +9,7 @@ package de.juloc.jularr.tv
 sealed interface TvRoute {
     data object Setup : TvRoute
     data object Login : TvRoute
+    data object ProfileSelect : TvRoute
     data object Home : TvRoute
     data object Search : TvRoute
     data object Watchlist : TvRoute
@@ -39,10 +40,17 @@ object TvNavigation {
         TvRoute.Profile,
     )
 
-    fun initial(hasServerOrigin: Boolean): TvNavigationState =
+    fun initial(hasServerOrigin: Boolean, hasMultipleSessions: Boolean = false): TvNavigationState =
         TvNavigationState(
-            route = if (hasServerOrigin) TvRoute.Login else TvRoute.Setup,
+            route = when {
+                hasMultipleSessions -> TvRoute.ProfileSelect
+                hasServerOrigin -> TvRoute.Login
+                else -> TvRoute.Setup
+            },
         )
+
+    fun profileSelect(): TvNavigationState =
+        TvNavigationState(TvRoute.ProfileSelect)
 
     fun connected(state: TvNavigationState): TvNavigationState =
         state.replace(TvRoute.Login)
@@ -98,6 +106,7 @@ object TvNavigation {
             return when (state.route) {
                 TvRoute.Setup,
                 TvRoute.Login,
+                TvRoute.ProfileSelect,
                 TvRoute.Home,
                 TvRoute.Search,
                 TvRoute.Watchlist,
@@ -133,6 +142,7 @@ object TvNavigation {
         when (route) {
             TvRoute.Setup -> "setup"
             TvRoute.Login -> "login"
+            TvRoute.ProfileSelect -> "profile_select"
             TvRoute.Home -> "home"
             TvRoute.Search -> "search"
             TvRoute.Watchlist -> "watchlist"

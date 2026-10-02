@@ -62,6 +62,7 @@ fun TvAppHost(
     cookies: TvSessionCookieStore,
     player: JularrMedia3Player,
     onFinish: () -> Unit,
+    sessionStore: TvSessionStore? = null,
     discovery: TvServerDiscoveryClient = TvServerDiscoveryClient(),
 ) {
     val scope = rememberCoroutineScope()
@@ -83,7 +84,7 @@ fun TvAppHost(
     var remoteCommand by remember { mutableStateOf<PlaybackCommand?>(null) }
     var companionSelectedTermId by remember { mutableStateOf<String?>(null) }
     var lastCompanionPushAt by remember { mutableLongStateOf(0L) }
-    var lastCompanionCueId by remember { mutableStateOf<Long?>(null) }
+    var lastCompanionCueId by remember { mutableLongStateOf(0L) }
     var lastCompanionPlaying by remember { mutableStateOf<Boolean?>(null) }
     var discovering by remember { mutableStateOf(false) }
     var discoveredServers by remember { mutableStateOf<List<DiscoveredJularrServer>>(emptyList()) }
@@ -227,7 +228,7 @@ fun TvAppHost(
         companionSelectedTermId = null
         remoteCommand = null
         lastCompanionPushAt = 0
-        lastCompanionCueId = null
+        lastCompanionCueId = 0
         lastCompanionPlaying = null
 
         scope.launch(Dispatchers.IO) {
@@ -238,7 +239,7 @@ fun TvAppHost(
     fun pushCompanionState(force: Boolean = false) {
         val runtime = companionRuntime ?: return
         val update = currentCompanionUpdate() ?: return
-        val cueId = update.currentCueId
+        val cueId = update.currentCueId ?: 0
         val playing = update.isPlaying
         val now = SystemClock.elapsedRealtime()
         val importantChange =
@@ -396,7 +397,7 @@ fun TvAppHost(
             if (started.isSuccess) {
                 companionRuntime = runtime
                 lastCompanionPushAt = SystemClock.elapsedRealtime()
-                lastCompanionCueId = started.getOrNull()?.currentCueId
+                lastCompanionCueId = started.getOrNull()?.currentCueId ?: 0
                 lastCompanionPlaying = started.getOrNull()?.isPlaying
             } else {
                 runCatching {
@@ -534,6 +535,22 @@ fun TvAppHost(
             },
         )
 
+        TvRoute.ProfileSelect -> {
+            val sessions = sessionStore?.getSessions().orEmpty()
+            TvProfileSelectScreen(
+                sessions = sessions,
+                onSelectSession = { session ->
+                    launchSnapshot {
+                        controller.selectSavedSession(session)
+                    }
+                },
+                onAddAccount = {
+                    cookies.clear()
+                    snapshot = controller.changeServer()
+                },
+            )
+        }
+
         TvRoute.Home, TvRoute.Watchlist, TvRoute.Activity, TvRoute.Profile -> Box(modifier = Modifier.fillMaxSize()) {
             Row(modifier = Modifier.fillMaxSize()) {
                 TvSidebar(
@@ -637,6 +654,9 @@ fun TvAppHost(
                                     onCheckForUpdatesNow = ::checkForUpdatesNow,
                                     onStartUpdateDownload = ::startUpdateDownload,
                                     onInstallUpdate = ::installUpdate,
+                                    onSwitchAccount = {
+                                        snapshot = controller.openProfileSelect()
+                                    },
                                     onSignOut = {
                                         launchSnapshot {
                                             val next = controller.signOut()
