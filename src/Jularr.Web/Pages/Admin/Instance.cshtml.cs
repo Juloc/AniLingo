@@ -20,7 +20,8 @@ public sealed class InstanceModel(
     [
         InstanceModule.Anime,
         InstanceModule.Manga,
-        InstanceModule.Novel
+        InstanceModule.Novel,
+        InstanceModule.Book
     ];
 
     public static IReadOnlyList<InstanceModule> ConfigurableFeatureModules { get; } =
