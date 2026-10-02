@@ -1,5 +1,6 @@
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Web.Features.Acquisition.Import;
@@ -149,7 +150,8 @@ public interface IMediaInboxImportAdapter
 /// this class only selects the importer for the request's media type.
 /// </summary>
 public sealed class CompletedDownloadDispatcher(
-    IEnumerable<ICompletedDownloadImportAdapter> adapters)
+    IEnumerable<ICompletedDownloadImportAdapter> adapters,
+    IInstanceModuleService? instanceModules = null)
 {
     private readonly IReadOnlyDictionary<MediaAcquisitionKind, ICompletedDownloadImportAdapter> adaptersByKind =
         adapters
@@ -164,20 +166,30 @@ public sealed class CompletedDownloadDispatcher(
     public bool Supports(MediaAcquisitionKind kind) =>
         adaptersByKind.ContainsKey(kind);
 
-    public Task<CompletedDownloadImportResult> DispatchAsync(
+    public async Task<CompletedDownloadImportResult> DispatchAsync(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!adaptersByKind.TryGetValue(request.Kind, out var adapter))
+        if (instanceModules is not null)
         {
-            return Task.FromResult(
-                CompletedDownloadImportResult.RetryLater(
-                    $"No completed-download importer is registered for {request.Kind}."));
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            if (!instance.IsEnabled(InstanceModule.Acquisition)
+                || !instance.IsEnabled(AcquisitionInstanceModules.For(request.Kind)))
+            {
+                return CompletedDownloadImportResult.RetryLater(
+                    "Import deferred because acquisition or this media module is disabled.");
+            }
         }
 
-        return adapter.ImportAsync(request, cancellationToken);
+        if (!adaptersByKind.TryGetValue(request.Kind, out var adapter))
+        {
+            return CompletedDownloadImportResult.RetryLater(
+                $"No completed-download importer is registered for {request.Kind}.");
+        }
+
+        return await adapter.ImportAsync(request, cancellationToken);
     }
 }
 
