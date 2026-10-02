@@ -75,7 +75,16 @@ public sealed class InstanceModuleTests
                 InstanceModuleRoutes.TryResolve(new PathString(path), out var module),
                 path);
             Assert.AreEqual(InstanceModule.Anime, module, path);
+
+            CollectionAssert.AreEquivalent(
+                new[] { InstanceModule.Anime, InstanceModule.Acquisition },
+                InstanceModuleRoutes.Resolve(new PathString(path)).ToArray(),
+                path);
         }
+
+        CollectionAssert.Contains(
+            InstanceModuleRoutes.Resolve(new PathString("/Admin/Requests")).ToArray(),
+            InstanceModule.Acquisition);
 
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
@@ -119,6 +128,31 @@ public sealed class InstanceModuleTests
             settings.Groups!
                 .SelectMany(group => group.Items)
                 .Any(item => item.Id == "settings-learning"));
+    }
+
+    [TestMethod]
+    public void DisabledAcquisitionDisappearsFromAdminNavigation()
+    {
+        var enabled = Enum.GetValues<InstanceModule>()
+            .Where(module => module != InstanceModule.Acquisition)
+            .ToHashSet();
+
+        var admin = UiShellNavigation.BuildSection(
+            "admin",
+            can: _ => true,
+            enabledInstanceModules: enabled);
+
+        Assert.IsNotNull(admin);
+        var ids = admin.Groups!
+            .SelectMany(group => group.Items)
+            .Select(item => item.Id)
+            .ToArray();
+
+        CollectionAssert.DoesNotContain(ids, "admin-requests");
+        CollectionAssert.DoesNotContain(ids, "admin-usenet");
+        CollectionAssert.DoesNotContain(ids, "admin-anime-acquisition");
+        CollectionAssert.DoesNotContain(ids, "admin-import");
+        CollectionAssert.DoesNotContain(ids, "admin-sonarr");
     }
 
     [TestMethod]
