@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Naming;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Storage;
 using Jularr.Web.Features.Subtitles;
@@ -91,7 +92,10 @@ public enum LibraryScanQueueOutcome
     RootDisabled = 5,
 
     // The request was merged into the root's run that is queued but not yet running.
-    Merged = 6
+    Merged = 6,
+
+    // The Anime instance module is off; scans are not queued or executed.
+    ModuleDisabled = 7
 }
 
 public sealed record LibraryScanQueueResult(
@@ -152,6 +156,18 @@ public sealed class LibraryScanCoordinator(
         var folder = NormalizeFolder(request.Folder);
 
         await using var scope = scopeFactory.CreateAsyncScope();
+        var instanceModules = scope.ServiceProvider.GetService<IInstanceModuleService>();
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Anime,
+                cancellationToken))
+        {
+            return new LibraryScanQueueResult(
+                LibraryScanQueueOutcome.ModuleDisabled,
+                null,
+                "Library scan was not started because the Anime module is disabled.");
+        }
+
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var root = await db.LibraryRoots
             .AsNoTracking()
@@ -452,6 +468,19 @@ public sealed class LibraryScanCoordinator(
         IReadOnlyList<string>? folders,
         CancellationToken cancellationToken)
     {
+        var instanceModules = services.GetService<IInstanceModuleService>();
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Anime,
+                cancellationToken))
+        {
+            await operation.ReportAsync(
+                100,
+                "Anime module is disabled; library scan skipped.",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         var db = services.GetRequiredService<AppDbContext>();
         var store = new OperationStore(db);
         var root = await db.LibraryRoots
