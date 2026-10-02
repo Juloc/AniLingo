@@ -1,27 +1,135 @@
-# Admin Acquisition Settings — V1
+# Admin Acquisition / Downloader Settings — V1
 
-Status: planning baseline for mockups.
+Status: planning baseline updated for Jularr's native Usenet downloader.
+
+Global UX rules: `docs/UX.md`.
 
 ## Purpose
-Configure shared acquisition infrastructure: quality/language profiles, scoring rules, indexers/release-search providers, download clients, categories/routing and import defaults.
 
-## Page structure
-Profiles & Scoring -> Indexers -> Download Clients -> Routing/Categories -> Import defaults. Each uses list -> detail/config -> Test/Preview.
+Configure the universal acquisition stack:
+- acquisition profiles/scoring
+- indexers/release-search providers
+- Jularr native Usenet downloader
+- optional external download-client adapters
+- routing/categories
+- import defaults
 
-## Data / information
-Reusable AcquisitionProfiles, provider/client capabilities and health, per-media routing/category mappings, delay/priority rules, language/quality constraints and safe import-mode defaults.
+Normal Jularr operation must not require SABnzbd or NZBGet.
 
-## Actions
-Create/edit/clone profile, reorder rules, test indexer/client, configure routing, preview scoring, set defaults.
+## Primary sections
+
+1. Profiles & Scoring
+2. Indexers
+3. Native Usenet
+4. External Download Clients
+5. Routing / Categories
+6. Import Defaults
+
+Native Usenet is the default downloader path.
+
+External clients are compatibility/migration integrations, not the center of the product.
+
+## Native Usenet settings
+
+Configure downloader behavior such as:
+- Usenet servers
+- TLS
+- credentials/secrets
+- server priority/failover
+- connection limits
+- bandwidth limits
+- queue defaults
+- retry policy
+- verification/repair policy
+- extraction policy
+- duplicate/history policy
+- categories/routes
+- health/test
+
+Storage paths are not configured as arbitrary strings here.
+
+The downloader selects a configured Native Download Workspace from Storage.
+
+## Storage integration
+
+Binding storage spec:
+- `docs/mockups/admin-storage/SPEC.md`
+
+Acquisition/downloader settings reference:
+- Native Download Workspace
+- optional repair/extract workspace
+- Generic Downloads Root
+- LibraryRoots through routing/import policy
+
+Physical Mount/path management remains in Storage.
+
+## External download clients
+
+Optional adapters may include SABnzbd/NZBGet-compatible or other supported clients.
+
+Client configuration may include:
+- endpoint
+- authentication
+- category mapping
+- remote path mapping
+- health/test
+- capabilities
+
+External client paths must resolve into permitted Storage paths before import.
+
+## Profiles & scoring
+
+Reusable AcquisitionProfiles include:
+- quality
+- language
+- release type
+- custom/release rules
+- score contributions
+- upgrade thresholds
+- size/age limits where applicable
+
+No media-specific parallel scoring engines.
+
+## Routing
+
+Routing can decide:
+- specialized LibraryRoot destination by canonical content type
+- Generic Downloads fallback
+- category/priority
+- preferred downloader path where external adapters are explicitly enabled
+
+Routing must not duplicate canonical media identity.
 
 ## Light / Dark
-Both first-class Admin surfaces.
+
+Both first-class.
 
 ## Platforms
-Desktop primary; tablet/mobile supports stacked editors. TV unsupported.
+
+Desktop primary; tablet/mobile may use stacked settings editors. TV unsupported.
 
 ## States
-Unconfigured, healthy/degraded provider, invalid rule, no eligible client, test running/failure, unsaved changes, permission denied.
+
+Required:
+- unconfigured native downloader
+- healthy/degraded Usenet server
+- no usable Usenet server
+- workspace unavailable
+- insufficient workspace capacity
+- external client unavailable
+- invalid rule
+- no eligible route
+- test running/failure
+- unsaved changes
+- permission denied
 
 ## Must not implement
-No Anime-only acquisition settings, no `IsBooks`-style routing booleans, no separate per-media acquisition engines, no raw YAML as primary UX, no hidden scoring rules.
+
+- No Anime-only acquisition settings.
+- No requirement for SABnzbd/NZBGet in normal operation.
+- No external Download Clients section presented as the only downloader.
+- No arbitrary native downloader filesystem paths that bypass Storage.
+- No `IsBooks`-style routing booleans.
+- No separate per-media acquisition engines.
+- No raw YAML as primary UX.
+- No hidden scoring rules.
