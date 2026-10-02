@@ -292,6 +292,10 @@ public static class InstanceModuleRoutes
                 "/Settings/LearningCourses",
                 "/Settings/LearningScope",
                 "/api/language-inspector"
+            ],
+            [InstanceModule.Tracking] =
+            [
+                "/Settings/AniList"
             ]
         };
 
