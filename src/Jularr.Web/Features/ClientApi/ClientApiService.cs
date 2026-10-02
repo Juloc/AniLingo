@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.MediaSegments;
@@ -19,7 +20,8 @@ public sealed class ClientApiService(
     MediaAvailabilityService mediaAvailability,
     EpisodeProgressService progressService,
     CurrentAccountContext currentAccount,
-    MediaSegmentService mediaSegments)
+    MediaSegmentService mediaSegments,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<ClientLibraryResponse> GetLibraryAsync(
         CancellationToken cancellationToken)
@@ -285,7 +287,7 @@ public sealed class ClientApiService(
         var trickplay = ClientApiMappings.ToClientTrickplay(episodeId, navigation.Trickplay);
 
         var preferences = await progressService.GetPreferencesAsync(cancellationToken);
-        var learningSettings = await new LearningConfigurationStore(db).ResolveAsync(
+        var learningSettings = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(
                 LearningMediaType.Anime,
