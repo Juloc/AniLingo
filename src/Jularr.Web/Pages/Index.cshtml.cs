@@ -4,6 +4,7 @@ using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Discovery;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Progress;
@@ -24,7 +25,8 @@ namespace Jularr.Web.Pages;
 public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext currentAccount,
-    MediaRecommendationService? recommendations = null) : PageModel
+    MediaRecommendationService? recommendations = null,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     private readonly EpisodeProgressService progress = new(db, currentAccount);
 
@@ -162,7 +164,7 @@ public sealed class IndexModel(
             : [.. ownSlides, .. (await LoadWatchlistSlidesAsync(cancellationToken)).Take(HeroLimit - ownSlides.Length)];
         ForYou = await LoadForYouAsync(cancellationToken);
 
-        var animeLearning = await new LearningConfigurationStore(db).ResolveAsync(
+        var animeLearning = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(LearningMediaType.Anime),
             cancellationToken);
