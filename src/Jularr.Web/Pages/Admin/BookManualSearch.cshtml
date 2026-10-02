@@ -1,0 +1,99 @@
+@page
+@model Jularr.Web.Pages.Admin.BookManualSearchModel
+@using Jularr.Web.Features.Acquisition.Access
+@using Jularr.Web.Features.Books
+@{
+    var ui = Model.Ui;
+    var result = Model.Result!;
+    ViewData["Title"] = ui["admin.wanted.manualSearch"];
+    string Size(long? bytes) => BookManualSearchModel.Size(bytes);
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.wanted.manualSearch"]</h1>
+        <p>@result.Request.Title@if (!string.IsNullOrWhiteSpace(result.Request.Subtitle)) { <text> · @result.Request.Subtitle</text> }</p>
+    </div>
+    <div class="inline-actions">
+        <a class="button" asp-page="/Admin/Wanted">@ui["admin.requests.wanted"]</a>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+@if (Model.Notice is not null)
+{
+    <p class="metadata-notice">@Model.Notice</p>
+}
+@if (Model.Error is not null)
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+<section class="panel usenet-booktest" aria-labelledby="book-manual-results">
+    <div class="panel-heading">
+        <h2 id="book-manual-results">@result.Request.Title</h2>
+    </div>
+
+    <p class="muted">
+        @ui.Format("admin.usenet.bookTestQueries", ("queries", string.Join(" · ", result.Search.Queries)))
+        @if (result.Search.UsedCategoryFallback)
+        {
+            <span class="status-pill status-warn">@ui["admin.usenet.bookTestFallback"]</span>
+        }
+    </p>
+
+    @foreach (var warning in result.Search.Warnings)
+    {
+        <p class="usenet-card-error">@warning.IndexerName: @warning.Message</p>
+    }
+
+    @if (result.Search.Ranked.Count == 0)
+    {
+        <p class="metadata-error">@result.Search.FailureMessage</p>
+    }
+    else
+    {
+        <ul class="usenet-releases">
+            @foreach (var ranked in result.Search.Ranked.Take(60))
+            {
+                var canGrab = result.CanGrab(ranked);
+                var tried = result.TriedReleaseTitles.Contains(ranked.Release.Title);
+                <li class="usenet-release @(ranked.Score == 0 ? "is-rejected" : "")">
+                    <span class="usenet-release-score">@(ranked.Score == 0 ? "–" : ranked.Score.ToString())</span>
+                    <div class="usenet-release-copy">
+                        <strong>@ranked.Release.Title</strong>
+                        <span>
+                            @(ranked.Release.Indexer ?? "—")
+                            · @Size(ranked.Release.SizeBytes)
+                            @if (ranked.Release.AgeDays is { } age)
+                            {
+                                <text> · @age d</text>
+                            }
+                        </span>
+                    </div>
+
+                    @if (ranked.RejectedBecause is not null)
+                    {
+                        <span class="status-pill status-error">@ranked.RejectedBecause</span>
+                    }
+                    else if (tried)
+                    {
+                        <span class="status-pill status-warn">@Jularr.Web.Features.Acquisition.Wanted.ReleaseRequestTracker.EveryReleaseTried</span>
+                    }
+                    else if (canGrab)
+                    {
+                        <form method="post" asp-page-handler="Grab">
+                            <input type="hidden" name="id" value="@result.Request.Id" />
+                            <input type="hidden" name="releaseIdentity" value="@ranked.Release.Identity" />
+                            <button class="button button-primary" type="submit">@ui["acquisition.grab"]</button>
+                        </form>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
