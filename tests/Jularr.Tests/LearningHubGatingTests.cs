@@ -344,7 +344,7 @@ public sealed class LearningHubGatingTests
         var model = File.ReadAllText(Path.Combine(pages, "Episode.cshtml.cs"));
         var view = File.ReadAllText(Path.Combine(pages, "Episode.cshtml"));
 
-        StringAssert.Contains(model, "new LearningConfigurationStore(db).ResolveAsync(");
+        StringAssert.Contains(model, "new LearningConfigurationStore(db, instanceModules).ResolveAsync(");
         StringAssert.Contains(model, "LearningMediaType.Anime");
         StringAssert.Contains(model, "LearningSettings.IsEnabled(LearningCapability.ContentMetrics)");
         StringAssert.Contains(model, "LearningSettings.IsEnabled(LearningCapability.PreparationSuggestions)");
