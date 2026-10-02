@@ -251,7 +251,8 @@ public static class InstanceModuleRoutes
                 "/Statistics",
                 "/Settings/Learning",
                 "/Settings/LearningCourses",
-                "/Settings/LearningScope"
+                "/Settings/LearningScope",
+                "/api/language-inspector"
             ]
         };
 
