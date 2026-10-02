@@ -2,7 +2,7 @@
 
 Status: **binding planning specification; visual mockup required before implementation**.
 
-This is the shared consumer flow for Add, Request and Monitor actions from Discover, Search, Calendar, Watchlist and media-detail surfaces.
+This is the shared consumer **Request** flow from Discover, Search, Calendar, Watchlist and media-detail surfaces.
 
 It must stay media-independent and must not expose indexers, download clients, root paths or release tables to normal users.
 
@@ -13,7 +13,7 @@ One adaptive flow handles:
 - discover-only media not yet in Jularr;
 - canonical Works already known but not locally available;
 - normal-user requests with optional approval;
-- owner/media-manager direct Add + Monitor;
+- privileged requests that may be auto-approved immediately;
 - meaningful language/edition choice;
 - monitoring scope for structured media;
 - confirmation and understandable status.
@@ -49,7 +49,9 @@ Depending on instance policy:
 Hide acquisition profiles, indexers, scores, download clients and filesystem paths.
 
 ### Owner / Media manager
-Primary action may be **Add** or **Add & Monitor**.
+The primary action is still **Request**.
+
+Their request may be auto-approved immediately according to instance policy/capability and then create/update canonical Wanted state without a moderation stop.
 
 An optional compact Advanced disclosure may expose only allowed acquisition-profile overrides. Manual release search remains Admin-only.
 
@@ -70,7 +72,7 @@ Tablet:
 - modal when wide, sheet when narrow.
 
 TV:
-- simplified Request/Add only; complex unit selection may hand off to Web/Mobile.
+- simplified Request flow only; complex unit selection may hand off to Web/Mobile.
 
 Logical stages:
 1. Scope
@@ -195,10 +197,8 @@ Final summary answers:
 - whether approval is required;
 - whether Jularr searches now or only monitors.
 
-Primary button labels:
-- Request
-- Add
-- Add & Monitor
+Primary button label:
+- **Request**
 
 Secondary:
 - Back when needed
@@ -215,10 +215,10 @@ Show:
 - View request status;
 - Done.
 
-### Direct Add
+### Auto-approved request
 Show only true states:
-- Added;
-- Monitoring enabled;
+- Request approved;
+- Monitoring enabled, if requested;
 - Search started, if actually started;
 - Open details.
 
@@ -229,7 +229,7 @@ Do not create another request. Show existing state.
 Allow change only with capability.
 
 ### Already available
-Prefer Play/Read/Listen.
+Prefer Play/Read/Listen. A Request action is unnecessary unless the user is requesting a materially different language/edition that is not available.
 
 ## Consumer status projection
 
@@ -261,7 +261,7 @@ Canceling one profile's request must not cancel shared acquisition still require
 
 Capabilities control independently:
 - Request;
-- direct Add/Monitor;
+- auto-approved Request behavior where capability/policy permits;
 - scope override;
 - language/edition override;
 - acquisition-profile override;
@@ -341,11 +341,12 @@ Use one implementation of:
 - ConfirmationSummary
 - Dialog/Sheet shell
 
-Do not create per-media Add/Request dialog implementations.
+Do not create separate Add and Request dialogs and do not create per-media Request dialog implementations.
 
 ## Must not implement
 
 - no provider-native permanent identity;
+- no separate Add flow or Add state machine;
 - no per-media request engine;
 - no release/indexer table;
 - no downloader selector for normal users;
@@ -361,9 +362,9 @@ Do not create per-media Add/Request dialog implementations.
 ## Mockup requirement
 
 Before implementation, review:
-1. Desktop Light — Anime/Series request with scope + language.
-2. Mobile Light — same request as full-height sheet.
-3. Simple Movie request showing collapsed one-screen behavior.
-4. Submitted / Waiting approval result.
+1. Desktop Light — Anime/Series Request with scope + language; no Add/Request choice.
+2. Mobile Light — same Request as full-height sheet.
+3. Simple Movie Request showing collapsed one-screen behavior.
+4. Submitted state showing both possible outcomes: Waiting approval or Auto-approved.
 
 Text specification wins over mockup imagery on conflict.
