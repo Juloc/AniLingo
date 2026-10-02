@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Tests;
@@ -162,6 +163,49 @@ public sealed class MediaCapabilityTests
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task InstanceModuleOverridesOwnerAndProfileCapabilities()
+    {
+        var directory = NewDirectory();
+        var instanceRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"jularr-instance-cap-{Guid.NewGuid():N}");
+        try
+        {
+            var modules = new InstanceModuleStore(instanceRoot);
+            await modules.SetAsync(InstanceModule.Anime, false);
+            var service = new MediaCapabilityService(
+                new MediaCapabilityStore(directory),
+                modules);
+
+            var owner = await service.GetViewAsync(
+                Principal(AccountRole.Owner, "owner"));
+            Assert.AreEqual(
+                MediaCapability.Hidden,
+                owner.Capability(WorkMediaType.Anime));
+            Assert.AreEqual(
+                MediaCapability.Instant,
+                owner.Capability(WorkMediaType.Book));
+
+            var user = await service.GetViewAsync(
+                Principal(AccountRole.User, "user"));
+            Assert.AreEqual(
+                MediaCapability.Hidden,
+                user.Capability(WorkMediaType.Anime));
+            Assert.AreEqual(
+                MediaCapability.Request,
+                user.Capability(WorkMediaType.Book));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            if (Directory.Exists(instanceRoot))
+            {
+                Directory.Delete(instanceRoot, recursive: true);
+            }
         }
     }
 
