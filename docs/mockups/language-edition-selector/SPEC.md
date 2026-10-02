@@ -1,6 +1,6 @@
 # Language / Edition Selector — Shared Consumer Surface
 
-Status: **binding planning specification; mockup optional unless implementation deviates from standard Jularr components**.
+Status: **approved UX direction; binding planning specification**.
 
 This is a reusable consumer dialog/sheet for selecting a user-facing language and Edition of a canonical Work.
 
@@ -363,14 +363,23 @@ The Request dialog and media-detail pages should consume the same language/Editi
 - no progress completion caused by Edition switching;
 - no treating audio/subtitle Tracks as fake video Editions.
 
-## 24. Mockup policy
+## 24. Approved visual direction
 
-A dedicated mockup is **optional** because this surface should use standard Jularr list/select/sheet components.
+The approved mockup direction uses:
 
-Create a mockup only if:
-- implementation becomes visually unclear;
-- many languages/Editions create hierarchy problems;
-- generated-vs-official presentation needs owner review;
-- Mobile behavior differs materially from this specification.
+- compact Desktop dialog;
+- Mobile bottom/full-height sheet;
+- language selection at the top;
+- Edition rows directly below;
+- clear current-selection indicator;
+- compact `Official` / `Generated` provenance labels;
+- unavailable Edition with a direct `Request` action;
+- Request opens the shared Request flow rather than embedding acquisition settings;
+- no technical Version/File/Track information;
+- no duplicate full media-detail page inside the selector.
 
-Text specification is authoritative.
+The owner will upload the approved visual reference into this folder.
+
+Implementation should follow the shared Jularr list/select/sheet components shown by that reference. A material redesign requires updating this SPEC and another UX review.
+
+Text specification is authoritative if the uploaded image and this specification differ.
