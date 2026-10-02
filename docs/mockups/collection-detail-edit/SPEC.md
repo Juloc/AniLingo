@@ -7,6 +7,7 @@ Collection Detail lives under `Library -> Collections`. It is not a new top-leve
 The same detail surface is used for:
 - Manual Collections;
 - Smart Collections;
+- Linked Collections synchronized from external providers;
 - Built-in Collections;
 - Franchise/adaptation Collections where supported.
 
@@ -41,6 +42,25 @@ Explicit profile-owned list of canonical Work references.
 
 ### Smart
 Dynamic membership from a persisted rule expression evaluated against canonical/local/profile facts.
+
+### Linked
+A Jularr Collection whose membership is synchronized from an external provider/list such as AniList or another supported connector.
+
+Linked Collections are still local Jularr objects. They are not rendered by querying the provider live on every page open.
+
+On sync:
+- provider list metadata is fetched;
+- every external item is persisted locally as provider evidence/snapshot;
+- the item is resolved to an existing canonical Work where possible;
+- if no Work exists and identity is safe enough, Jularr creates a minimal canonical Work and attaches the provider identity;
+- collection membership stores local Work references;
+- later provider refresh updates metadata/membership without replacing local Work identity.
+
+If cross-provider identity is ambiguous, Jularr keeps the provider snapshot locally and marks the mapping for review rather than silently merging unrelated Works.
+
+A Linked Collection can therefore remain fully browsable while the provider is offline.
+
+The collection header may show a compact source such as `Linked · AniList` and last sync state.
 
 ### Built-in
 System-defined views such as Watchlist/Favorites where product behavior uses them.
@@ -367,7 +387,8 @@ Conceptual persistent model:
 ### Collection
 - Id
 - ProfileId / owner scope
-- Kind: Manual / Smart
+- Kind: Manual / Smart / Linked
+- optional ExternalConnectionId / ExternalListId for Linked
 - Title
 - Description
 - Artwork configuration
@@ -375,11 +396,15 @@ Conceptual persistent model:
 - optional limit
 - timestamps
 
-### Manual CollectionEntry
+### CollectionEntry
 - CollectionId
 - WorkId
-- manual order
-- added timestamp
+- order where meaningful
+- source: Manual / Smart materialization / Linked sync / Derived
+- optional external membership identity for Linked Collections
+- added/updated timestamps
+
+Collection entries always resolve to local canonical Work IDs for normal rendering.
 
 ### Smart rule
 - CollectionId
@@ -391,6 +416,8 @@ Conceptual persistent model:
 - exclude WorkId
 
 Built-in/Franchise views may be derived rather than persisted as normal editable Collections.
+
+Linked provider payloads/list snapshots are persisted separately from CollectionEntry so provider refresh data and canonical Collection membership remain distinct.
 
 Never copy canonical title/metadata/progress into Collection rows as a source of truth.
 
@@ -521,9 +548,31 @@ Do not create special media cards for Collections.
 - no resetting progress when removing membership;
 - no mixing Recommendation Shelf semantics into Smart Collections;
 - no TV rule editor;
-- no silent sharing of private profile Collections.
+- no silent sharing of private profile Collections;
+- no live-provider dependency for rendering a Linked Collection;
+- no external provider item used as the Collection's permanent identity instead of local WorkId.
 
-## 24. Mockup requirement
+## 24. External provider persistence
+
+Any external media/list data used by Collections must be locally persisted after fetch.
+
+Minimum persisted provider evidence should include:
+- provider;
+- provider entity/list type;
+- external ID;
+- normalized title/type/year and other useful normalized fields;
+- provider-specific payload snapshot where allowed/useful;
+- fetched/updated timestamp;
+- stale/refresh state;
+- optional resolved WorkId.
+
+Provider snapshots may become stale, but stale does not mean unavailable. Previously fetched data remains usable for Jularr UI and identity resolution until explicitly purged by a defined retention/cleanup policy.
+
+Normal Collection rendering must not require an external API call.
+
+When refreshed data changes, Jularr updates provider evidence/provenance and re-runs identity/membership resolution safely. It must not replace stable local Work IDs merely because provider metadata changed.
+
+## 25. Mockup requirement
 
 Visual review is recommended for:
 
