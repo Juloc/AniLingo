@@ -70,7 +70,7 @@ public sealed class IndexModel(
         Anchor = DateOnly.TryParseExact(DateText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var anchor)
             ? anchor
             : Presenter.Today;
-        MediaTypes = calendar.SupportedMediaTypes;
+        MediaTypes = await calendar.GetSupportedMediaTypesAsync(cancellationToken);
         MediaType = ReleaseCalendarPresenter.ParseFilterValue(TypeText) is { } type && MediaTypes.Contains(type) ? type : null;
         State = Enum.TryParse<ReleaseStateFilter>(StateText, ignoreCase: true, out var state) ? state : ReleaseStateFilter.All;
 
