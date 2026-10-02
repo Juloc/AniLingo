@@ -297,7 +297,9 @@ Appearance supports Light/Dark/System and configurable accent/color scheme throu
 
 ## 15. Add media flow
 
-`Add` is contextual from Library/Search/Discover/Admin and opens one coherent flow rather than permanent import forms on normal pages.
+Binding specification: `docs/mockups/add-request-flow/SPEC.md`
+
+`Add` / `Request` is contextual from Library/Search/Discover/Calendar/detail surfaces and opens one coherent flow rather than permanent import forms on normal pages.
 
 Flow:
 1. search/identify work
