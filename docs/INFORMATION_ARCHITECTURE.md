@@ -191,6 +191,12 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 | Settings | `/Settings/*` section (Admin AI, API keys, Localization) | Exists |
 | Diagnostics | `/Admin/Logs`, `/Admin/Ai`, `/Admin/Health` (admin-ai, admin-health) | Exists — operation logs plus dependency/service health and version/update diagnostics (§5, Sonarr/Radarr table). #528 |
 
+
+**Admin → Instance** is the owner-only server-wide module surface. A module appears there only when
+its full runtime gate is implemented. The instance switch has higher precedence than per-user media
+capabilities and per-profile feature settings; disabled modules are hidden rather than shown as
+unavailable. Learning is the first gated module.
+
 ## 5. Parity matrices
 
 State legend: **exists** (built and reachable today), **partial** (built but incomplete against
