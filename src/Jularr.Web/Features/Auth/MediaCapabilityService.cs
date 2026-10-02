@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Auth;
@@ -7,7 +8,9 @@ namespace Jularr.Web.Features.Auth;
 /// Resolves the effective per-media-type capability for a signed-in principal from the canonical
 /// <see cref="MediaCapabilityStore"/> policy, and gates server-side actions by it (#436).
 /// </summary>
-public sealed class MediaCapabilityService(MediaCapabilityStore store) : IMediaCapabilityService
+public sealed class MediaCapabilityService(
+    MediaCapabilityStore store,
+    IInstanceModuleService? instanceModules = null) : IMediaCapabilityService
 {
     public async Task<MediaCapabilityView> GetViewAsync(
         ClaimsPrincipal? user,
@@ -28,6 +31,18 @@ public sealed class MediaCapabilityService(MediaCapabilityStore store) : IMediaC
         var capabilities = WorkMediaTypes.All.ToDictionary(
             type => type,
             type => policy.Resolve(role, profileId, type));
+
+        if (instanceModules is not null)
+        {
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            foreach (var mediaType in WorkMediaTypes.All)
+            {
+                if (!instance.IsEnabled(InstanceModuleMedia.For(mediaType)))
+                {
+                    capabilities[mediaType] = MediaCapability.Hidden;
+                }
+            }
+        }
 
         return new MediaCapabilityView(role == AccountRole.Owner, capabilities);
     }
