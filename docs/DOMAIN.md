@@ -226,9 +226,43 @@ Canonical concepts:
 - `Bookmark`
 - `Highlight`
 - `WatchlistEntry`
+- `UserRating`
 - `UserMediaPreference`
 - `PlaybackPreference`
 - `ReaderPreference`
+
+### Universal user ratings
+
+`UserRating` is profile-scoped and references canonical media identity rather than media-type-specific tables.
+
+Baseline semantics:
+
+- Profile
+- canonical Work target
+- optional structural target only if unit-level ratings are explicitly supported later
+- canonical normalized score
+- created/updated timestamps
+- optional review/comment reference when reviews are introduced
+
+The stored score uses one universal normalized numeric domain independent of UI presentation. A recommended persistence representation is a constrained fixed-precision decimal in the inclusive range `0.0000..1.0000` (or an equivalent lossless normalized integer representation).
+
+`NULL` / no row means **not rated**. It is not equivalent to the minimum score.
+
+Per-profile `RatingDisplayPreference` controls only input and presentation. Supported systems include:
+
+- three-level thumbs: Down / Up / Double Up
+- 5 stars
+- 0–10 integer
+- 0.0–10.0 decimal
+- 0–100
+
+Changing the display system never migrates or rewrites stored ratings.
+
+Continuous systems convert deterministically to/from the normalized score. Discrete systems bucket existing normalized scores for display; when the user actively selects a discrete value, that input maps to a defined canonical anchor.
+
+This allows the same rating to appear consistently on Profile/Ratings, media detail pages, search/library cards where appropriate, and provider-sync adapters without creating competing rating models.
+
+External-provider ratings are synchronization/presentation concerns. Provider score formats map to/from `UserRating`; they never become Jularr's canonical persistence scale.
 
 `MediaProgress` targets a canonical Work or structural unit and records an appropriate position/state:
 - video/audio: time position, completed/watched state
