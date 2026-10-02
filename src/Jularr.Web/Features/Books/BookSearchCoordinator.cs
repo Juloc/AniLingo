@@ -141,7 +141,7 @@ public sealed class BookSearchCoordinator(
     {
         var offers = await books.SearchOpdsAsync(
             null,
-            title,
+            BookWorkSearch.MainTitle(title),
             cancellationToken);
 
         return offers.FirstOrDefault(offer =>
@@ -151,6 +151,9 @@ public sealed class BookSearchCoordinator(
                 offer.Title,
                 offer.Author));
     }
+
+    public Task<bool> HasEnabledIndexerAsync(CancellationToken cancellationToken) =>
+        indexers.HasEnabledIndexerAsync(cancellationToken);
 
     /// <summary>Shared automatic/manual Books Usenet search path.</summary>
     public Task<BookUsenetSearchResult> SearchUsenetAsync(
