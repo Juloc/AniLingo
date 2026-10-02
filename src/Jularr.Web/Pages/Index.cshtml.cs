@@ -143,16 +143,25 @@ public sealed class IndexModel(
             cancellationToken);
 
         ActiveType = DiscoveryRequest.ParseCategory(type);
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+        var animeEnabled = instance.IsEnabled(InstanceModule.Anime);
 
-        ContinueWatching = ActiveType is DiscoveryCategory.All or DiscoveryCategory.Anime
-            ? await progress.GetContinueWatchingAsync(cancellationToken: cancellationToken)
+        ContinueWatching = animeEnabled
+            && ActiveType is DiscoveryCategory.All or DiscoveryCategory.Anime
+                ? await progress.GetContinueWatchingAsync(cancellationToken: cancellationToken)
+                : [];
+        PlaybackHistory = animeEnabled
+            ? await progress.GetHistoryAsync(cancellationToken)
             : [];
-        PlaybackHistory = await progress.GetHistoryAsync(cancellationToken);
 
         var continueReading = await new ContinueReadingQuery(db).GetAsync(
             currentAccount.ProfileId,
             cancellationToken: cancellationToken);
-        ContinueReading = FilterContinueReading(continueReading, ActiveType);
+        ContinueReading = FilterContinueReading(
+            continueReading.Where(item => IsReadingEnabled(instance, item.Kind)).ToArray(),
+            ActiveType);
 
         var anime = await LoadAnimeArtworkAsync(
             ContinueWatching.Select(item => item.AnimeId).Distinct().ToArray(),
@@ -168,26 +177,29 @@ public sealed class IndexModel(
             currentAccount.ProfileId,
             new LearningScopeContext(LearningMediaType.Anime),
             cancellationToken);
-        ShowContentMetrics = animeLearning.IsEnabled(LearningCapability.ContentMetrics);
+        ShowContentMetrics = animeEnabled
+            && animeLearning.IsEnabled(LearningCapability.ContentMetrics);
 
-        var recentEpisodes = await (
-            from episode in db.Episodes.AsNoTracking()
-            join animeRow in db.Anime.AsNoTracking() on episode.AnimeId equals animeRow.Id
-            join metadataValue in db.AnimeMetadata.AsNoTracking()
-                on animeRow.Id equals metadataValue.AnimeId into metadataRows
-            from metadata in metadataRows.DefaultIfEmpty()
-            orderby episode.DiscoveredAt descending
-            select new HomeEpisode(
-                episode.Id,
-                animeRow.Id,
-                metadata == null ? animeRow.Title : metadata.PreferredTitle,
-                episode.SeasonNumber,
-                episode.Number,
-                0,
-                0,
-                metadata == null ? null : metadata.CoverImageUrl))
-            .Take(10)
-            .ToListAsync(cancellationToken);
+        var recentEpisodes = animeEnabled
+            ? await (
+                from episode in db.Episodes.AsNoTracking()
+                join animeRow in db.Anime.AsNoTracking() on episode.AnimeId equals animeRow.Id
+                join metadataValue in db.AnimeMetadata.AsNoTracking()
+                    on animeRow.Id equals metadataValue.AnimeId into metadataRows
+                from metadata in metadataRows.DefaultIfEmpty()
+                orderby episode.DiscoveredAt descending
+                select new HomeEpisode(
+                    episode.Id,
+                    animeRow.Id,
+                    metadata == null ? animeRow.Title : metadata.PreferredTitle,
+                    episode.SeasonNumber,
+                    episode.Number,
+                    0,
+                    0,
+                    metadata == null ? null : metadata.CoverImageUrl))
+                .Take(10)
+                .ToListAsync(cancellationToken)
+            : [];
 
         // Vocabulary coverage is only computed when the resolved Anime scope
         // shows content metrics; otherwise Home never touches learning tables.
@@ -425,7 +437,12 @@ public sealed class IndexModel(
                 ProfileId: currentAccount.ProfileId),
             cancellationToken);
 
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+
         return events
+            .Where(release => instance.IsEnabled(ReleaseInstanceModules.For(release.MediaType)))
             .Select(release => (Release: release, Day: release.Date.Period(zone)?.Start))
             .Where(row => row.Day is not null)
             .OrderBy(row => row.Day <= presenter.Today ? 0 : 1)
@@ -481,6 +498,16 @@ public sealed class IndexModel(
     }
 
     /// <summary>Keeps only the reading items matching the active Home filter; "All" and "Anime" keep everything (Anime has no reading row of its own).</summary>
+    private static bool IsReadingEnabled(
+        InstanceModuleSettings instance,
+        ContinueReadingKind kind) =>
+        kind switch
+        {
+            ContinueReadingKind.Book => instance.IsEnabled(InstanceModule.Book),
+            ContinueReadingKind.Manga => instance.IsEnabled(InstanceModule.Manga),
+            _ => instance.IsEnabled(InstanceModule.Novel)
+        };
+
     private static IReadOnlyList<ContinueReadingItem> FilterContinueReading(
         IReadOnlyList<ContinueReadingItem> items,
         DiscoveryCategory activeType) =>
