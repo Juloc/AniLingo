@@ -7,6 +7,7 @@ using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Pipeline;
 using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +28,8 @@ public sealed class WantedModel(
     AcquisitionAccessStore store,
     AcquisitionRequestService requests,
     AnimeAcquisitionScheduler scheduler,
-    ILogger<WantedModel> logger) : PageModel
+    ILogger<WantedModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public const string PagePath = "/Admin/Wanted";
 
@@ -173,8 +175,13 @@ public sealed class WantedModel(
             Math.Max(p, 1));
         try
         {
-            var items = await wanted.LoadAsync(cancellationToken);
-            AnyWanted = items.Count > 0;
+            var instance = instanceModules is null
+                ? InstanceModuleSettings.Default
+                : await instanceModules.GetAsync(cancellationToken);
+            var items = (await wanted.LoadAsync(cancellationToken))
+                .Where(item => instance.IsEnabled(AcquisitionInstanceModules.For(item.Kind)))
+                .ToArray();
+            AnyWanted = items.Length > 0;
             List = AdminWantedQuery.Build(items, filter);
         }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or FormatException or JsonException or IOException or InvalidDataException)
@@ -194,6 +201,10 @@ public sealed class WantedModel(
         {
             TempData["Status"] = Ui["admin.wanted.requestGone"];
         }
+        else if (!await IsKindEnabledAsync(request.Kind, cancellationToken))
+        {
+            return NotFound();
+        }
         else if (request.Status is AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed)
         {
             var result = await requests.ApproveAsync(id, cancellationToken);
@@ -211,12 +222,24 @@ public sealed class WantedModel(
             return BadRequest();
         }
 
+        if (!await IsKindEnabledAsync(MediaAcquisitionKind.Anime, cancellationToken))
+        {
+            return NotFound();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         TempData["Status"] = scheduler.RequestRun(animeKey.Trim(), AnimeSearchTrigger.Manual)
             ? Ui["admin.wanted.searchQueued"]
             : Ui["acquisition.error.tooManyQueued"];
         return Back(returnUrl);
     }
+
+    private async Task<bool> IsKindEnabledAsync(
+        MediaAcquisitionKind kind,
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || (await instanceModules.GetAsync(cancellationToken))
+            .IsEnabled(AcquisitionInstanceModules.For(kind));
 
     /// <summary>Returns to the filtered list the action came from; anything else goes to the unfiltered list.</summary>
     private IActionResult Back(string? returnUrl) =>
