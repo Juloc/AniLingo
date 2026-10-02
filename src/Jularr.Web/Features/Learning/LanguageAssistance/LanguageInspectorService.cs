@@ -21,7 +21,7 @@ public sealed class LanguageInspectorService(
     LearningService learning,
     LanguageTextAnalyzer analyzer,
     AiSentenceExplanationService explanations,
-    IInstanceModuleService instanceModules)
+    IInstanceModuleService? instanceModules = null)
 {
     public const int MaxTextLength = 500;
     public const int MaxSentenceLength = 500;
