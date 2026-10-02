@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Learning;
@@ -179,12 +180,19 @@ public static class LearningConfigurationDefaults
     }
 }
 
-public sealed class LearningConfigurationStore(AppDbContext db)
+public sealed class LearningConfigurationStore(
+    AppDbContext db,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<LearningMode> GetProfileModeAsync(
         string profileId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return LearningMode.Off;
+        }
+
         var snapshot = await GetScopeAsync(
             profileId,
             LearningScopeRef.Profile,
@@ -419,6 +427,11 @@ public sealed class LearningConfigurationStore(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return DisabledSettings;
+        }
+
         var profile = await GetScopeAsync(
             profileId,
             LearningScopeRef.Profile,
@@ -445,6 +458,11 @@ public sealed class LearningConfigurationStore(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return DisabledSettings;
+        }
+
         var chain = context.BuildChain();
 
         var snapshots = new List<LearningScopeSettingsSnapshot>(chain.Count);
@@ -487,6 +505,10 @@ public sealed class LearningConfigurationStore(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return false;
+        }
 
         var profile = await GetScopeAsync(
             profileId,
@@ -539,6 +561,18 @@ public sealed class LearningConfigurationStore(AppDbContext db)
             }
         }
     }
+
+    private async Task<bool> IsLearningModuleEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Learning,
+            cancellationToken);
+
+    private static LearningResolvedSettings DisabledSettings { get; } =
+        new(
+            LearningMode.Off,
+            Enum.GetValues<LearningCapability>()
+                .ToDictionary(capability => capability, _ => false));
 
     private static void ValidateProfile(string profileId)
     {
