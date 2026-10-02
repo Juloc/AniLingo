@@ -61,7 +61,7 @@ public sealed class BookManualSearchModel(
         if (string.IsNullOrWhiteSpace(releaseIdentity))
         {
             TempData["BookManualSearchError"] =
-                Ui["admin.usenet.bookTestNoRelease"];
+                Ui["books.index.searchUnavailable"];
             return RedirectToPage(new { id });
         }
 
