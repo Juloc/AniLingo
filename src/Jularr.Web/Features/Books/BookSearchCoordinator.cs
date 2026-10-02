@@ -62,15 +62,21 @@ public sealed class BookSearchCoordinator(
             () => books.SearchAsync(normalizedQuery, cancellationToken),
             Array.Empty<BookCatalogItem>(),
             cancellationToken);
+        var gutenbergTask = CaptureAsync(
+            "Project Gutenberg",
+            () => books.SearchGutenbergCatalogAsync(normalizedQuery, cancellationToken),
+            Array.Empty<BookCatalogItem>(),
+            cancellationToken);
         var opdsTask = CaptureAsync(
             "OPDS",
             () => books.SearchOpdsAsync(null, normalizedQuery, cancellationToken),
             Array.Empty<BookOpdsCatalogItem>(),
             cancellationToken);
 
-        await Task.WhenAll(catalogTask, opdsTask);
+        await Task.WhenAll(catalogTask, gutenbergTask, opdsTask);
 
         var catalog = catalogTask.Result.Value;
+        var gutenberg = gutenbergTask.Result.Value;
         var opds = opdsTask.Result.Value;
         var opdsCatalog = opds.Select(ToCatalogItem).ToArray();
 
@@ -79,6 +85,7 @@ public sealed class BookSearchCoordinator(
         var works = BookWorkSearch.Rank(
                 normalizedQuery,
                 catalog,
+                gutenberg,
                 opdsCatalog)
             .Take(ResultLimit)
             .ToArray();
@@ -126,6 +133,7 @@ public sealed class BookSearchCoordinator(
 
         var warnings = new List<BookSearchWarning>();
         AddWarning(warnings, catalogTask.Result.Warning);
+        AddWarning(warnings, gutenbergTask.Result.Warning);
         AddWarning(warnings, opdsTask.Result.Warning);
         AddWarning(warnings, usenetResult.Warning);
         warnings.AddRange(usenet.Warnings.Select(warning =>
