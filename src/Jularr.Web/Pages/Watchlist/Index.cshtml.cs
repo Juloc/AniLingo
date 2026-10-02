@@ -2,6 +2,8 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaCore;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -14,7 +16,8 @@ public sealed class IndexModel(
     WatchlistStore watchlist,
     WatchlistLibraryResolver library,
     FranchiseStore franchises,
-    FranchiseService franchiseService) : PageModel
+    FranchiseService franchiseService,
+    IAppShellService? shell = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -25,8 +28,16 @@ public sealed class IndexModel(
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var visible = shell is null
+            ? WorkMediaTypes.All.ToHashSet()
+            : (await shell.GetMediaAccessAsync(User, cancellationToken))
+                .VisibleMediaTypes
+                .ToHashSet();
+
         Items = await library.ApplyAsync(
-            await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken),
+            (await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken))
+                .Where(item => visible.Contains(WorkMediaTypes.FromWatchlist(item.Identity.MediaType)))
+                .ToArray(),
             cancellationToken);
         Franchises = await franchises.ListFollowedAsync(account.ProfileId, cancellationToken);
     }
@@ -58,8 +69,27 @@ public sealed class IndexModel(
             return BadRequest();
         }
 
+        if (!await IsVisibleAsync(identity, cancellationToken))
+        {
+            return NotFound();
+        }
+
         await franchiseService.FollowFromSeedAsync(account.ProfileId, identity, cancellationToken);
         return RedirectToPage();
+    }
+
+    private async Task<bool> IsVisibleAsync(
+        WatchlistIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        if (shell is null)
+        {
+            return true;
+        }
+
+        var access = await shell.GetMediaAccessAsync(User, cancellationToken);
+        return access.VisibleMediaTypes.Contains(
+            WorkMediaTypes.FromWatchlist(identity.MediaType));
     }
 
     public async Task<IActionResult> OnPostUnfollowFranchiseAsync(
