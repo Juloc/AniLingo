@@ -27,6 +27,11 @@ public sealed class ClientApiService(
     public async Task<ClientLibraryResponse> GetLibraryAsync(
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return new ClientLibraryResponse([]);
+        }
+
         var animeRows = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()
@@ -80,6 +85,11 @@ public sealed class ClientApiService(
         Guid animeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()
@@ -155,6 +165,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
@@ -239,6 +254,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var episode = await (
             from localEpisode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on localEpisode.AnimeId equals anime.Id
@@ -424,6 +444,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
         {
             return null;
@@ -437,6 +462,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
         {
             return null;
@@ -454,6 +484,11 @@ public sealed class ClientApiService(
         int? toMs,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var exists = await db.Episodes
             .AsNoTracking()
             .AnyAsync(x => x.Id == episodeId, cancellationToken);
@@ -545,6 +580,13 @@ public sealed class ClientApiService(
             termId,
             ClientApiMappings.StateName(state));
     }
+
+    private async Task<bool> IsAnimeEnabledAsync(
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Anime,
+            cancellationToken);
 
     private async Task<bool> IsLearningEnabledAsync(
         CancellationToken cancellationToken) =>
