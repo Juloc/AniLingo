@@ -13,6 +13,7 @@ public sealed class DiscoveryCoordinator(
     AniListMetadataProvider animeProvider,
     NovelAniListProvider readingProvider,
     BookCatalogService books,
+    BookSearchCoordinator bookSearch,
     AniListAccountService aniListAccount,
     AppDbContext db,
     ILogger<DiscoveryCoordinator> logger) : IDiscoveryFeed
@@ -188,7 +189,10 @@ public sealed class DiscoveryCoordinator(
                 async () =>
                 {
                     var rows = request.Mode == DiscoveryMode.Search
-                        ? await books.SearchAsync(request.Query, cancellationToken)
+                        ? (await bookSearch.SearchAsync(request.Query, cancellationToken))
+                            .Items
+                            .Select(result => result.Book)
+                            .ToArray()
                         : await books.BrowseAsync(ToBookBrowseMode(request.Mode), cancellationToken);
 
                     return rows
