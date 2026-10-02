@@ -15,7 +15,8 @@ public sealed class DiscoveryCoordinator(
     BookCatalogService books,
     AniListAccountService aniListAccount,
     AppDbContext db,
-    ILogger<DiscoveryCoordinator> logger) : IDiscoveryFeed
+    ILogger<DiscoveryCoordinator> logger,
+    BookSearchCoordinator? bookSearch = null) : IDiscoveryFeed
 {
     private const int AnimeLimit = 10;
     private const int ReadingLimit = 14;
@@ -188,7 +189,12 @@ public sealed class DiscoveryCoordinator(
                 async () =>
                 {
                     var rows = request.Mode == DiscoveryMode.Search
-                        ? await books.SearchAsync(request.Query, cancellationToken)
+                        ? bookSearch is null
+                            ? await books.SearchAsync(request.Query, cancellationToken)
+                            : (await bookSearch.SearchAsync(request.Query, cancellationToken))
+                                .Items
+                                .Select(result => result.Book)
+                                .ToArray()
                         : await books.BrowseAsync(ToBookBrowseMode(request.Mode), cancellationToken);
 
                     return rows

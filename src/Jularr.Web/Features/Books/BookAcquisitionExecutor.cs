@@ -18,15 +18,15 @@ public sealed record BookRequestPayload(
     string? Author) : ReleaseRequestPayload;
 
 /// <summary>
-/// Automatic Books acquisition, Readarr-style but on the same Usenet path as every other media
-/// type: a free catalog edition is imported directly; otherwise every indexer is searched in the
-/// Newznab Books categories, the best EPUB (or else PDF) release goes to the download client with
-/// the Books category, and the shared completed-download dispatcher imports it (see
+/// Automatic Books acquisition on the shared acquisition path: a direct/free catalog edition is
+/// preferred, then an enabled OPDS EPUB, then every enabled Usenet indexer. The best accepted
+/// Usenet release goes through the generic download-client abstraction, and the shared
+/// completed-download dispatcher imports it (see
 /// <see cref="BookCompletedDownloadImportAdapter"/>).
 /// </summary>
 public sealed class BookAcquisitionExecutor(
     BookCatalogService books,
-    IndexerSearchCoordinator indexers,
+    BookSearchCoordinator search,
     DownloadClientStore downloadClients,
     DownloadClientSubmissionService downloads,
     ReleaseRequestTracker tracker) : IAcquisitionRequestExecutor
@@ -40,41 +40,80 @@ public sealed class BookAcquisitionExecutor(
     {
         var payload = ReadPayload(request);
 
-        string? freeEditionNote = null;
-        // Free first: the catalog edition itself, or a Project Gutenberg twin of the same title
-        // (AcquireCatalogBookAsync looks that up). Only without a free edition does it go to Usenet.
+        string? directNote = null;
+        // Default source priority is local/direct before network download. This is a policy choice,
+        // not a second Books acquisition engine: every Usenet download still uses the shared path.
         try
         {
             var workId = await books.AcquireCatalogBookAsync(payload.CatalogId, cancellationToken);
             return new AcquisitionExecution(
                 AcquisitionRequestStatus.Completed,
-                "Imported a free edition.",
+                "Imported a direct/free edition.",
                 ResultUrl: $"/Books/Library/{workId}");
         }
-        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (
+            !cancellationToken.IsCancellationRequested
+            && exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
         {
-            // No authorized free EPUB for this title (or the free catalogs are unreachable).
-            freeEditionNote = exception.Message;
+            directNote = exception.Message;
         }
 
-        if (!await indexers.HasEnabledIndexerAsync(cancellationToken))
+        string? opdsNote = null;
+        try
         {
-            return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"No free edition ({freeEditionNote}) and no indexer is configured.");
+            var opdsQuery = BookWorkSearch.MainTitle(payload.Title);
+            var offer = await search.FindOpdsOfferAsync(
+                payload.Title,
+                payload.Author,
+                cancellationToken);
+
+            if (offer is not null)
+            {
+                var workId = await books.ImportOpdsBookAsync(
+                    offer.SourceId,
+                    opdsQuery,
+                    offer.Key,
+                    cancellationToken);
+                return new AcquisitionExecution(
+                    AcquisitionRequestStatus.Completed,
+                    $"Imported an EPUB from {offer.SourceName}.",
+                    ResultUrl: $"/Books/Library/{workId}");
+            }
+
+            opdsNote = "No matching enabled OPDS edition was found.";
+        }
+        catch (Exception exception) when (
+            !cancellationToken.IsCancellationRequested
+            && exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            opdsNote = exception.Message;
         }
 
-        var sabnzbdConfigured = (await downloadClients.LoadAllAsync(cancellationToken))
-            .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
-        if (!sabnzbdConfigured)
+        if (!await search.HasEnabledIndexerAsync(cancellationToken))
         {
-            return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"No free edition ({freeEditionNote}) and SABnzbd is not configured.");
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Failed,
+                $"No direct/free or OPDS edition is available ({directNote}; {opdsNote}) and no indexer is configured.");
         }
 
-        var search = await BookUsenetSearch.SearchAsync(indexers, payload.Title, payload.Author, cancellationToken);
+        var downloadClientConfigured = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Any(entry => entry.Enabled);
+        if (!downloadClientConfigured)
+        {
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Failed,
+                $"No direct/free or OPDS edition is available ({directNote}; {opdsNote}) and no download client is configured.");
+        }
+
+        var usenetSearch = await search.SearchUsenetAsync(
+            payload.Title,
+            payload.Author,
+            cancellationToken);
         return await tracker.ContinueAsync(
             request,
             payload,
-            Candidates(search),
-            search.FailureMessage,
+            Candidates(usenetSearch),
+            usenetSearch.FailureMessage,
             async release =>
             {
                 var outcome = await downloads.SubmitAsync(

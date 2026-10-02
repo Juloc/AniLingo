@@ -15,7 +15,7 @@ catalog result
 
 A request can also be `Pending`, `Approved`, `Rejected`, or `Failed`.
 
-`AcquisitionRequestService` is the authoritative add/request and permission boundary. The Books, Manga and Light Novel executors search enabled Newznab/Prowlarr Usenet indexers and submit the selected release through `DownloadClientSubmissionService`, which records the job id and the selected download client with its category on the Operation in one write. A Books request first tries a free catalog edition and only searches Usenet without one.
+`AcquisitionRequestService` is the authoritative add/request and permission boundary. The Books, Manga and Light Novel executors search enabled Newznab/Prowlarr Usenet indexers and submit the selected release through `DownloadClientSubmissionService`, which records the job id and the selected download client with its category on the Operation in one write. Books search is coordinated across the metadata catalogs, every enabled OPDS source and enabled Usenet indexers; OPDS records are merged through the existing canonical work matching and Usenet hits stay temporary release candidates. A Books request uses the default source priority direct/free catalog edition → matching OPDS EPUB → Usenet release. The Usenet handoff remains download-client-agnostic so the native downloader can replace external adapters without another Books path.
 
 ### Shared release-request state
 
