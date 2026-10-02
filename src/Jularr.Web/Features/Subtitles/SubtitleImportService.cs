@@ -107,6 +107,13 @@ public sealed class SubtitleImportService
         SubtitleSidecarDirectoryCache listings,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            // Unavailable means "leave current state untouched"; a disabled Learning module must
+            // not make a library scan delete previously prepared subtitle/vocabulary state.
+            return new SubtitleSidecarImportResult(SubtitleSidecarImportStatus.Unavailable);
+        }
+
         var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
 
         try
@@ -143,6 +150,11 @@ public sealed class SubtitleImportService
         string content,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return;
+        }
+
         var normalizedFormat = format.Trim().TrimStart('.').ToLowerInvariant();
         var cues = SubtitleParser.ParseFormat(normalizedFormat, content);
         if (cues.Count == 0)
@@ -239,6 +251,13 @@ public sealed class SubtitleImportService
         TrackSlot? requestedSlot = null)
     {
         var slot = requestedSlot ?? new TrackSlot(targetLanguage, false, false, true);
+        if (slot.IsLearningSource && !await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            // Manual subtitle management remains usable with Learning off, but must not rebuild
+            // vocabulary, mark preparation ready or apply learning-source pruning semantics.
+            slot = slot with { IsLearningSource = false };
+        }
+
         sourceUpdatedAt = ToStoredPrecision(sourceUpdatedAt);
         string readyMessage;
         Guid trackId;
