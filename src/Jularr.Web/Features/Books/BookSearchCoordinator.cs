@@ -59,7 +59,7 @@ public sealed class BookSearchCoordinator(
         // indexer load bounded and lets it reuse the normal Books author/title query rules.
         var catalogTask = CaptureAsync(
             "Book catalogs",
-            () => books.SearchAsync(normalizedQuery, cancellationToken),
+            () => books.SearchPrimaryCatalogsAsync(normalizedQuery, cancellationToken),
             Array.Empty<BookCatalogItem>(),
             cancellationToken);
         var gutenbergTask = CaptureAsync(
