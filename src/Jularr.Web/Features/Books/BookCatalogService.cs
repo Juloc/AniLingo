@@ -144,28 +144,45 @@ public sealed partial class BookCatalogService(
                 normalizedQuery,
                 token),
             cancellationToken);
-        var gutenbergTask = CaptureCatalogAsync(
-            token => SearchGutenbergAsync(normalizedQuery, token),
-            cancellationToken,
-            fallbackToEmpty: true);
 
         await Task.WhenAll(
             openLibraryTask,
             googleTask,
-            wikisourceTask,
-            gutenbergTask);
+            wikisourceTask);
 
-        // Every integrated catalog contributes to the same canonical work merge. A provider that
-        // failed or timed out contributes nothing; successful sources still answer independently.
+        // A provider that failed or timed out contributes nothing; the others still answer.
+        var works = BookWorkSearch.Rank(
+            normalizedQuery,
+            wikisourceTask.Result,
+            openLibraryTask.Result,
+            googleTask.Result);
+
+        if (works.Count > 0)
+        {
+            return works
+                .Take(SearchLimit)
+                .ToArray();
+        }
+
         return BookWorkSearch.Rank(
-                normalizedQuery,
-                wikisourceTask.Result,
-                openLibraryTask.Result,
-                googleTask.Result,
-                gutenbergTask.Result)
-            .Take(SearchLimit)
-            .ToArray();
+            normalizedQuery,
+            await CaptureCatalogAsync(
+                token => SearchGutenbergAsync(normalizedQuery, token),
+                cancellationToken,
+                fallbackToEmpty: true));
     }
+
+    /// <summary>
+    /// Project Gutenberg results for the application-level multi-source search. Kept separate
+    /// from <see cref="SearchAsync"/> so existing catalog callers retain their fallback behavior.
+    /// </summary>
+    public Task<IReadOnlyList<BookCatalogItem>> SearchGutenbergCatalogAsync(
+        string query,
+        CancellationToken cancellationToken) =>
+        CaptureCatalogAsync(
+            token => SearchGutenbergAsync(query.Trim(), token),
+            cancellationToken,
+            fallbackToEmpty: true);
 
     /// <summary>
     /// One honestly-labelled Books discovery row (#371): each mode is backed by a source that
