@@ -216,6 +216,66 @@ public sealed class AcquisitionAccessTests
     }
 
     [TestMethod]
+    public void BookManualSearchOnlySelectsFreshAcceptedUntriedIdentity()
+    {
+        ProwlarrReleaseCandidate Release(string title, string guid, string protocol = "usenet") =>
+            new(
+                title,
+                "idx",
+                1,
+                protocol,
+                3_000_000,
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                1,
+                1,
+                guid,
+                null,
+                Jularr.Web.Features.Acquisition.Release.ReleaseParser.Parse(title),
+                [],
+                new Uri("https://indexer.example/get/" + guid),
+                null);
+
+        var accepted = Release(
+            "Frank Herbert - Dune retail EPUB",
+            "accepted");
+        var rejected = Release(
+            "Frank Herbert - Dune MOBI",
+            "rejected");
+        var result = new BookUsenetSearchResult(
+            ["Frank Herbert Dune"],
+            BookReleaseSelector.Rank(
+                [accepted, rejected],
+                "Dune",
+                "Frank Herbert"),
+            [],
+            false);
+
+        Assert.AreSame(
+            accepted,
+            BookManualSearchService.SelectRelease(
+                result,
+                accepted.Identity)!.Release);
+        Assert.IsNull(
+            BookManualSearchService.SelectRelease(
+                result,
+                rejected.Identity),
+            "A rejected candidate can never be manually grabbed.");
+        Assert.IsNull(
+            BookManualSearchService.SelectRelease(
+                result,
+                "prowlarr:1:https://attacker.example/evil.nzb"),
+            "The POSTed value is only an opaque identity, never a trusted URL.");
+        Assert.IsNull(
+            BookManualSearchService.SelectRelease(
+                result,
+                accepted.Identity,
+                [accepted.Title]),
+            "An already tried release is not submitted again.");
+    }
+
+    [TestMethod]
     public void BookUsenetQueriesUseAuthorAndMainTitleFirst()
     {
         CollectionAssert.AreEqual(
