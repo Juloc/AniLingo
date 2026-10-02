@@ -30,6 +30,10 @@ It is Docker-first, runs as one container, and keeps media mounts read-only by d
 
 The detailed configuration, media layout and operational guidance follow below.
 
+## Contribution integrity
+
+`npm ci` activates repository-local Git hooks. They reject AI or agent identities and attribution trailers before committing and pushing. CI repeats the verification for every pull request and push, so bypassing a local hook cannot introduce an AI contributor attribution into `main`.
+
 ## v0.1
 
 The first vertical slice includes:

@@ -37,6 +37,32 @@ env:
   IMAGE_ARTIFACT: jularr-image
 
 jobs:
+  authorship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify contributor identities and commit trailers
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            range="${BASE_SHA}..${HEAD_SHA}"
+          elif [[ -n "${BASE_SHA}" && ! "${BASE_SHA}" =~ ^0+$ ]]; then
+            range="${BASE_SHA}..${HEAD_SHA}"
+          else
+            range="${HEAD_SHA}"
+          fi
+          bash scripts/verify-authorship.sh --range "${range}"
+
   build-test:
     runs-on: ubuntu-latest
     # Tests run against a real PostgreSQL with an isolated database per test (#570), which is

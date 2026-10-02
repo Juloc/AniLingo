@@ -85,6 +85,7 @@ RUN mkdir -p /dictionary /tmp/jmdict-ger /tmp/jmdict-eng \
 FROM node:24-bookworm-slim AS frontend
 WORKDIR /src
 COPY package.json package-lock.json ./
+COPY scripts/install-git-hooks.mjs scripts/
 RUN npm ci
 COPY vite.config.ts tsconfig.json ./
 COPY scripts/ scripts/
