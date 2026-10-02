@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -41,6 +42,7 @@ public sealed class ReadModel(
     AppDbContext db,
     CurrentAccountContext account,
     OperationRunner operations,
+    IInstanceModuleService instanceModules,
     ILogger<ReadModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -1214,7 +1216,7 @@ public sealed class ReadModel(
         Guid workId,
         Guid chapterId,
         CancellationToken cancellationToken) =>
-        new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
+        new LearningModuleResolver(db, instanceModules).ResolveTranslationEnabledAsync(
             account.ProfileId,
             LearningMediaType.Novel,
             workId.ToString(),
