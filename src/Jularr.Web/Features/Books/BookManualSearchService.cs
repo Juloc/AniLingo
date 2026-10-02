@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Prowlarr;
@@ -16,8 +17,11 @@ public sealed class BookManualSearchService(
     DownloadClientSubmissionService downloads,
     ReleaseRequestTracker tracker,
     AcquisitionAccessStore requests,
-    IJularrEventPublisher events)
+    IJularrEventPublisher events,
+    TimeProvider clock)
 {
+    private static readonly ConcurrentDictionary<Guid, SearchCacheEntry> SearchCache = new();
+    private static readonly TimeSpan SearchCacheLifetime = TimeSpan.FromMinutes(2);
     public async Task<BookManualSearchTarget> LoadAsync(
         Guid requestId,
         CancellationToken cancellationToken)
@@ -31,13 +35,32 @@ public sealed class BookManualSearchService(
 
     public async Task<BookManualSearchResult> SearchAsync(
         Guid requestId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool refresh = false)
     {
         var target = await LoadAsync(requestId, cancellationToken);
+        var now = clock.GetUtcNow();
+        if (!refresh
+            && SearchCache.TryGetValue(requestId, out var cached)
+            && now - cached.StoredAt < SearchCacheLifetime
+            && cached.Title.Equals(target.Payload.Title, StringComparison.Ordinal)
+            && string.Equals(cached.Author, target.Payload.Author, StringComparison.Ordinal))
+        {
+            return new BookManualSearchResult(
+                target.Request,
+                target.Payload,
+                cached.Search);
+        }
+
         var result = await search.SearchUsenetAsync(
             target.Payload.Title,
             target.Payload.Author,
             cancellationToken);
+        SearchCache[requestId] = new SearchCacheEntry(
+            now,
+            target.Payload.Title,
+            target.Payload.Author,
+            result);
 
         return new BookManualSearchResult(
             target.Request,
@@ -60,6 +83,7 @@ public sealed class BookManualSearchService(
             payload.Title,
             payload.Author,
             cancellationToken);
+        SearchCache.TryRemove(requestId, out _);
         var selected = SelectRelease(
             result,
             releaseIdentity.Trim(),
@@ -175,6 +199,12 @@ public sealed class BookManualSearchService(
         await requests.GetAsync(requestId, cancellationToken)
         ?? throw new InvalidOperationException(
             "The request no longer exists.");
+
+    private sealed record SearchCacheEntry(
+        DateTimeOffset StoredAt,
+        string Title,
+        string? Author,
+        BookUsenetSearchResult Search);
 
     private static void EnsureSearchable(AcquisitionRequest request)
     {
