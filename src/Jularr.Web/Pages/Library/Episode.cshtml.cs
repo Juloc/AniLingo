@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Localization;
@@ -44,7 +45,8 @@ public sealed class EpisodeModel(
     AniListAccountService aniListAccountService,
     CurrentAccountContext currentAccount,
     OperationRunner operations,
-    ILogger<EpisodeModel> logger) : PageModel
+    ILogger<EpisodeModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid EpisodeId { get; private set; }
@@ -146,7 +148,7 @@ public sealed class EpisodeModel(
         EpisodeTitle = header.Title;
         SeasonNumber = header.SeasonNumber;
         EpisodeNumber = header.Number;
-        LearningSettings = await new LearningConfigurationStore(db).ResolveAsync(
+        LearningSettings = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(
                 LearningMediaType.Anime,
@@ -640,7 +642,7 @@ public sealed class EpisodeModel(
             return false;
         }
 
-        var resolved = await new LearningConfigurationStore(db).ResolveAsync(
+        var resolved = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(
                 LearningMediaType.Anime,
