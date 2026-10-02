@@ -4,6 +4,7 @@ using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.Search;
 using Microsoft.AspNetCore.Http;
+using Jularr.Web.Pages.Admin;
 
 namespace Jularr.Tests;
 
@@ -95,6 +96,12 @@ public sealed class InstanceModuleTests
         CollectionAssert.AreEquivalent(
             new[] { InstanceModule.Book },
             InstanceModuleRoutes.Resolve(new PathString("/Settings/Books")).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { InstanceModule.Anime, InstanceModule.Acquisition },
+            InstanceModuleRoutes.Resolve(new PathString("/Settings/Naming")).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { InstanceModule.Novel, InstanceModule.Acquisition },
+            InstanceModuleRoutes.Resolve(new PathString("/Admin/ReadingSources")).ToArray());
 
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
@@ -111,6 +118,14 @@ public sealed class InstanceModuleTests
         Assert.AreEqual(InstanceModule.Book, InstanceModuleMedia.For(WorkMediaType.Book));
         Assert.AreEqual(InstanceModule.Manga, InstanceModuleMedia.For(WorkMediaType.Manga));
         Assert.AreEqual(InstanceModule.Novel, InstanceModuleMedia.For(WorkMediaType.LightNovel));
+    }
+
+    [TestMethod]
+    public void AdminInstanceExposesEveryCurrentModule()
+    {
+        CollectionAssert.AreEquivalent(
+            Enum.GetValues<InstanceModule>(),
+            InstanceModel.ConfigurableModules.ToArray());
     }
 
     [TestMethod]
