@@ -1,6 +1,7 @@
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaCore;
 using Microsoft.AspNetCore.Http;
 
 namespace Jularr.Tests;
@@ -43,7 +44,7 @@ public sealed class InstanceModuleTests
     }
 
     [TestMethod]
-    public void LearningRoutesResolveToTheGlobalModule()
+    public void ExplicitModuleRoutesResolveToTheGlobalModule()
     {
         foreach (var path in new[]
                  {
@@ -63,10 +64,34 @@ public sealed class InstanceModuleTests
             Assert.AreEqual(InstanceModule.Learning, module, path);
         }
 
+        foreach (var path in new[]
+                 {
+                     "/Acquisition",
+                     "/Acquisition/Search",
+                     "/api/acquisition/v1/anime"
+                 })
+        {
+            Assert.IsTrue(
+                InstanceModuleRoutes.TryResolve(new PathString(path), out var module),
+                path);
+            Assert.AreEqual(InstanceModule.Anime, module, path);
+        }
+
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
                 new PathString("/Library/Anime/123"),
                 out _));
+    }
+
+    [TestMethod]
+    public void CanonicalMediaTypesMapToInstanceModules()
+    {
+        Assert.AreEqual(InstanceModule.Movie, InstanceModuleMedia.For(WorkMediaType.Movie));
+        Assert.AreEqual(InstanceModule.Tv, InstanceModuleMedia.For(WorkMediaType.Series));
+        Assert.AreEqual(InstanceModule.Anime, InstanceModuleMedia.For(WorkMediaType.Anime));
+        Assert.AreEqual(InstanceModule.Book, InstanceModuleMedia.For(WorkMediaType.Book));
+        Assert.AreEqual(InstanceModule.Manga, InstanceModuleMedia.For(WorkMediaType.Manga));
+        Assert.AreEqual(InstanceModule.Novel, InstanceModuleMedia.For(WorkMediaType.LightNovel));
     }
 
     [TestMethod]
