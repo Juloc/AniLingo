@@ -543,6 +543,8 @@ public sealed class IndexModel(
             TempData["Status"] = Ui["discover.import.sourceImportFailed"];
             return RedirectToPage();
         }
+    }
+
     private async Task<bool> IsVisibleAsync(
         WatchlistIdentity identity,
         CancellationToken cancellationToken) =>
@@ -561,7 +563,5 @@ public sealed class IndexModel(
 
         var access = await shell.GetMediaAccessAsync(User, cancellationToken);
         return access.VisibleMediaTypes.Contains(mediaType);
-    }
-
     }
 }
