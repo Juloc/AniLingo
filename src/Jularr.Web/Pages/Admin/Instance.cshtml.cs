@@ -24,7 +24,8 @@ public sealed class InstanceModel(
     public static IReadOnlyList<InstanceModule> ConfigurableFeatureModules { get; } =
     [
         InstanceModule.Learning,
-        InstanceModule.Acquisition
+        InstanceModule.Acquisition,
+        InstanceModule.Tracking
     ];
 
     public static IEnumerable<InstanceModule> ConfigurableModules =>
