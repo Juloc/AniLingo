@@ -18,7 +18,9 @@ public sealed class InstanceModel(
     // stable enum identities, but are added here one by one as their runtime slice is completed.
     public static IReadOnlyList<InstanceModule> ConfigurableMediaModules { get; } =
     [
-        InstanceModule.Anime
+        InstanceModule.Anime,
+        InstanceModule.Manga,
+        InstanceModule.Novel
     ];
 
     public static IReadOnlyList<InstanceModule> ConfigurableFeatureModules { get; } =
