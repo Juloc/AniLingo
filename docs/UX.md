@@ -340,7 +340,8 @@ Admin navigation groups:
 
 ### Acquisition
 - Indexers / release search providers
-- Download clients
+- Native Usenet
+- External download clients
 - Profiles / scoring
 
 ### Metadata & Providers
@@ -443,15 +444,22 @@ Both flows map into the canonical media hierarchy. Neither asks the admin to typ
 
 ## 23. Storage admin
 
-Storage page provides:
-- roots/NAS locations
-- online/offline
-- free/used capacity
-- media distribution
-- wake/retry state
-- path browser for selecting configured roots
+Binding screen specification:
+- `docs/mockups/admin-storage/SPEC.md`
 
-Path selection uses a server-side safe file browser limited to permitted roots; users never type arbitrary server paths as the primary UX.
+Storage separates **physical Mounts** from **logical storage roles**.
+
+Physical Mounts own capacity/health. Multiple LibraryRoots may live on the same Mount without pretending to be separate disks.
+
+Storage roles include:
+- LibraryRoots for final specialized libraries;
+- Native Download Workspace for Jularr's built-in Usenet downloader;
+- Generic Downloads Root for content that has no specialized library;
+- optional future managed workspaces such as backup/cache/transcode.
+
+The Native Download Workspace is temporary operational storage for incomplete download, verification/repair, extraction and staging. It is distinct from final Generic Downloads.
+
+Path selection uses a server-side safe browser restricted to permitted Mounts. Native downloader transport/server settings live in Acquisition/Usenet settings, not Storage.
 
 ## 24. Provider settings
 
