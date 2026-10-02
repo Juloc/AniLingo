@@ -461,6 +461,40 @@ The Native Download Workspace is temporary operational storage for incomplete do
 
 Path selection uses a server-side safe browser restricted to permitted Mounts. Native downloader transport/server settings live in Acquisition/Usenet settings, not Storage.
 
+## 23a. Native Downloader Admin
+
+Binding specifications:
+- `docs/mockups/admin-downloader/SPEC.md`
+- `docs/mockups/admin-downloader-overview/SPEC.md`
+- `docs/mockups/admin-downloader-queue/SPEC.md`
+- `docs/mockups/admin-downloader-servers/SPEC.md`
+- `docs/mockups/admin-downloader-processing/SPEC.md`
+- `docs/mockups/admin-downloader-speed-schedule/SPEC.md`
+- `docs/mockups/admin-downloader-settings/SPEC.md`
+- `docs/mockups/admin-downloader-external-clients/SPEC.md`
+
+Downloader is one Admin destination with secondary navigation:
+- Übersicht
+- Queue
+- Server
+- Verarbeitung
+- Geschwindigkeit & Zeitplan
+- Einstellungen
+- Externe Clients
+
+The Downloader area owns native Usenet transport/download mechanics, technical queue/history, server health, verify/repair/extract behavior, bandwidth/concurrency/scheduling and optional external-client adapters.
+
+It does **not** duplicate:
+- Storage mounts/workspaces;
+- Wanted or Manual Search;
+- AcquisitionProfile scoring;
+- Indexers;
+- post-download manual assignment;
+- global Activity/History;
+- host-wide system telemetry.
+
+Overview may show downloader-specific throughput, workspace pressure and bottlenecks. Queue owns deep per-job diagnostics. Server owns NNTP configuration/health. Processing owns Verify/Repair/Extract/Cleanup. Speed & Schedule owns bandwidth, concurrency and timed actions. Settings owns general retry/duplicate/retention/cache behavior. External Clients is compatibility-only; native Usenet remains the normal/default path.
+
 ## 24. Provider settings
 
 All provider types use a common configuration pattern:
@@ -635,9 +669,10 @@ Approve at minimum:
 16. Wanted/Missing + Manual Search
 17. Activity / To-Do + Download Assignment + Library Reconciliation wizard
 18. Storage/path browser
-19. Providers/settings
-20. AI admin
-21. Users/permissions
+19. Native Downloader — Overview/Queue/Server/Processing/Speed/Settings/External Clients
+20. Providers/settings
+21. AI admin
+22. Users/permissions
 
 Mockups are binding UX references. Agents must not redesign them during implementation without updating/approving the spec.
 
