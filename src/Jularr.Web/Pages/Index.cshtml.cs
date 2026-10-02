@@ -199,7 +199,7 @@ public sealed class IndexModel(
                     metadata == null ? null : metadata.CoverImageUrl))
                 .Take(10)
                 .ToListAsync(cancellationToken)
-            : [];
+            : new List<HomeEpisode>();
 
         // Vocabulary coverage is only computed when the resolved Anime scope
         // shows content metrics; otherwise Home never touches learning tables.
