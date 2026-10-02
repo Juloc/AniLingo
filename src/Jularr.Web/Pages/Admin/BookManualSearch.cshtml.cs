@@ -152,7 +152,7 @@ public sealed class BookManualSearchModel(
                 "Book manual grab failed for request {RequestId}.",
                 id);
             TempData["BookManualSearchError"] =
-                exception.Message;
+                Ui["books.index.searchUnavailable"];
             return RedirectToPage(new
             {
                 id,
