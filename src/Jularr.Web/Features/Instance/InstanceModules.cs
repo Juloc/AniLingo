@@ -1,0 +1,247 @@
+using System.Text.Json;
+
+namespace Jularr.Web.Features.Instance;
+
+/// <summary>
+/// Server-wide feature switches. These are stronger than profile settings and permissions:
+/// a disabled module does not expose UI/routes and must not start new background work.
+/// Existing data is retained so re-enabling a module restores its previous state.
+/// </summary>
+public enum InstanceModule
+{
+    Anime = 1,
+    Movie = 2,
+    Tv = 3,
+    Manga = 4,
+    Novel = 5,
+    Book = 6,
+    Audiobook = 7,
+    Learning = 8,
+    Acquisition = 9,
+    Tracking = 10
+}
+
+public sealed record InstanceModuleSettings(
+    IReadOnlyDictionary<InstanceModule, bool> Modules)
+{
+    public static InstanceModuleSettings Default { get; } = new(
+        Enum.GetValues<InstanceModule>()
+            .ToDictionary(module => module, _ => true));
+
+    public bool IsEnabled(InstanceModule module) =>
+        !Modules.TryGetValue(module, out var enabled) || enabled;
+
+    public InstanceModuleSettings With(InstanceModule module, bool enabled)
+    {
+        var modules = Modules.ToDictionary(pair => pair.Key, pair => pair.Value);
+        modules[module] = enabled;
+        return new InstanceModuleSettings(modules);
+    }
+}
+
+public interface IInstanceModuleService
+{
+    Task<InstanceModuleSettings> GetAsync(CancellationToken cancellationToken = default);
+
+    Task<bool> IsEnabledAsync(
+        InstanceModule module,
+        CancellationToken cancellationToken = default);
+
+    Task<InstanceModuleSettings> SetAsync(
+        InstanceModule module,
+        bool enabled,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Canonical durable store for instance-level module switches.
+/// Missing files and newly introduced modules default to enabled so upgrades preserve behavior.
+/// </summary>
+public sealed class InstanceModuleStore : IInstanceModuleService
+{
+    public const string FileName = "instance-modules.json";
+
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly string path;
+    private InstanceModuleSettings? cached;
+
+    public InstanceModuleStore(string dataRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
+        path = Path.Combine(dataRoot, "system", FileName);
+    }
+
+    public async Task<InstanceModuleSettings> GetAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            cached ??= await LoadUnlockedAsync(cancellationToken);
+            return cached;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<bool> IsEnabledAsync(
+        InstanceModule module,
+        CancellationToken cancellationToken = default) =>
+        (await GetAsync(cancellationToken)).IsEnabled(module);
+
+    public async Task<InstanceModuleSettings> SetAsync(
+        InstanceModule module,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var current = cached ??= await LoadUnlockedAsync(cancellationToken);
+            var updated = current.With(module, enabled);
+            await SaveUnlockedAsync(updated, cancellationToken);
+            cached = updated;
+            return updated;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<InstanceModuleSettings> LoadUnlockedAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+        {
+            return InstanceModuleSettings.Default;
+        }
+
+        PersistedSettings? persisted;
+        try
+        {
+            var json = await File.ReadAllTextAsync(path, cancellationToken);
+            persisted = JsonSerializer.Deserialize<PersistedSettings>(json, JsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                $"Instance module settings '{path}' are invalid JSON.",
+                exception);
+        }
+
+        var modules = InstanceModuleSettings.Default.Modules
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        foreach (var (name, enabled) in persisted?.Modules ?? [])
+        {
+            if (Enum.TryParse<InstanceModule>(name, ignoreCase: true, out var module))
+            {
+                modules[module] = enabled;
+            }
+        }
+
+        return new InstanceModuleSettings(modules);
+    }
+
+    private async Task SaveUnlockedAsync(
+        InstanceModuleSettings settings,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        var persisted = new PersistedSettings(
+            settings.Modules.ToDictionary(
+                pair => pair.Key.ToString(),
+                pair => pair.Value,
+                StringComparer.Ordinal));
+
+        var temporary = $"{path}.tmp-{Guid.NewGuid():N}";
+        try
+        {
+            await File.WriteAllTextAsync(
+                temporary,
+                JsonSerializer.Serialize(persisted, JsonOptions),
+                cancellationToken);
+            SetPrivateFileMode(temporary);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            TryDelete(temporary);
+        }
+    }
+
+    private static void SetPrivateFileMode(string filePath)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(
+                filePath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    private static void TryDelete(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private sealed record PersistedSettings(Dictionary<string, bool> Modules);
+}
+
+/// <summary>
+/// Runtime route gates implemented so far. Add a module here only after its whole vertical
+/// (navigation, routes, services and background work) has adopted the same instance switch.
+/// </summary>
+public static class InstanceModuleRoutes
+{
+    private static readonly IReadOnlyDictionary<InstanceModule, string[]> Roots =
+        new Dictionary<InstanceModule, string[]>
+        {
+            [InstanceModule.Learning] =
+            [
+                "/Learn",
+                "/Kana",
+                "/Statistics",
+                "/Settings/Learning",
+                "/Settings/LearningCourses",
+                "/Settings/LearningScope"
+            ]
+        };
+
+    public static bool TryResolve(PathString path, out InstanceModule module)
+    {
+        foreach (var (candidate, roots) in Roots)
+        {
+            if (roots.Any(root =>
+                    path.StartsWithSegments(
+                        new PathString(root),
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                module = candidate;
+                return true;
+            }
+        }
+
+        module = default;
+        return false;
+    }
+}
