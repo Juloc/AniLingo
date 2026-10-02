@@ -526,18 +526,20 @@ Admin can invoke appropriate server AI tools from Admin workflows. Normal users 
 
 ## 26. Users & permissions
 
-User list -> user detail.
+Binding specification:
+- `docs/mockups/admin-users-permissions/SPEC.md`
 
-User detail:
-- roles/groups
-- capabilities
-- media/request permissions
-- learning permissions
-- AI policy
-- profile restrictions
-- active devices/sessions where appropriate
+Users & Permissions is capability-based and covers:
+- user overview/detail;
+- groups/roles;
+- effective capability explanation;
+- permission comparison matrix;
+- media/request/learning/AI policy;
+- devices/sessions.
 
-UI is capability-based; avoid scattering hard-coded `IsAdmin` assumptions through pages.
+Roles/groups are reusable policy collections, not hard-coded product branches. Navigation visibility derives from the same effective capability policy that the server enforces.
+
+Explicit user/group policy uses Allow / Deny / Inherit semantics where applicable. Effective results must be explainable. AI access integrates with Accounts and Admin AI policy rather than creating a separate authorization system.
 
 ## 27. Admin Requests, Activity and History
 
