@@ -284,6 +284,12 @@
             if (item.listState) copy.append(element("small", "books-add-list-state", item.listState));
             if (item.summary) copy.append(element("p", "books-add-summary", item.summary));
             if (item.freeEdition) copy.append(element("small", "books-add-free", text("textFree")));
+            const externalAvailability = [];
+            if (item.availability?.opds) externalAvailability.push("OPDS");
+            if (item.availability?.usenet) externalAvailability.push("Usenet");
+            if (externalAvailability.length > 0) {
+                copy.append(element("small", "books-add-free", externalAvailability.join(" · ")));
+            }
             if (item.editions?.length > 1) copy.append(editionPicker(item, editionGroup++));
             const slot = element("div", "books-add-action");
             rows.set(item.id, { item, slot });
