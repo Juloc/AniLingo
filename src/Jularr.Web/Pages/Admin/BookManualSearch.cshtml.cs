@@ -52,6 +52,7 @@ public sealed class BookManualSearchModel(
         string? sort,
         string? indexer,
         string? release,
+        bool refresh,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(
@@ -78,7 +79,8 @@ public sealed class BookManualSearchModel(
 
             Result = await manualSearch.SearchAsync(
                 id,
-                cancellationToken);
+                cancellationToken,
+                refresh);
             Indexers = Result.Search.Ranked
                 .Select(candidate => candidate.Release.Indexer)
                 .OfType<string>()
