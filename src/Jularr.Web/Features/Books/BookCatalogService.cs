@@ -144,32 +144,27 @@ public sealed partial class BookCatalogService(
                 normalizedQuery,
                 token),
             cancellationToken);
+        var gutenbergTask = CaptureCatalogAsync(
+            token => SearchGutenbergAsync(normalizedQuery, token),
+            cancellationToken,
+            fallbackToEmpty: true);
 
         await Task.WhenAll(
             openLibraryTask,
             googleTask,
-            wikisourceTask);
+            wikisourceTask,
+            gutenbergTask);
 
-        // A provider that failed or timed out contributes nothing; the others still answer.
-        var works = BookWorkSearch.Rank(
-            normalizedQuery,
-            wikisourceTask.Result,
-            openLibraryTask.Result,
-            googleTask.Result);
-
-        if (works.Count > 0)
-        {
-            return works
-                .Take(SearchLimit)
-                .ToArray();
-        }
-
+        // Every integrated catalog contributes to the same canonical work merge. A provider that
+        // failed or timed out contributes nothing; successful sources still answer independently.
         return BookWorkSearch.Rank(
-            normalizedQuery,
-            await CaptureCatalogAsync(
-                token => SearchGutenbergAsync(normalizedQuery, token),
-                cancellationToken,
-                fallbackToEmpty: true));
+                normalizedQuery,
+                wikisourceTask.Result,
+                openLibraryTask.Result,
+                googleTask.Result,
+                gutenbergTask.Result)
+            .Take(SearchLimit)
+            .ToArray();
     }
 
     /// <summary>
