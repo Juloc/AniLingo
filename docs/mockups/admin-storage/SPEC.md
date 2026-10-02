@@ -1,8 +1,10 @@
 # Admin Storage + Safe Path Browser — V1
 
-Status: planning baseline updated for Jularr's native downloader.
+Status: approved visual/interaction direction for Desktop; current mockup is the binding layout reference once uploaded to this folder.
 
 Global UX rules: `docs/UX.md`.
+
+If the visual reference and this specification conflict, this specification wins.
 
 ## Purpose
 
@@ -147,6 +149,166 @@ Recommended role table columns:
 - Status
 - Actions
 
+## Approved Desktop composition
+
+The approved Desktop layout is:
+
+1. left column: physical Mount list
+2. right top: selected Mount identity, health and capacity
+3. right middle: single table `Pfade auf diesem Mount`
+4. add/edit path opens a focused multi-step dialog
+5. safe Path Browser is embedded in that dialog
+
+### Mount list
+
+Each Mount row shows:
+- mount point
+- device/share + filesystem/protocol
+- online/offline state
+- one physical usage bar
+- used / total capacity
+- compact actions
+
+Selecting a Mount updates the right side.
+
+Do not list Anime, Movies, Downloads, etc. as separate physical storage devices when they share the same Mount.
+
+### Selected Mount header
+
+Show:
+- mount point
+- device/share
+- filesystem/protocol
+- online/offline/read-only state
+- total
+- used
+- free
+- optional capacity composition bar
+
+Capacity composition may distinguish:
+- LibraryRoots
+- Native Download Workspace
+- Generic Downloads / other managed roles
+- unclassified/other used space
+- free space
+
+These segments are informative only; filesystem free space remains authoritative.
+
+### Paths on this Mount table
+
+Use one table for every logical role/path on the selected Mount.
+
+Default columns:
+- Name
+- Role
+- Path
+- Size where known/cached
+- Last Scan / Last Check
+- Status
+- Actions
+
+Roles are shown as compact labels, including:
+- Library Root
+- Download Workspace
+- Generic Downloads
+- Other managed role
+
+LibraryRoot media/content types may be visible as secondary text or optional column.
+
+Typical actions:
+- scan/reconcile for LibraryRoot
+- edit
+- test
+- more
+
+## Add Path wizard
+
+`Pfad hinzufügen` opens a three-step dialog.
+
+### Step 1 — Rolle
+
+Choose exactly one primary path role:
+
+- **Library Root**
+  - final destination for specialized managed libraries
+- **Download Workspace**
+  - temporary workspace for Jularr's native downloader
+- **Generic Downloads**
+  - final destination for generic/unclassified downloads
+- **Other**
+  - explicit managed role such as backup/cache/transcode where supported
+
+The role determines which settings appear in Step 3.
+
+Do not ask the user to configure unrelated options.
+
+### Step 2 — Pfad
+
+First choose the physical Mount.
+
+Then browse only within that Mount using the safe Path Browser.
+
+The browser shows:
+- breadcrumb/current path
+- folders
+- read/write capability where useful
+- existing Jularr-role conflicts
+- selected path
+
+The user selects a directory, not an arbitrary unrestricted filesystem path.
+
+### Step 3 — Einstellungen
+
+Role-specific configuration.
+
+#### Library Root
+
+Show:
+- display name
+- supported media/content types
+- enabled state
+- automatic scan/reconciliation option
+- write/import requirement
+- naming/organization policy reference where applicable
+- optional default-for-type/routing role where supported
+
+A single LibraryRoot may support multiple content types.
+
+#### Download Workspace
+
+Show:
+- display name
+- minimum free-space reserve
+- optional quota
+- cleanup/retention for completed temporary data
+- optional separate repair/extract workspace
+- test write/delete
+
+Do not expose internal incomplete/complete/repair folders as separate mandatory user configuration.
+
+#### Generic Downloads
+
+Show:
+- display name
+- final organization/naming policy
+- optional category subfolders
+- scan/index behavior
+- write requirement
+
+#### Other
+
+Only show settings that belong to the selected managed role.
+
+### Save validation
+
+Before save:
+- path must remain inside the selected Mount
+- required write access must be available
+- path-role conflicts are shown
+- dangerous overlap is blocked or explicitly explained
+- duplicate role/path configuration is rejected where invalid
+- workspace capacity/reserve constraints are validated
+
 ## Mount data
 
 Show:
@@ -232,7 +394,7 @@ Mount:
 - inspect health
 
 Role/root:
-- add
+- add through the three-step role/path/settings wizard
 - edit
 - disable
 - test read/write
@@ -299,10 +461,26 @@ Required:
 - The native downloader must not require SABnzbd/NZBGet for normal operation.
 - External download clients are optional adapters only.
 
+## Loading / Empty / Error / Partial interaction states
+
+In addition to the general states below, the add/edit workflow must handle:
+- no Mount selected
+- Mount contains no selectable directories
+- selected path already has a conflicting role
+- selected path is read-only
+- path disappeared during configuration
+- permission changed during save
+- Mount went offline during browsing
+- LibraryRoot content types not selected
+- Download Workspace reserve exceeds available capacity
+- successful save with immediate table update
+
 ## Must not implement
 
 - No separate physical-capacity card for every LibraryRoot on the same mount.
 - No assumption that each content type requires its own filesystem.
+- No separate capacity accounting per LibraryRoot when roots share a Mount.
+- No path-role configuration split across unrelated pages when it belongs to Storage.
 - No use of a LibraryRoot as the native downloader's incomplete/staging workspace implicitly.
 - No mixing temporary download workspace with final Generic Downloads.
 - No NNTP/server/bandwidth settings on the Storage page.
