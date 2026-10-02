@@ -1,200 +1,214 @@
-# Add / Request Flow — Clean Design
+# Request Flow — Clean Design
 
-Status: **binding planning specification; visual mockup required before implementation**.
+Status: **approved UX direction; binding planning specification**.
 
-This is the shared consumer **Request** flow from Discover, Search, Calendar, Watchlist and media-detail surfaces.
+The approved visual direction is the one-page Request dialog/sheet with a single Scope selector, derived expandable Included content, language/edition preferences and a separate Success state.
 
-It must stay media-independent and must not expose indexers, download clients, root paths or release tables to normal users.
+The user will upload the approved visual reference to this mockup folder. The text specification remains authoritative if image and text differ.
 
-## Purpose
+## 1. Purpose
 
-One compact flow handles:
+There is only one consumer acquisition action: **Request**.
 
-- a media item the user has already selected on a calling surface;
-- canonical Works already known but not locally available;
-- normal-user requests with optional approval;
-- privileged requests that may be auto-approved immediately;
-- meaningful language/edition choice;
-- monitoring scope for structured media;
-- confirmation and understandable status.
+There is no separate Add flow.
 
-Simple requests remain simple. A Movie must not use a long wizard just because Series can have granular scope.
+A Request may:
+- wait for Admin approval; or
+- be auto-approved immediately by instance policy/capability.
 
-## Entry points and identity
+Both outcomes use the same Request UI.
 
-The same flow opens from Discover, Search, Detail, Calendar, Watchlist and Related Works.
+The flow starts from media the user has already selected on Discover, Search, Calendar, Watchlist, Related Works or a media-detail page.
 
-If a canonical Work already exists, skip identity resolution.
+The dialog never contains media search/title selection.
 
-The Request dialog never performs media search or title selection. The calling surface must hand it a resolved canonical Work/target. If a Discover/Search provider result is not yet safely resolved, that resolution happens before opening Request. Ambiguous identity must not open the Request dialog.
+## 2. Identity contract
 
-If the desired target is already locally available, show Play/Read/Listen instead of pretending it needs acquisition.
+The calling surface must provide a safely resolved canonical Work/target before Request opens.
 
-## User modes
+If a provider result is not yet resolved, canonical identity resolution happens before the dialog opens.
 
-### Normal user
-Primary action is **Request**.
+Ambiguous provider identity must not create a Request or a new Work automatically.
 
-Depending on instance policy:
-- request waits for Admin approval; or
-- request is auto-approved into canonical Wanted state.
+The Request UI never exposes provider IDs.
 
-Hide acquisition profiles, indexers, scores, download clients and filesystem paths.
+If the requested content is already available, the normal action is Play / Read / Listen rather than Request, unless the user is requesting a materially different unavailable language/edition.
 
-### Owner / Media manager
-The primary action is still **Request**.
+## 3. Exactly two UI states
 
-Their request may be auto-approved immediately according to instance policy/capability and then create/update canonical Wanted state without a moderation stop.
+The normal flow has exactly two states:
 
-An optional compact Advanced disclosure may expose only allowed acquisition-profile overrides. Manual release search remains Admin-only.
+1. **Request settings**
+2. **Request success**
 
-## Dialog model
+There is:
+- no search step;
+- no title-selection step;
+- no numbered stepper;
+- no Next/Back wizard;
+- no separate confirmation page before submit.
 
-Desktop:
-- centered medium-width modal;
-- compact media header;
-- adaptive content;
-- sticky footer.
+All relevant request settings are shown on one page.
 
-Mobile:
-- full-height sheet/page;
-- one column;
-- sticky bottom action.
+## 4. Request settings layout
 
-Tablet:
-- modal when wide, sheet when narrow.
+Order:
 
-TV:
-- simplified Request flow only; complex unit selection may hand off to Web/Mobile.
+1. compact MediaIdentityHeader
+2. Scope, only for structured media
+3. Included content derived from Scope
+4. Language & Edition, only when relevant
+5. privileged Advanced override, only when permitted
+6. footer with Cancel + Request
 
-There is no multi-step wizard. The normal flow has exactly two UI states:
+The page hides irrelevant groups.
 
-1. **Request settings** — all relevant scope/preferences on one page.
-2. **Success** — summary of what was requested and its approval state.
+A simple Movie request may therefore consist only of media identity, relevant language/edition choice and Request.
 
-Large granular unit selection may temporarily open one focused selector subview, but returning from it restores the same Request settings page.
-
-## Media header
+## 5. Media header
 
 Show:
 - small cover/poster;
 - canonical title;
-- year/author/secondary identity;
+- concise secondary identity such as year/author;
 - media type only when useful;
 - Close.
 
-Never show raw provider IDs.
+Optional metadata must stay compact. Do not reproduce the whole Detail page inside the dialog.
 
-## Scope selector
+## 6. Scope — one control only
 
-Scope is based on canonical structure.
-
-### Movie
-- whole Movie
+For structured media there is exactly **one primary Scope control**.
 
 ### Anime / TV
-- Entire series
-- Future episodes only
-- Selected seasons
-- Selected episodes
-- optional Include specials
+
+Values:
+- **All current + future**
+- **Future only**
+- **Custom**
+
+Behavior:
+
+#### All current + future
+- all currently known applicable seasons/episodes are included;
+- future episodes/releases are monitored automatically;
+- Included content shows the resulting selection as a summary.
+
+#### Future only
+- already released/current content is not requested;
+- future episodes/releases are monitored;
+- Included content shows the future selection/state.
+
+#### Custom
+- the user explicitly selects seasons/episodes and future monitoring.
+
+There must not be a second independent control that can contradict Scope.
 
 ### Manga
-- Entire series
-- Future releases only
-- Selected volumes
-- Selected chapters when canonical structure supports them
+
+Use the same model:
+- All current + future
+- Future only
+- Custom
+
+Included content is Volume -> Chapter where canonical structure supports it.
 
 ### Light Novel
-- Entire series
-- Future volumes only
-- Selected volumes
+
+Use:
+- All current + future
+- Future only
+- Custom
+
+Included content is Volumes.
+
+### Movie
+
+No Scope selector. The target is the Movie.
 
 ### Book
-- Work / desired edition
+
+No structural Scope selector by default. The target is the Work/desired Edition.
 
 ### Audiobook
-- Work / audiobook edition
 
-Do not expose provider cours/numbering as acquisition identity.
+No chapter-level acquisition Scope in the normal Request flow. The target is the Work/audiobook Edition.
 
-Large episode/chapter selection may open one focused selector subview and return a summary such as `12 episodes selected`.
+## 7. Included content tree
 
-Do not request chapters already covered by an equivalent selected volume/package unless acquisition rules explicitly distinguish them.
+Included content is **derived from Scope**, not a second competing choice system.
 
-## Preferences
+Collapsed rows show useful summaries, for example:
+- `Season 1 · 28/28`
+- `Season 2 · future`
+- `Specials · 0/4`
+- `Volume 4 · 12/12 chapters`
 
-Only show relevant choices.
+Rows can be expanded.
+
+For Anime/TV:
+- Season
+  - Episode
+
+For Manga:
+- Volume
+  - Chapter
+
+For Light Novel:
+- Volume
+
+### Editing behavior
+
+When Scope is `All current + future` or `Future only`, Included content initially reflects that automatic selection.
+
+If the user changes an individual season/episode/volume/chapter selection, Scope automatically becomes **Custom**.
+
+Parent selection rules:
+- selecting a parent selects all eligible children;
+- deselecting a parent deselects its children;
+- partial child selection gives the parent an indeterminate state.
+
+In Custom mode, future releases appear as part of the same Included content model where meaningful, for example:
+- `Future seasons / episodes`
+- `Future volumes`
+
+This replaces a separate duplicate Monitoring toggle.
+
+Large trees may lazy-load/virtualize children, but remain the same interaction model.
+
+## 8. Language & Edition
+
+Only show choices relevant to the requested media.
 
 ### Language
 - profile default preselected;
-- human-readable language name;
-- optional fallback where supported.
+- human-readable language names;
+- optional fallback/alternative language only where supported.
 
-### Edition / presentation
-Written media and audiobooks may expose official/known edition or meaningful format/presentation choice.
+### Edition
+For written media/audiobooks:
+- known/official edition where meaningful;
+- language-specific edition;
+- relevant presentation/format where the product genuinely distinguishes it.
 
-Movie/video edition or cut appears only when it is a real user-facing distinction.
+For video:
+- edition/cut only when it is a real user-facing distinction.
 
-Never expose technical release candidates here.
+Do not expose release groups, indexer candidates, technical versions or raw provider data.
 
-### Acquisition monitoring
-Where meaningful:
-- monitor future releases within the selected scope;
-- search now when approved/permitted;
-- monitor only / wait for future availability.
+## 9. Privileged Advanced
 
-This is **acquisition monitoring only**. It is not the user's personal Watching/Reading/Listening status, Watchlist/Merkliste state, playback progress or external-provider list status.
+Normal users never need acquisition-profile knowledge.
 
-### Acquisition profile
-Normal user: hidden.
+For a permitted owner/media-manager, a collapsed Advanced section may expose:
+- `Use default`;
+- allowed acquisition-profile override.
 
-Privileged user: optional `Use default` plus allowed override under Advanced.
+This is optional and must not be required to submit Request.
 
-The flow must always work using defaults.
+Manual Search remains an Admin workflow.
 
-## Request data contract
-
-A user request stores intent around canonical media:
-
-- requester/profile;
-- canonical Work;
-- optional canonical structural target;
-- requested language;
-- requested edition intent;
-- monitoring scope;
-- timestamps;
-- moderation state.
-
-A user request is distinct from technical `WantedItem`.
-
-```text
-User Request
-→ approval / auto-approval
-→ Wanted
-→ Search
-→ Download
-→ Import
-→ Available
-```
-
-Owner direct Add may create/update Wanted without moderation.
-
-Never create duplicate canonical Works.
-
-## Request settings page
-
-All normal request choices are visible on one page beneath the compact media header.
-
-Recommended order:
-1. Scope, only when the media has meaningful selectable structure.
-2. Included content tree derived from Scope; collapsed by default where appropriate.
-3. Language / edition, only when relevant.
-4. Acquisition monitoring for future releases, only when relevant.
-5. Optional privileged Advanced override, collapsed by default.
-6. Compact request summary near the footer when useful.
-
-Do not include personal media-list controls such as `Watching`, `Planning`, `Completed`, `Add to Watchlist`, `Add to list` or `Start watching automatically`.
+## 10. Primary action
 
 Primary button:
 - **Request**
@@ -202,190 +216,265 @@ Primary button:
 Secondary:
 - Cancel
 
-There is no Next/Back wizard navigation.
+There is never:
+- Add;
+- Add & Monitor;
+- Submit;
+- Next.
 
-The page must remain short by hiding irrelevant groups. A Movie with no edition/language decision may therefore show only a short summary and Request button.
+Auto-approval is backend/policy behavior after pressing Request, not a different button.
 
-## Success state
+## 11. Success state
 
-### Submitted
+After a successful Request, replace the settings content with a concise Success state.
+
 Show:
-- Requested;
-- Waiting for approval when applicable;
-- View request status;
-- Done.
+- success indicator;
+- `Request created` / equivalent concise heading;
+- media identity;
+- exact scope requested;
+- selected language/edition;
+- approval/result state.
 
-### Auto-approved request
-Show only true states:
-- Request approved;
-- Monitoring enabled, if requested;
-- Search started, if actually started;
-- Open details.
+Possible result states:
+- **Waiting for approval**
+- **Approved / auto-approved**
+- **Searching**, only if search actually started
+- **Monitoring**, only if future acquisition is actually active
+
+Actions:
+- Done
+- View media/details
+- View request status when approval/status tracking is relevant
+
+Do not show technical acquisition logs.
+
+## 12. Already-existing states
 
 ### Already requested
-Do not create another request. Show existing state.
+Do not create a duplicate Request. Show the existing Request state.
 
-### Already monitored
-Allow change only with capability.
+### Already monitored / acquired
+Do not silently duplicate Wanted/acquisition state.
 
 ### Already available
-Prefer Play/Read/Listen. A Request action is unnecessary unless the user is requesting a materially different language/edition that is not available.
+Prefer Play / Read / Listen.
 
-## Personal media state vs Request state
+A new Request is only meaningful for a materially different unavailable language/edition/scope.
 
-Request/acquisition state and personal media state are separate concerns.
+## 13. Request vs personal media state
 
-- **Request/Acquisition state** answers whether Jularr should obtain/monitor media.
-- **Personal Jularr media state** answers whether the profile has saved, started, completed, rated or progressed through media.
-- **External sync state** (for example AniList) is an adapter over Jularr-owned personal state when the user enables synchronization under Settings > Connections.
+These are separate domains.
 
-The Request dialog never edits AniList directly and never asks for a Watching/Reading status.
+**Request/Acquisition state**
+- what Jularr should obtain;
+- which scope/language/edition;
+- whether approval/search/monitoring is active.
 
-External-provider sync must not become canonical ownership of Jularr user state.
+**Personal Jularr media state**
+- Watchlist/Merkliste;
+- Watching / Reading / Listening;
+- progress;
+- completed state;
+- rating.
 
-## Consumer status projection
+**External provider sync**
+- optional adapter under Settings -> Connections;
+- for example AniList/MAL synchronization.
 
-Calling surfaces may show:
-- Request
-- Requested
-- Waiting approval
-- Searching
-- Downloading
-- Importing
-- Available
-- Failed / Needs attention
+The Request dialog never contains:
+- Watching;
+- Planning;
+- Completed;
+- Add to list;
+- Watchlist/Merkliste;
+- Start watching automatically;
+- AniList/MAL sync controls.
 
-These project canonical Request/Wanted/Library state. They are not a second state machine.
+AniList/MAL never owns the canonical Request or Jularr personal-state model.
 
-## Multi-user behavior
+## 14. Data contract
+
+A Request stores user intent around canonical media:
+
+- requester/profile;
+- canonical Work;
+- optional canonical structural target(s);
+- Scope;
+- included units when Custom;
+- requested language;
+- edition intent;
+- future-acquisition intent derived from Scope/Custom selection;
+- timestamps;
+- moderation state.
+
+Request is distinct from technical `WantedItem`.
+
+```text
+Request
+→ approval / auto-approval
+→ canonical Wanted
+→ Search
+→ Download
+→ Import
+→ Available
+```
+
+An auto-approved privileged Request can create/update Wanted immediately, but it is still a Request from the consumer UI.
+
+Never create duplicate canonical Works.
+
+## 15. Multi-user deduplication
 
 Requests remain attributable per profile.
 
-Compatible approved requests converge on shared canonical Wanted state.
+Compatible approved Requests converge on shared canonical Wanted/acquisition state.
 
-Do not acquire the same target twice solely because several profiles requested it.
+Do not download the same target twice only because multiple profiles requested it.
 
-Materially different language/edition needs may produce distinct acquisition targets.
+Materially different language/edition requirements may create distinct acquisition targets.
 
-Canceling one profile's request must not cancel shared acquisition still required by another profile or monitoring rule.
+Canceling one user's Request must not cancel shared acquisition still required by another Request or monitoring rule.
 
-## Permissions
+## 16. Permissions
 
-Capabilities control independently:
-- Request;
-- auto-approved Request behavior where capability/policy permits;
-- scope override;
-- language/edition override;
-- acquisition-profile override;
-- cancel own request;
-- manage others' requests.
+Capabilities control:
+- create Request;
+- auto-approval;
+- edit Scope;
+- override language/edition;
+- use privileged acquisition-profile override;
+- cancel own pending Request;
+- manage other users' Requests in Admin.
 
 Unavailable privileged controls disappear.
 
 Server authorization is authoritative.
 
-## Desktop layout
+## 17. Desktop
 
-One medium modal only:
-- MediaIdentityHeader;
-- all relevant Request settings in one scrollable content area;
-- one Scope control followed by the derived expandable Included content tree;
-- compact Language/Edition/Monitoring groups;
-- sticky Cancel + Request footer;
-- no steps, stepper, wizard rail, Next or Back.
+Use one medium centered modal.
 
-The Included content tree is a preview of the Scope result and can be expanded in place. Detailed checkboxes become editable in Custom mode. Editing a child while using All/Future automatically switches to Custom.
-
-## Mobile layout
-
-One full-height Request sheet/page:
+Structure:
 - compact media header;
-- all relevant settings in one vertical page;
-- touch-sized rows;
-- focused selector subview only for long season/episode/chapter lists;
-- sticky Cancel/Request actions;
-- Close/contextual Back only for leaving the sheet or returning from a temporary selector.
+- Scope;
+- expandable Included content;
+- Language & Edition;
+- optional Advanced;
+- sticky Cancel + Request footer.
 
-No numbered steps and no Next buttons.
+No wizard rail and no separate page inside the modal.
 
-## Loading and errors
+## 18. Mobile
+
+Use one full-height sheet/page.
+
+Structure mirrors Desktop:
+- compact media header;
+- Scope;
+- expandable Included content;
+- Language & Edition;
+- optional Advanced;
+- sticky Cancel + Request footer.
+
+No numbered steps and no Next button.
+
+Large child lists can expand inline or use a focused temporary selector if required for performance/usability. Returning restores the same Request page and selection.
+
+## 19. Tablet / TV
+
+Tablet:
+- wide: modal;
+- narrow: sheet;
+- same data/interaction contract.
+
+TV:
+- simplified Request;
+- simple Scope/language choices only;
+- complex granular selection may hand off to Web/Mobile.
+
+## 20. Loading and errors
 
 Support locally:
-- resolving identity;
-- loading editions/languages;
-- provider unavailable;
-- duplicate request;
+- loading Included content;
+- loading languages/editions;
+- provider temporarily unavailable;
+- duplicate Request discovered;
 - permission changed;
 - target changed after metadata refresh;
 - submit failure.
 
-Render known media identity immediately and preserve valid choices on retry.
+Known media identity should render immediately.
 
-## Navigation
+Preserve valid selections on retry.
+
+## 21. Navigation
 
 Cancel/Close returns to the exact source context.
 
 Preserve where practical:
-- Discover/Search filters;
+- Discover/Search query and filters;
 - Calendar period/view;
-- detail-page scroll/state.
+- Detail scroll/selection state.
 
-Success stays in context unless the user explicitly opens Details or Request status.
+Success stays in context unless the user explicitly chooses View media or View request status.
 
-## Accessibility
+## 22. Accessibility
 
 - initial focus on dialog heading;
-- modal focus trap on Desktop;
-- keyboard-operable scope choices;
-- textual selected state;
-- semantic labels;
+- focus trap for Desktop modal;
+- keyboard-operable Scope/tree controls;
+- indeterminate parent states exposed semantically;
+- state not conveyed by color only;
 - touch-sized Mobile targets;
-- screen-reader confirmation contains title, scope and action.
+- screen reader Success summary includes title, Scope and approval state.
 
-## Shared components
+## 23. Shared components
 
-Use one implementation of:
-- MediaIdentityHeader
-- ScopeSelector
-- LanguageSelector
-- EditionSelector
-- MonitoringChoice
-- RequestStatus
-- RequestSummary
-- Dialog/Sheet shell
+Use shared:
+- `MediaIdentityHeader`
+- `ScopeSelector`
+- `IncludedContentTree`
+- `LanguageSelector`
+- `EditionSelector`
+- `RequestStatus`
+- `RequestSummary`
+- `Dialog/Sheet`
 
-Do not create separate Add and Request dialogs and do not create per-media Request dialog implementations.
+Do not create separate Anime/Movie/Manga Request dialogs.
 
-## Must not implement
+## 24. Must not implement
 
-- no provider-native permanent identity;
-- no separate Add flow or Add state machine;
-- no per-media request engine;
-- no release/indexer table;
-- no downloader selector for normal users;
+- no separate Add flow;
+- no Search/title selection inside Request;
+- no wizard/stepper;
+- no duplicate Scope + independent season selector semantics;
+- no separate Monitoring toggle that contradicts Scope;
+- no personal Watching/Reading/Watchlist controls;
+- no AniList/MAL controls;
+- no per-media Request engine;
+- no indexer/release table;
+- no downloader selector;
 - no filesystem/root controls;
-- no manual-import UI;
-- no release-score diagnostics;
-- no duplicate equivalent request;
-- no duplicate acquisition solely from multiple requesters;
-- no ambiguous auto-created Work;
-- no forced long wizard for simple media;
-- no technical Operations log;
-- no Watchlist/Merkliste or Watching/Reading/Listening status controls;
-- no AniList/MAL sync controls;
-- no `Start watching automatically` or equivalent personal-consumption action.
+- no release scoring;
+- no manual import;
+- no ambiguous identity creation;
+- no duplicate equivalent Request/acquisition;
+- no technical Operations log.
 
-## Mockup requirement
+## 25. Approved visual reference
 
-Before implementation, review:
-1. Desktop Light — one-page Anime/Series Request settings modal.
-2. Mobile Light — same one-page Request sheet.
-3. Simple Movie Request proving irrelevant groups disappear.
-4. Success state summarizing exactly what was requested and whether it is Waiting approval or Auto-approved.
+The approved visual direction is:
 
-Text specification wins over mockup imagery on conflict.
+- Desktop one-page Anime/Series Request modal;
+- one Scope selector at the top;
+- Included content directly below and expandable;
+- changing individual content makes Scope Custom;
+- Language & Edition below;
+- Request as the sole primary action;
+- separate compact Success state;
+- equivalent Mobile sheet behavior.
 
+The owner will upload the approved image into this folder. No redesign of this interaction is allowed during implementation without updating this SPEC and receiving UX approval.
 
-## Explicit flow simplification
-
-The Request dialog always starts from an already selected medium. It never contains Search, Discover results or title selection. Normal request configuration is one page. Successful submission replaces that page with a concise success summary. This is the binding interaction model.
+Text specification wins over imagery on conflict.
