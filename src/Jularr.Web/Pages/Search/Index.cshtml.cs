@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.Search;
@@ -14,7 +15,11 @@ namespace Jularr.Web.Pages.Search;
 /// media types come from the app shell, so a hidden type is neither searched nor offered as a filter.
 /// Online providers are searched in Discover, which this page links to with the same query.
 /// </summary>
-public sealed class IndexModel(AppDbContext db, IAppShellService appShell, MediaSearchService search) : PageModel
+public sealed class IndexModel(
+    AppDbContext db,
+    IAppShellService appShell,
+    MediaSearchService search,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public const int PageSize = 20;
 
@@ -67,7 +72,15 @@ public sealed class IndexModel(AppDbContext db, IAppShellService appShell, Media
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         var access = await appShell.GetMediaAccessAsync(User, cancellationToken);
-        VisibleTypes = [.. MediaSearchTypes.All.Where(candidate => access.IsVisible(MediaSearchTypes.ToWorkMediaType(candidate)))];
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+        VisibleTypes =
+        [
+            .. MediaSearchTypes.All.Where(candidate =>
+                access.IsVisible(MediaSearchTypes.ToWorkMediaType(candidate))
+                && instance.IsEnabled(MediaSearchTypes.ToInstanceModule(candidate)))
+        ];
 
         Query = (q ?? string.Empty).Trim();
         SelectedTypes = (type ?? [])
