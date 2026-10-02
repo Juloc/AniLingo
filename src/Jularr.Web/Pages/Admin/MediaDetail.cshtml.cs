@@ -4,6 +4,7 @@ using System.Text.Json;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Operations;
@@ -27,7 +28,8 @@ public sealed class MediaDetailModel(
     AdminMediaDetailService details,
     AnimeMonitoringStore monitoring,
     CurrentAccountContext currentAccount,
-    ILogger<MediaDetailModel> logger) : PageModel
+    ILogger<MediaDetailModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public const string ReanalyzeOperationKind = "anime-repair-reanalyze-media";
 
@@ -113,6 +115,11 @@ public sealed class MediaDetailModel(
 
     public async Task<IActionResult> OnGetAsync(Guid id, string? view, string? open, string? ep, CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         NowUtc = DateTime.UtcNow;
         AniListView = AdminMediaDetailView.IsAniList(view);
@@ -149,6 +156,11 @@ public sealed class MediaDetailModel(
         string? view,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (await AnimeKeyAsync(id, cancellationToken) is not { } animeKey)
         {
             return NotFound();
@@ -170,6 +182,11 @@ public sealed class MediaDetailModel(
         string? open,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (await AnimeKeyAsync(id, cancellationToken) is not { } animeKey)
         {
             return NotFound();
@@ -196,6 +213,11 @@ public sealed class MediaDetailModel(
         [FromServices] OperationRunner operations,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var owned = await (
                 from media in db.MediaFiles.AsNoTracking()
@@ -238,6 +260,12 @@ public sealed class MediaDetailModel(
 
         return Redirect(Href(id, AdminMediaDetailView.IsAniList(view), open, ep));
     }
+
+    private async Task<bool> IsAnimeEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Anime,
+            cancellationToken);
 
     private Task<string?> AnimeKeyAsync(Guid id, CancellationToken cancellationToken) =>
         db.Anime.AsNoTracking().Where(item => item.Id == id).Select(item => item.Key).SingleOrDefaultAsync(cancellationToken);
