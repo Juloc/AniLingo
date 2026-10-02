@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Instance;
 
@@ -37,6 +38,21 @@ public sealed record InstanceModuleSettings(
         modules[module] = enabled;
         return new InstanceModuleSettings(modules);
     }
+}
+
+public static class InstanceModuleMedia
+{
+    public static InstanceModule For(WorkMediaType mediaType) =>
+        mediaType switch
+        {
+            WorkMediaType.Movie => InstanceModule.Movie,
+            WorkMediaType.Series => InstanceModule.Tv,
+            WorkMediaType.Anime => InstanceModule.Anime,
+            WorkMediaType.Book => InstanceModule.Book,
+            WorkMediaType.Manga => InstanceModule.Manga,
+            WorkMediaType.LightNovel => InstanceModule.Novel,
+            _ => throw new ArgumentOutOfRangeException(nameof(mediaType))
+        };
 }
 
 public interface IInstanceModuleService
