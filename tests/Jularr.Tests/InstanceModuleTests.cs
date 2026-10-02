@@ -85,6 +85,9 @@ public sealed class InstanceModuleTests
         CollectionAssert.Contains(
             InstanceModuleRoutes.Resolve(new PathString("/Admin/Requests")).ToArray(),
             InstanceModule.Acquisition);
+        CollectionAssert.AreEquivalent(
+            new[] { InstanceModule.Tracking },
+            InstanceModuleRoutes.Resolve(new PathString("/Settings/AniList")).ToArray());
 
         Assert.IsFalse(
             InstanceModuleRoutes.TryResolve(
@@ -128,6 +131,25 @@ public sealed class InstanceModuleTests
             settings.Groups!
                 .SelectMany(group => group.Items)
                 .Any(item => item.Id == "settings-learning"));
+    }
+
+    [TestMethod]
+    public void DisabledTrackingDisappearsFromSettingsNavigation()
+    {
+        var enabled = Enum.GetValues<InstanceModule>()
+            .Where(module => module != InstanceModule.Tracking)
+            .ToHashSet();
+
+        var settings = UiShellNavigation.BuildSection(
+            "settings",
+            can: _ => true,
+            enabledInstanceModules: enabled);
+
+        Assert.IsNotNull(settings);
+        Assert.IsFalse(
+            settings.Groups!
+                .SelectMany(group => group.Items)
+                .Any(item => item.Id == "settings-anilist"));
     }
 
     [TestMethod]
