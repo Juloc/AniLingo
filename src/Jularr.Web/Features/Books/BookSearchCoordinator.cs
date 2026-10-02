@@ -54,8 +54,9 @@ public sealed class BookSearchCoordinator(
 
         var normalizedQuery = query.Trim();
 
-        // These source families are independent. Start all three before awaiting any of them so a
-        // slow metadata provider never serializes OPDS or indexer discovery.
+        // Catalog and OPDS discovery are independent, so they run in parallel. Release search is
+        // planned only after those records have been deduplicated into canonical works; this keeps
+        // indexer load bounded and lets it reuse the normal Books author/title query rules.
         var catalogTask = CaptureAsync(
             "Book catalogs",
             () => books.SearchAsync(normalizedQuery, cancellationToken),
@@ -66,9 +67,8 @@ public sealed class BookSearchCoordinator(
             () => books.SearchOpdsAsync(null, normalizedQuery, cancellationToken),
             Array.Empty<BookOpdsCatalogItem>(),
             cancellationToken);
-        var usenetTask = CaptureUsenetPoolAsync(normalizedQuery, cancellationToken);
 
-        await Task.WhenAll(catalogTask, opdsTask, usenetTask);
+        await Task.WhenAll(catalogTask, opdsTask);
 
         var catalog = catalogTask.Result.Value;
         var opds = opdsTask.Result.Value;
@@ -83,7 +83,19 @@ public sealed class BookSearchCoordinator(
             .Take(ResultLimit)
             .ToArray();
 
-        var usenet = usenetTask.Result.Value;
+        var usenetQueries = works
+            .Take(4)
+            .SelectMany(work => BookUsenetSearch.Queries(work.Title, work.Author))
+            .Prepend(normalizedQuery)
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToArray();
+        var usenetResult = await CaptureUsenetPoolAsync(
+            usenetQueries,
+            cancellationToken);
+        var usenet = usenetResult.Value;
+
         var items = works.Select(work =>
         {
             var opdsAvailable = opds.Any(offer =>
@@ -115,7 +127,7 @@ public sealed class BookSearchCoordinator(
         var warnings = new List<BookSearchWarning>();
         AddWarning(warnings, catalogTask.Result.Warning);
         AddWarning(warnings, opdsTask.Result.Warning);
-        AddWarning(warnings, usenetTask.Result.Warning);
+        AddWarning(warnings, usenetResult.Warning);
         warnings.AddRange(usenet.Warnings.Select(warning =>
             new BookSearchWarning(
                 warning.IndexerName,
@@ -167,7 +179,7 @@ public sealed class BookSearchCoordinator(
             cancellationToken);
 
     private async Task<SourceResult<UsenetPool>> CaptureUsenetPoolAsync(
-        string query,
+        IReadOnlyList<string> queries,
         CancellationToken cancellationToken)
     {
         try
@@ -180,7 +192,7 @@ public sealed class BookSearchCoordinator(
             }
 
             var result = await indexers.SearchCategoriesAsync(
-                [query],
+                queries,
                 entry => entry.Settings.EffectiveBookCategories,
                 cancellationToken);
             var usedFallback = false;
@@ -188,7 +200,7 @@ public sealed class BookSearchCoordinator(
             if (result.Releases.Count == 0)
             {
                 var fallback = await indexers.SearchCategoriesAsync(
-                    [query],
+                    queries,
                     _ => [],
                     cancellationToken);
                 if (fallback.Releases.Count > 0)
@@ -224,8 +236,8 @@ public sealed class BookSearchCoordinator(
         {
             logger.LogWarning(
                 exception,
-                "Books Usenet availability search failed for {Query}",
-                query);
+                "Books Usenet availability search failed for {Queries}",
+                string.Join(" | ", queries));
             return new SourceResult<UsenetPool>(
                 new UsenetPool([], [], false),
                 new BookSearchWarning("Usenet", exception.Message));
