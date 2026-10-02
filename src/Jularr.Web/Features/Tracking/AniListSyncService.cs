@@ -106,8 +106,9 @@ public sealed class AniListSyncBackgroundService(
             var services = scope.ServiceProvider;
             var modules = services.GetService<IInstanceModuleService>();
             if (modules is not null
-                && (!await modules.IsEnabledAsync(InstanceModule.Anime, cancellationToken)
-                    || !await modules.IsEnabledAsync(InstanceModule.Tracking, cancellationToken)))
+                && !await modules.IsEnabledAsync(
+                    InstanceModule.Tracking,
+                    cancellationToken))
             {
                 return;
             }
