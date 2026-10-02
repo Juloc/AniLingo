@@ -143,7 +143,7 @@ public static class UiNavigationCatalog
         ]),
         new("nav.group.settingsConnections",
         [
-            new("settings-anilist", "settings.nav.anilist", "/Settings/AniList", "sync"),
+            new("settings-anilist", "settings.nav.anilist", "/Settings/AniList", "sync", Module: InstanceModule.Tracking),
             new("settings-offline", "settings.nav.offline", "/Settings/Offline", "download")
         ])
     ];
