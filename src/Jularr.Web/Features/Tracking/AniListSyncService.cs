@@ -20,12 +20,18 @@ public sealed class AniListSyncService(
     AniListSyncStateStore states,
     AniListRateLimitGate rateLimit,
     CurrentAccountContext currentAccount,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int ActivityLimit = 20;
 
     public async Task<AniListSyncOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
+        if (!await IsTrackingEnabledAsync(cancellationToken))
+        {
+            return new AniListSyncOverview(AniListSyncMode.Off, null, [], null);
+        }
+
         var account = await accounts.LoadAsync(currentAccount.ProfileId, cancellationToken);
         if (account is null)
         {
@@ -50,19 +56,30 @@ public sealed class AniListSyncService(
                 : rateLimit.BlockedUntil(timeProvider.GetUtcNow()));
     }
 
-    public Task<bool> SetModeAsync(AniListSyncMode mode, CancellationToken cancellationToken)
+    public async Task<bool> SetModeAsync(AniListSyncMode mode, CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(mode))
         {
             throw new ArgumentOutOfRangeException(nameof(mode));
         }
 
-        return accounts.UpdateSyncModeAsync(
+        if (!await IsTrackingEnabledAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        return await accounts.UpdateSyncModeAsync(
             currentAccount.ProfileId,
             mode,
             timeProvider.GetUtcNow(),
             cancellationToken);
     }
+
+    private async Task<bool> IsTrackingEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Tracking,
+            cancellationToken);
 }
 
 /// <summary>
