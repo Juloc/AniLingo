@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Tracking;
 
@@ -103,6 +104,14 @@ public sealed class AniListSyncBackgroundService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var services = scope.ServiceProvider;
+            var modules = services.GetService<IInstanceModuleService>();
+            if (modules is not null
+                && (!await modules.IsEnabledAsync(InstanceModule.Anime, cancellationToken)
+                    || !await modules.IsEnabledAsync(InstanceModule.Tracking, cancellationToken)))
+            {
+                return;
+            }
+
             var httpClients = services.GetRequiredService<IHttpClientFactory>();
             var reconciler = new AniListSyncReconciler(
                 services.GetRequiredService<AppDbContext>(),
