@@ -5,6 +5,7 @@ using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Events;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Operations;
 
@@ -215,6 +216,15 @@ public sealed class SabnzbdOperationMonitorService(
         DateTime nowUtc,
         CancellationToken cancellationToken)
     {
+        var modules = services.GetService<IInstanceModuleService>();
+        if (modules is not null
+            && !await modules.IsEnabledAsync(
+                InstanceModule.Acquisition,
+                cancellationToken))
+        {
+            return false;
+        }
+
         var store = new OperationStore(
             services.GetRequiredService<AppDbContext>(),
             services.GetService<IJularrEventPublisher>());
@@ -369,6 +379,15 @@ public sealed class SabnzbdOperationMonitorService(
         IReadOnlyList<OperationSnapshot> completed,
         CancellationToken cancellationToken)
     {
+        var modules = services.GetService<IInstanceModuleService>();
+        if (modules is not null
+            && !await modules.IsEnabledAsync(
+                InstanceModule.Anime,
+                cancellationToken))
+        {
+            return;
+        }
+
         foreach (var operation in completed.Where(AnimeImportExecutor.IsAnimeDownload))
         {
             try
@@ -403,6 +422,17 @@ public sealed class SabnzbdOperationMonitorService(
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
+            var modules = scope.ServiceProvider.GetService<IInstanceModuleService>();
+            if (modules is not null)
+            {
+                var instance = await modules.GetAsync(cancellationToken);
+                if (!instance.IsEnabled(InstanceModule.Acquisition)
+                    || !instance.IsEnabled(InstanceModule.Anime))
+                {
+                    return;
+                }
+            }
+
             var advanced = await scope.ServiceProvider
                 .GetRequiredService<SabnzbdAcquisitionService>()
                 .RecoverAsync(cancellationToken);
@@ -429,6 +459,15 @@ public sealed class SabnzbdOperationMonitorService(
         IReadOnlyList<SabnzbdProjectedFailure> failures,
         CancellationToken cancellationToken)
     {
+        var modules = services.GetService<IInstanceModuleService>();
+        if (modules is not null
+            && !await modules.IsEnabledAsync(
+                InstanceModule.Anime,
+                cancellationToken))
+        {
+            return;
+        }
+
         var animeFailures = failures
             .Where(failure => failure.Operation.Kind == SabnzbdAcquisitionService.OperationKind)
             .ToArray();
