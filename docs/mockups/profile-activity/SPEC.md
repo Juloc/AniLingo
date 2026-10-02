@@ -35,13 +35,11 @@ Do not create many tiny account pages.
 
 ### Desktop / wide tablet
 
-Prefer one direct page: compact Profile header, Current Sessions, chronological Activity, Devices and personal links. Activity is the dominant content.
+Use one shared Profile/Account page with the hero, mini stats, heatmap and tabs. The default Activity tab contains only the chronological Activity feed and its filters; Ratings, Friends, Stats and Settings remain in their own tabs.
 
 ### Mobile
 
-Profile acts as the account/navigation hub. It contains profile identity, current-session summary, recent Activity preview, Downloads/Offline when implemented, Devices, Settings and Admin only when authorized.
-
-Activity and Devices may open dedicated mobile subviews because long lists should not be squeezed into the Profile landing screen.
+Profile uses the same account tabs on Mobile in a compact form. Activity is the default and contains only the Activity feed. Devices/Sessions live under Settings > Devices & Sessions.
 
 ### Desktop Activity navigation
 
@@ -85,26 +83,7 @@ If several local profiles are available, the current profile is obvious and swit
 
 TV may prioritize profile switching more strongly than Desktop.
 
-## 2. Current Sessions
-
-Show only the signed-in user's active playback, reading or listening sessions.
-
-Each row/card may contain:
-
-- media artwork
-- Work title
-- episode/chapter context
-- current progress
-- device/client name
-- last active/current state
-- Resume/Open action
-- terminate own session where supported
-
-Normal users must not see IP address, transcoding reason, codecs/bitrates, CPU/GPU, other users or Admin session diagnostics.
-
-If no session is active, omit the section or use only a minimal empty state.
-
-## 3. Activity / History
+## 2. Activity / History
 
 Chronological personal media history. This is not an analytics feed and not a server event log.
 
@@ -135,7 +114,7 @@ Where supported: open media, resume, remove one personal history item, or clear 
 
 Deleting visible history must not silently reset canonical progress. History deletion and progress reset are separate actions.
 
-## 4. Ratings
+## 3. Ratings
 
 Ratings are a first-class personal media feature and use one universal canonical rating model across all media types.
 
@@ -189,7 +168,7 @@ Activity may show a rating only when the activity item genuinely includes a rati
 
 Normal Watch/Read/Listen Activity rows must not automatically show rating badges.
 
-## 5. Devices
+## 4. Devices
 
 Personal devices/clients only.
 
@@ -197,7 +176,7 @@ Each device may show friendly name, device/client type, last active, current-ses
 
 Current device should be identifiable. Stale devices can move behind Show inactive devices. Never show another user's devices.
 
-## 6. Personal links
+## 5. Personal links
 
 Use compact navigation rows, not dashboard tiles:
 
@@ -223,13 +202,12 @@ Both are first-class. Light uses white/soft-gray surfaces and restrained Jularr 
 Recommended first mockup:
 
 - standard Jularr left sidebar + top global search
-- page title `Profile`
-- compact profile identity row
-- two-column layout
-- large left column: Current Session when active + Activity timeline
-- compact right column: Devices + personal links
-- Activity filters directly above the timeline
-- small artwork, compact rows, no giant hero/banner
+- approved profile hero/banner with avatar, nickname and Edit Profile
+- mini stats directly under the hero
+- activity heatmap
+- tabs: Activity / Stats / Ratings / Friends / Settings
+- Activity tab is a single wide chronological feed with compact filters
+- no Current Session, Ratings summary or Friends summary inside the Activity tab
 
 The page should look like a clean account/history surface, not an Admin dashboard.
 
@@ -237,14 +215,7 @@ The page should look like a clean account/history surface, not an Admin dashboar
 
 Profile is a primary navigation destination.
 
-Landing order:
-
-1. profile identity
-2. active session if present
-3. recent Activity preview
-4. Activity / Downloads / Devices / Settings / Admin navigation rows as capabilities allow
-
-Full Activity uses chronological stacked rows with compact filtering. Full Devices uses touch-sized rows and places revoke/sign-out behind overflow/confirmation.
+Mobile keeps the shared profile hero in a compact form, mini stats, heatmap and account tabs. Activity is the default tab and uses chronological stacked rows with compact filtering. Devices/Sessions are managed from Settings rather than duplicated on Activity.
 
 ## Tablet
 
@@ -303,13 +274,6 @@ Opening media from Activity and returning should preserve Activity filter, scrol
 
 First review:
 
-1. Desktop Light: shared profile hero + mini stats + heatmap, then Activity as the default tab.
-2. Desktop/Mobile Stats tab.
-3. Desktop/Mobile Ratings tab using the selected profile rating system.
-4. Desktop/Mobile Friends tab.
-5. Desktop/Mobile Settings tab.
-6. Mobile Activity state.
-
-Later only where useful: Dark derivation, new-profile empty state and TV profile/focus state.
+Existing rough Profile mockups are sufficient as planning references. No dedicated Settings mockup is required; `user-settings/SPEC.md` defines the standard component/layout contract. Additional mockups are only needed later when implementation review finds a visual problem or a non-standard interaction needs approval.
 
 Text specification wins over images on conflict.
