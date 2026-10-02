@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,7 +14,10 @@ public sealed record MovieLibraryEntry(Movie Movie, Guid WorkId);
 /// the same movie refreshes the row and always resolves to the same <see cref="Work"/> through the
 /// <c>WorkSourceKind.Movie</c> source link.
 /// </summary>
-public sealed class MovieLibraryService(AppDbContext db, LegacyWorkBridge bridge)
+public sealed class MovieLibraryService(
+    AppDbContext db,
+    LegacyWorkBridge bridge,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<MovieLibraryEntry> EnsureAsync(
         string title,
@@ -23,6 +27,14 @@ public sealed class MovieLibraryService(AppDbContext db, LegacyWorkBridge bridge
         string? libraryPath,
         CancellationToken cancellationToken)
     {
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Movie,
+                cancellationToken))
+        {
+            throw new InvalidOperationException("Movie module is disabled.");
+        }
+
         var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim();
         var key = MovieKey(cleanTitle, year);
 
