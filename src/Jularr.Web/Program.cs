@@ -467,6 +467,7 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Jularr/0.1 (+https://github.com/Juloc/Jularr)");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
+builder.Services.AddScoped<BookSearchCoordinator>();
 
 // Legacy single-connection stores: read once by the one-time settings migration below, then
 // unused. Kept registered only so that migration can resolve them.
