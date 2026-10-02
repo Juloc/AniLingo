@@ -38,6 +38,14 @@ Agents must not redesign an approved screen during implementation without updati
 - `admin-download-assignment/SPEC.md`
 - `admin-folder-import-mapping/SPEC.md`
 - `admin-storage/SPEC.md`
+- `admin-downloader/SPEC.md` — shared native-downloader contract
+- `admin-downloader-overview/SPEC.md`
+- `admin-downloader-queue/SPEC.md`
+- `admin-downloader-servers/SPEC.md`
+- `admin-downloader-processing/SPEC.md`
+- `admin-downloader-speed-schedule/SPEC.md`
+- `admin-downloader-settings/SPEC.md`
+- `admin-downloader-external-clients/SPEC.md`
 - `admin-providers/SPEC.md`
 - `admin-ai/SPEC.md`
 - `admin-users-permissions/SPEC.md`
