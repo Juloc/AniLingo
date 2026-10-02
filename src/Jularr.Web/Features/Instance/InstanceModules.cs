@@ -51,6 +51,10 @@ public interface IInstanceModuleService
         InstanceModule module,
         bool enabled,
         CancellationToken cancellationToken = default);
+
+    Task<InstanceModuleSettings> SaveAsync(
+        InstanceModuleSettings settings,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -107,6 +111,30 @@ public sealed class InstanceModuleStore : IInstanceModuleService
             await SaveUnlockedAsync(updated, cancellationToken);
             cached = updated;
             return updated;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<InstanceModuleSettings> SaveAsync(
+        InstanceModuleSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var normalized = new InstanceModuleSettings(
+                Enum.GetValues<InstanceModule>()
+                    .ToDictionary(
+                        module => module,
+                        settings.IsEnabled));
+            await SaveUnlockedAsync(normalized, cancellationToken);
+            cached = normalized;
+            return normalized;
         }
         finally
         {
