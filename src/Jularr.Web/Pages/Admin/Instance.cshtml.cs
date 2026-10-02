@@ -16,10 +16,18 @@ public sealed class InstanceModel(
 {
     // Expose a switch only after its complete vertical is gated. Future modules already have
     // stable enum identities, but are added here one by one as their runtime slice is completed.
-    public static IReadOnlyList<InstanceModule> ConfigurableModules { get; } =
+    public static IReadOnlyList<InstanceModule> ConfigurableMediaModules { get; } =
+    [
+        InstanceModule.Anime
+    ];
+
+    public static IReadOnlyList<InstanceModule> ConfigurableFeatureModules { get; } =
     [
         InstanceModule.Learning
     ];
+
+    public static IEnumerable<InstanceModule> ConfigurableModules =>
+        ConfigurableMediaModules.Concat(ConfigurableFeatureModules);
 
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
