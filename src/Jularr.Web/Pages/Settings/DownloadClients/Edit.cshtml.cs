@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,7 +12,11 @@ namespace Jularr.Web.Pages.Settings.DownloadClients;
 
 /// <summary>Add or edit one canonical SABnzbd download client entry.</summary>
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
-public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogger<EditModel> logger) : PageModel
+public sealed class EditModel(
+    AppDbContext db,
+    DownloadClientStore store,
+    ILogger<EditModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -47,10 +52,16 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogge
 
     public bool IsNew => Id is null;
     public string? Error { get; private set; }
+    public InstanceModuleSettings InstanceModules { get; private set; } = InstanceModuleSettings.Default;
+    public bool ShowBooks => InstanceModules.IsEnabled(InstanceModule.Book);
+    public bool ShowAnime => InstanceModules.IsEnabled(InstanceModule.Anime);
+    public bool ShowManga => InstanceModules.IsEnabled(InstanceModule.Manga);
+    public bool ShowLightNovels => InstanceModules.IsEnabled(InstanceModule.Novel);
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadInstanceModulesAsync(cancellationToken);
         if (Id is not { } id)
         {
             return;
@@ -76,6 +87,7 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogge
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadInstanceModulesAsync(cancellationToken);
         try
         {
             var existing = Id is { } id ? await store.GetAsync(id, cancellationToken) : null;
@@ -97,10 +109,18 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogge
                         BaseUrl,
                         new Dictionary<MediaAcquisitionKind, string?>
                         {
-                            [MediaAcquisitionKind.Anime] = AnimeCategory,
-                            [MediaAcquisitionKind.Manga] = MangaCategory,
-                            [MediaAcquisitionKind.LightNovel] = LightNovelCategory,
-                            [MediaAcquisitionKind.Book] = BooksCategory
+                            [MediaAcquisitionKind.Anime] = ShowAnime
+                                ? AnimeCategory
+                                : existing?.Settings.CategoryFor(MediaAcquisitionKind.Anime),
+                            [MediaAcquisitionKind.Manga] = ShowManga
+                                ? MangaCategory
+                                : existing?.Settings.CategoryFor(MediaAcquisitionKind.Manga),
+                            [MediaAcquisitionKind.LightNovel] = ShowLightNovels
+                                ? LightNovelCategory
+                                : existing?.Settings.CategoryFor(MediaAcquisitionKind.LightNovel),
+                            [MediaAcquisitionKind.Book] = ShowBooks
+                                ? BooksCategory
+                                : existing?.Settings.CategoryFor(MediaAcquisitionKind.Book)
                         }),
                     secret),
                 cancellationToken);
@@ -115,5 +135,11 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogge
             Error = Ui["settings.downloadClients.saveFailed"];
             return Page();
         }
+    }
+    private async Task LoadInstanceModulesAsync(CancellationToken cancellationToken)
+    {
+        InstanceModules = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
     }
 }
