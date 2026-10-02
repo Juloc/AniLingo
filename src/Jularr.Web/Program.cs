@@ -468,6 +468,7 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
 builder.Services.AddScoped<BookSearchCoordinator>();
+builder.Services.AddScoped<BookManualSearchService>();
 
 // Legacy single-connection stores: read once by the one-time settings migration below, then
 // unused. Kept registered only so that migration can resolve them.
