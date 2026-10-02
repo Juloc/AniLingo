@@ -8,7 +8,8 @@
 
     const CONTINUE_KEY = "jularr:reader-tts-continue";
     const CONTINUE_TTL_MS = 60000;
-    const LOOK_AHEAD = 2;
+    // Mobile Web Speech engines can abort the first utterance when a second one is queued early.
+    const LOOK_AHEAD = 0;
     const MAX_CHUNK_LENGTH = 260;
     const USER_SCROLL_GRACE_MS = 4000;
     const PAGE_TURN_GAP_MS = 700;

@@ -289,6 +289,15 @@ public sealed class ReaderTtsTests
         Assert.IsFalse(stored[0].Groups["args"].Value.Contains("text", StringComparison.OrdinalIgnoreCase));
     }
 
+    // The Reader must serialise device utterances because Safari can abort a prefilled Web Speech queue.
+    [TestMethod]
+    public void ReaderTtsDoesNotPrefillTheBrowserSpeechQueue()
+    {
+        var script = Read(RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "js", "reader-tts.js");
+
+        StringAssert.Contains(script, "const LOOK_AHEAD = 0;");
+    }
+
     private static (string[] Gated, string Ungated) SplitCapabilityBlocks(
         string markup,
         string condition)
