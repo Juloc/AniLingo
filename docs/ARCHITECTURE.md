@@ -208,9 +208,13 @@ uses the same gate for navigation, routes/API, application services and backgrou
 module preserves its stored data; re-enabling restores access. Queued/retryable jobs must re-check
 the module before doing work rather than relying only on the state at enqueue time.
 
-Learning is the first implemented vertical: when disabled, Learning navigation/routes, learning
-assistance, vocabulary/preparation flows and Learning client capabilities are unavailable while
-existing Learning state remains stored.
+Implemented verticals currently include:
+- **Learning** — hides Learning navigation/routes and stops learning assistance, vocabulary/text preparation and Learning client capabilities.
+- **Anime** — removes Anime from effective media capabilities, client/library playback surfaces, scans and Anime-specific acquisition work.
+- **Acquisition** — hides request/downloader/admin routes and stops request execution, Wanted passes, imports, health checks and SABnzbd acquisition work.
+- **Tracking** — hides AniList settings/progress UI, blocks AniList network sync and pauses the automatic sync loop.
+
+All switches retain their stored domain data and resume from that state when re-enabled.
 
 ## 4. Dependency rules
 
