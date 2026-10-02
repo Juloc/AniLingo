@@ -18,22 +18,30 @@ public sealed class BookManualSearchService(
     AcquisitionAccessStore requests,
     IJularrEventPublisher events)
 {
-    public async Task<BookManualSearchResult> SearchAsync(
+    public async Task<BookManualSearchTarget> LoadAsync(
         Guid requestId,
         CancellationToken cancellationToken)
     {
         var request = await RequireRequestAsync(requestId, cancellationToken);
         EnsureSearchable(request);
+        return new BookManualSearchTarget(
+            request,
+            BookAcquisitionExecutor.ReadPayload(request));
+    }
 
-        var payload = BookAcquisitionExecutor.ReadPayload(request);
+    public async Task<BookManualSearchResult> SearchAsync(
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        var target = await LoadAsync(requestId, cancellationToken);
         var result = await search.SearchUsenetAsync(
-            payload.Title,
-            payload.Author,
+            target.Payload.Title,
+            target.Payload.Author,
             cancellationToken);
 
         return new BookManualSearchResult(
-            request,
-            payload,
+            target.Request,
+            target.Payload,
             result);
     }
 
@@ -185,6 +193,10 @@ public sealed class BookManualSearchService(
         }
     }
 }
+
+public sealed record BookManualSearchTarget(
+    AcquisitionRequest Request,
+    BookRequestPayload Payload);
 
 public sealed record BookManualSearchResult(
     AcquisitionRequest Request,
