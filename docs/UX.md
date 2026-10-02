@@ -539,6 +539,26 @@ User detail:
 
 UI is capability-based; avoid scattering hard-coded `IsAdmin` assumptions through pages.
 
+## 26a. Backup & Restore
+
+Binding specification:
+- `docs/mockups/admin-backup-restore/SPEC.md`
+
+Backup & Restore manages versioned Jularr application-state backups, automatic scheduling/retention and a compatibility-aware restore wizard.
+
+Normal backups include database/configuration/application state and optionally protected secrets. They do not copy canonical media payload files.
+
+Restore flow:
+- select backup
+- validate compatibility
+- review warnings
+- create pre-restore safety backup
+- restore/migrate
+- validate result
+- report success/partial failure explicitly
+
+Backup destinations come from Storage; restore may invoke Migration for schema/data upgrades.
+
 ## 27. Admin Requests, Activity and History
 
 Binding screen specifications:
