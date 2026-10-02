@@ -211,7 +211,9 @@ the module before doing work rather than relying only on the state at enqueue ti
 Implemented verticals currently include:
 - **Learning** — hides Learning navigation/routes and stops learning assistance, vocabulary/text preparation and Learning client capabilities.
 - **Anime** — removes Anime from effective media capabilities, client/library playback surfaces, scans and Anime-specific acquisition work.
-- **Manga / Novel / Book** — remove the respective reading type from capabilities, discovery/search, Home, Watchlist/franchises, release calendar and acquisition; Manga/Novel additionally pause their tracking/background work.
+- **Movie / TV** — remove the respective video type from effective capabilities/search/calendar/offline surfaces and block media-specific library/import writes.
+- **Manga / Novel / Book** — remove the respective reading type from capabilities, discovery/search, Home, Watchlist/franchises, release calendar, offline/acquisition surfaces and related background work.
+- **Audiobook** — independently gates audiobook search, offline packages, progress, library/import writes and acquisition even though audiobook works share the Book capability family.
 - **Acquisition** — hides request/downloader/admin routes and stops request execution, Wanted passes, imports, health checks and SABnzbd acquisition work.
 - **Tracking** — hides AniList settings/progress UI, blocks AniList network sync and pauses the automatic sync loop.
 
