@@ -135,7 +135,7 @@
 
     const add = async (item, slot, button) => {
         button.disabled = true;
-        // Adding looks for a free edition and then searches the indexers; show that it is working.
+        // Adding resolves direct/free, OPDS and then Usenet acquisition; show that it is working.
         slot.prepend(element("span", "status-pill request-status-searching", statusText("searching")));
         const body = new FormData();
         body.set("catalogId", item.id);
