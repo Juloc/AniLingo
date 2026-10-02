@@ -49,7 +49,8 @@ public sealed record UiNavigationEntry(
     UiNavigationSection[]? Sections = null,
     UiMediaRoute[]? MediaRoutes = null,
     UiNavigationEntry[]? Tabs = null,
-    InstanceModule? Module = null);
+    InstanceModule? Module = null,
+    InstanceModule[]? Modules = null);
 
 /// <summary>
 /// A consumer route root (the URL prefix of a page folder) and the media types it serves. A
@@ -97,16 +98,16 @@ public static class UiNavigationCatalog
         [
             new("admin-overview", "admin.nav.overview", "/Admin", "admin", Exact: true, Policy: JularrPolicies.AdminMedia),
             new("admin-users", "admin.nav.users", "/Admin/Users", "users", ["/Admin/Users", "/Admin/User"], Policy: JularrPolicies.AdminSystem),
-            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests", Policy: JularrPolicies.AdminMedia)
+            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests", Policy: JularrPolicies.AdminMedia, Module: InstanceModule.Acquisition)
         ]),
         new("nav.group.adminMedia",
         [
-            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"], Policy: JularrPolicies.AcquisitionSettings),
-            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"], Policy: JularrPolicies.AdminMedia),
-            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming"], Policy: JularrPolicies.AcquisitionSettings),
+            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"], Policy: JularrPolicies.AcquisitionSettings, Module: InstanceModule.Acquisition),
+            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"], Policy: JularrPolicies.AdminMedia, Modules: [InstanceModule.Anime, InstanceModule.Acquisition]),
+            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming", "/Settings/ReadingNaming"], Policy: JularrPolicies.AcquisitionSettings, Module: InstanceModule.Acquisition),
             new("admin-mapping", "admin.nav.mapping", "/Settings/MappingReview", "link", ["/Settings/MappingReview", "/Settings/MappingSegments"], Policy: JularrPolicies.MappingEdit),
             new("admin-subtitles", "admin.nav.subtitles", "/Admin/Subtitles", "subtitles", ["/Admin/Subtitles", "/Settings/Subtitles"], Policy: JularrPolicies.AdminMedia),
-            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"], Policy: JularrPolicies.AdminSystem)
+            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"], Policy: JularrPolicies.AdminSystem, Module: InstanceModule.Acquisition)
         ]),
         new("nav.group.adminSystem",
         [
@@ -366,7 +367,8 @@ public sealed record UiShellNavigation(
         IReadOnlySet<InstanceModule> enabledInstanceModules) =>
         (entry.Policy is null || can(entry.Policy))
         && (!entry.RequiresLearning || learningVisible)
-        && (entry.Module is null || enabledInstanceModules.Contains(entry.Module.Value));
+        && (entry.Module is null || enabledInstanceModules.Contains(entry.Module.Value))
+        && (entry.Modules is null || entry.Modules.All(enabledInstanceModules.Contains));
 
     /// <summary>An entry that is not media-scoped is always reachable; otherwise one browsable media type is enough.</summary>
     private static bool ReachesMedia(UiNavigationEntry entry, IReadOnlyCollection<WorkMediaType> media)
