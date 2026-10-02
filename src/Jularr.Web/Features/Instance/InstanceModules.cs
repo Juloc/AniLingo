@@ -269,6 +269,10 @@ public static class InstanceModuleRoutes
             [
                 "/Discover/MangaImport"
             ],
+            [InstanceModule.Book] =
+            [
+                "/Settings/Books"
+            ],
             [InstanceModule.Acquisition] =
             [
                 "/Acquisition",
