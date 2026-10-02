@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Pairing;
@@ -23,8 +24,15 @@ public static class ClientApiEndpoints
             .MapGroup(ClientApiContract.BasePath)
             .RequireAuthorization();
 
-        group.MapGet("/capabilities", () =>
-                Results.Ok(ClientApiContract.Capabilities()))
+        group.MapGet("/capabilities", async (HttpContext context) =>
+            {
+                var moduleService =
+                    context.RequestServices.GetService<IInstanceModuleService>();
+                var settings = moduleService is null
+                    ? InstanceModuleSettings.Default
+                    : await moduleService.GetAsync(context.RequestAborted);
+                return Results.Ok(ClientApiContract.Capabilities(settings));
+            })
             .AllowAnonymous();
 
         group.MapPost("/session/login", async (
