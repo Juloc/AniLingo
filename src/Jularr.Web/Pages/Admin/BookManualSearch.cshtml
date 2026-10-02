@@ -155,8 +155,8 @@
                             @foreach (var candidate in Model.Candidates)
                             {
                                 var candidateState = BookManualSearchModel.StatusName(result, candidate);
-                                var selected = Model.Selected?.Release.Identity == candidate.Release.Identity;
-                                <tr class="@(selected ? "is-selected" : "")">
+                                var isSelected = Model.Selected?.Release.Identity == candidate.Release.Identity;
+                                <tr class="@(isSelected ? "is-selected" : "")">
                                     <td class="bms-score">@(candidate.Score == 0 ? "–" : candidate.Score.ToString())</td>
                                     <td><strong>@candidate.Release.Title</strong></td>
                                     <td><span class="bms-tag">@BookManualSearchModel.Format(candidate.Release)</span></td>
@@ -191,8 +191,8 @@
                         @foreach (var candidate in Model.Candidates)
                         {
                             var candidateState = BookManualSearchModel.StatusName(result, candidate);
-                            var selected = Model.Selected?.Release.Identity == candidate.Release.Identity;
-                            <article class="bms-card @(selected ? "is-selected" : "")">
+                            var isSelected = Model.Selected?.Release.Identity == candidate.Release.Identity;
+                            <article class="bms-card @(isSelected ? "is-selected" : "")">
                                 <div class="bms-card-head">
                                     <strong>@candidate.Release.Title</strong>
                                     <span class="bms-score">@(candidate.Score == 0 ? "–" : candidate.Score.ToString())</span>
@@ -222,35 +222,35 @@
                 </div>
 
                 <aside class="bms-detail" aria-label="@ui["admin.manualSearch.selected"]">
-                    @if (Model.Selected is { } selected)
+                    @if (Model.Selected is { } chosen)
                     {
-                        var selectedState = BookManualSearchModel.StatusName(result, selected);
+                        var selectedState = BookManualSearchModel.StatusName(result, chosen);
                         <h3>@ui["admin.manualSearch.selected"]</h3>
-                        <strong>@selected.Release.Title</strong>
+                        <strong>@chosen.Release.Title</strong>
                         <div class="bms-detail-tags">
-                            <span class="bms-tag">@BookManualSearchModel.Format(selected.Release)</span>
-                            <span class="bms-tag">@selected.Release.Indexer</span>
+                            <span class="bms-tag">@BookManualSearchModel.Format(chosen.Release)</span>
+                            <span class="bms-tag">@chosen.Release.Indexer</span>
                             <span class="bms-tag bms-tag-@selectedState">@ui["admin.manualSearch.state." + selectedState]</span>
                         </div>
                         <dl class="bms-facts">
-                            <div><dt>Score</dt><dd>@selected.Score</dd></div>
-                            <div><dt>Size</dt><dd>@BookManualSearchModel.Size(selected.Release.SizeBytes)</dd></div>
-                            <div><dt>Age</dt><dd>@(selected.Release.AgeDays is { } selectedAge ? $"{selectedAge} d" : "—")</dd></div>
-                            <div><dt>Indexer</dt><dd>@(selected.Release.Indexer ?? "—")</dd></div>
-                            <div><dt>Parsed</dt><dd>@selected.Release.ParsedRelease.SeriesTitle</dd></div>
+                            <div><dt>Score</dt><dd>@chosen.Score</dd></div>
+                            <div><dt>Size</dt><dd>@BookManualSearchModel.Size(chosen.Release.SizeBytes)</dd></div>
+                            <div><dt>Age</dt><dd>@(chosen.Release.AgeDays is { } selectedAge ? $"{selectedAge} d" : "—")</dd></div>
+                            <div><dt>Indexer</dt><dd>@(chosen.Release.Indexer ?? "—")</dd></div>
+                            <div><dt>Parsed</dt><dd>@chosen.Release.ParsedRelease.SeriesTitle</dd></div>
                         </dl>
 
-                        @if (selected.RejectedBecause is not null)
+                        @if (chosen.RejectedBecause is not null)
                         {
-                            <p class="bms-reason">@selected.RejectedBecause</p>
+                            <p class="bms-reason">@chosen.RejectedBecause</p>
                         }
 
-                        @if (selected.ScoreReasons.Count > 0)
+                        @if (chosen.ScoreReasons.Count > 0)
                         {
                             <div class="bms-breakdown">
                                 <strong>@ui["admin.manualSearch.scoreBreakdown"]</strong>
                                 <ul>
-                                    @foreach (var reason in selected.ScoreReasons)
+                                    @foreach (var reason in chosen.ScoreReasons)
                                     {
                                         <li>@reason</li>
                                     }
@@ -258,11 +258,11 @@
                             </div>
                         }
 
-                        @if (result.CanGrab(selected))
+                        @if (result.CanGrab(chosen))
                         {
                             <form method="post" asp-page-handler="Grab">
                                 <input type="hidden" name="id" value="@request.Id" />
-                                <input type="hidden" name="releaseIdentity" value="@selected.Release.Identity" />
+                                <input type="hidden" name="releaseIdentity" value="@chosen.Release.Identity" />
                                 <button class="button button-primary" type="submit">@ui["acquisition.grab"]</button>
                             </form>
                         }
