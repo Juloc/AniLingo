@@ -132,7 +132,31 @@ public sealed partial class BookCatalogService(
         }
 
         var normalizedQuery = query.Trim();
+        var works = await SearchPrimaryCatalogsAsync(
+            normalizedQuery,
+            cancellationToken);
 
+        if (works.Count > 0)
+        {
+            return works;
+        }
+
+        return BookWorkSearch.Rank(
+            normalizedQuery,
+            await SearchGutenbergCatalogAsync(
+                normalizedQuery,
+                cancellationToken));
+    }
+
+    /// <summary>
+    /// Open Library, Google Books and Wikisource only. The application-level multi-source
+    /// coordinator calls this beside Gutenberg/OPDS so no fallback provider is queried twice.
+    /// </summary>
+    public async Task<IReadOnlyList<BookCatalogItem>> SearchPrimaryCatalogsAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var normalizedQuery = query.Trim();
         var openLibraryTask = CaptureCatalogAsync(
             token => SearchOpenLibraryAsync(normalizedQuery, token),
             cancellationToken);
@@ -151,31 +175,16 @@ public sealed partial class BookCatalogService(
             wikisourceTask);
 
         // A provider that failed or timed out contributes nothing; the others still answer.
-        var works = BookWorkSearch.Rank(
-            normalizedQuery,
-            wikisourceTask.Result,
-            openLibraryTask.Result,
-            googleTask.Result);
-
-        if (works.Count > 0)
-        {
-            return works
-                .Take(SearchLimit)
-                .ToArray();
-        }
-
         return BookWorkSearch.Rank(
-            normalizedQuery,
-            await CaptureCatalogAsync(
-                token => SearchGutenbergAsync(normalizedQuery, token),
-                cancellationToken,
-                fallbackToEmpty: true));
+                normalizedQuery,
+                wikisourceTask.Result,
+                openLibraryTask.Result,
+                googleTask.Result)
+            .Take(SearchLimit)
+            .ToArray();
     }
 
-    /// <summary>
-    /// Project Gutenberg results for the application-level multi-source search. Kept separate
-    /// from <see cref="SearchAsync"/> so existing catalog callers retain their fallback behavior.
-    /// </summary>
+    /// <summary>Project Gutenberg results for the application-level multi-source search.</summary>
     public Task<IReadOnlyList<BookCatalogItem>> SearchGutenbergCatalogAsync(
         string query,
         CancellationToken cancellationToken) =>
