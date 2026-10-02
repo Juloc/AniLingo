@@ -104,6 +104,8 @@ public sealed class ClientApiService(
             return null;
         }
 
+        var learningEnabled = await IsLearningEnabledAsync(cancellationToken);
+
         var episodeRows = await db.Episodes
             .AsNoTracking()
             .Where(x => x.AnimeId == animeId)
@@ -131,7 +133,7 @@ public sealed class ClientApiService(
                     episode.Number,
                     episode.Title,
                     episode.HasMedia,
-                    episode.HasJapaneseLearningSubtitle))
+                    learningEnabled && episode.HasJapaneseLearningSubtitle))
                     .ToArray()))
             .ToArray();
 
@@ -179,30 +181,38 @@ public sealed class ClientApiService(
             .AsNoTracking()
             .AnyAsync(x => x.EpisodeId == episodeId, cancellationToken);
 
-        var activeTrack = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
-            .OrderByDescending(x => x.ImportedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => new { x.Id })
-            .FirstOrDefaultAsync(cancellationToken);
+        Guid? activeTrackId = null;
+        var cueCount = 0;
+        var termStates = new List<UserTermState?>();
 
-        var cueCount = activeTrack is null
-            ? 0
-            : await db.SubtitleCues
+        if (await IsLearningEnabledAsync(cancellationToken))
+        {
+            activeTrackId = await db.SubtitleTracks
                 .AsNoTracking()
-                .CountAsync(
-                    x => x.SubtitleTrackId == activeTrack.Id,
-                    cancellationToken);
+                .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => (Guid?)x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        var termStates = await (
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
-                on episodeTerm.TermId equals stateValue.TermId into states
-            from state in states.DefaultIfEmpty()
-            where episodeTerm.EpisodeId == episodeId
-            select state == null ? (UserTermState?)null : state.State)
-            .ToListAsync(cancellationToken);
+            if (activeTrackId is { } trackId)
+            {
+                cueCount = await db.SubtitleCues
+                    .AsNoTracking()
+                    .CountAsync(
+                        x => x.SubtitleTrackId == trackId,
+                        cancellationToken);
+            }
+
+            termStates = await (
+                from episodeTerm in db.EpisodeTerms.AsNoTracking()
+                join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                    on episodeTerm.TermId equals stateValue.TermId into states
+                from state in states.DefaultIfEmpty()
+                where episodeTerm.EpisodeId == episodeId
+                select state == null ? (UserTermState?)null : state.State)
+                .ToListAsync(cancellationToken);
+        }
 
         var known = termStates.Count(x => x == UserTermState.Known);
         var learning = termStates.Count(x => x == UserTermState.Learning);
@@ -215,7 +225,7 @@ public sealed class ClientApiService(
             row.SeasonNumber,
             row.Number,
             hasMedia,
-            activeTrack?.Id,
+            activeTrackId,
             cueCount,
             new ClientLearningCoverage(
                 termStates.Count,
@@ -253,18 +263,16 @@ public sealed class ClientApiService(
             episodeId,
             cancellationToken);
 
-        var learningTrackRows = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
-            .OrderByDescending(x => x.ImportedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => new
-            {
-                x.Id,
-                x.Language,
-                x.Format
-            })
-            .ToListAsync(cancellationToken);
+        var learningTrackRows = new List<SubtitleTrack>();
+        if (await IsLearningEnabledAsync(cancellationToken))
+        {
+            learningTrackRows = await db.SubtitleTracks
+                .AsNoTracking()
+                .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken);
+        }
 
         var activeLearningTrackId = learningTrackRows
             .Select(x => (Guid?)x.Id)
@@ -472,6 +480,11 @@ public sealed class ClientApiService(
         Guid termId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from term in db.Terms.AsNoTracking()
             join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
@@ -503,6 +516,11 @@ public sealed class ClientApiService(
         UserTermState state,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var exists = await db.Terms
             .AsNoTracking()
             .AnyAsync(x => x.Id == termId, cancellationToken);
@@ -517,4 +535,11 @@ public sealed class ClientApiService(
             termId,
             ClientApiMappings.StateName(state));
     }
+
+    private async Task<bool> IsLearningEnabledAsync(
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Learning,
+            cancellationToken);
 }
