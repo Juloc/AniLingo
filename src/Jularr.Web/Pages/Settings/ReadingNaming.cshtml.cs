@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Naming;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,8 @@ namespace Jularr.Web.Pages.Settings;
 public sealed class ReadingNamingModel(
     ReadingNamingProfileStore store,
     AppDbContext db,
-    ILogger<ReadingNamingModel> logger) : PageModel
+    ILogger<ReadingNamingModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -30,15 +32,26 @@ public sealed class ReadingNamingModel(
     [BindProperty(SupportsGet = true)]
     public string? Preset { get; set; }
 
-    public IReadOnlyList<MediaAcquisitionKind> Kinds { get; } = ReadingNamingPresets.ReadingKinds;
+    public IReadOnlyList<MediaAcquisitionKind> Kinds { get; private set; } = ReadingNamingPresets.ReadingKinds;
+    public string BackUrl { get; private set; } = "/Settings/Acquisition";
     public IReadOnlyList<string> ValidationErrors { get; private set; } = [];
     public IReadOnlyList<ReadingNamingPreviewLine> Preview { get; private set; } = [];
     public string? Notice => TempData["ReadingNamingNotice"] as string;
     public string? Error => TempData["ReadingNamingError"] as string;
 
-    public async Task OnGetAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadKindsAsync(cancellationToken);
+        if (Kinds.Count == 0)
+        {
+            return NotFound();
+        }
+
+        if (!Kinds.Contains(Kind))
+        {
+            Kind = Kinds[0];
+        }
 
         Input = Preset switch
         {
@@ -48,12 +61,18 @@ public sealed class ReadingNamingModel(
         };
 
         BuildPreview();
+        return Page();
     }
 
     public async Task<IActionResult> OnPostPreviewAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadKindsAsync(cancellationToken);
         Kind = Input.MediaKind;
+        if (!Kinds.Contains(Kind))
+        {
+            return NotFound();
+        }
         BuildPreview();
         return Page();
     }
@@ -61,7 +80,12 @@ public sealed class ReadingNamingModel(
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadKindsAsync(cancellationToken);
         Kind = Input.MediaKind;
+        if (!Kinds.Contains(Kind))
+        {
+            return NotFound();
+        }
         BuildPreview();
         if (ValidationErrors.Count > 0)
         {
@@ -81,6 +105,19 @@ public sealed class ReadingNamingModel(
         }
 
         return RedirectToPage(new { kind = profile.MediaKind });
+    }
+
+    private async Task LoadKindsAsync(CancellationToken cancellationToken)
+    {
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+        Kinds = ReadingNamingPresets.ReadingKinds
+            .Where(kind => instance.IsEnabled(AcquisitionInstanceModules.For(kind)))
+            .ToArray();
+        BackUrl = instance.IsEnabled(InstanceModule.Anime)
+            ? "/Settings/Naming"
+            : "/Settings/Acquisition";
     }
 
     private void BuildPreview()
