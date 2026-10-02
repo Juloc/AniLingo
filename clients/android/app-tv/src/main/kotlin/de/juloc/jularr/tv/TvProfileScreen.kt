@@ -35,6 +35,7 @@ fun TvProfileScreen(
     onInstallUpdate: () -> Unit,
     onSignOut: () -> Unit,
     onChangeServer: () -> Unit,
+    onSwitchAccount: (() -> Unit)? = null,
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -64,6 +65,11 @@ fun TvProfileScreen(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                onSwitchAccount?.let { onSwitch ->
+                    Button(onClick = onSwitch) {
+                        Text(stringResource(R.string.tv_profile_switch_account))
+                    }
+                }
                 Button(onClick = onSignOut) {
                     Text(stringResource(R.string.tv_profile_sign_out))
                 }
