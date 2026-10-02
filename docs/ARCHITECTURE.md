@@ -192,6 +192,26 @@ Owns operational views and commands, not duplicate business logic:
 
 Admin UI calls the same application services as automated flows wherever possible.
 
+### Instance module gates
+Server-wide module availability is resolved before profile settings or permissions. The canonical
+runtime contract is `IInstanceModuleService` / `InstanceModuleStore`, persisted below
+`/data/system`. Existing installations and newly introduced modules default to enabled.
+
+Resolution order is:
+
+```text
+instance module -> profile/media capability -> feature/profile setting
+```
+
+A module switch is exposed in **Admin → Instance** only after that module's complete vertical slice
+uses the same gate for navigation, routes/API, application services and background work. Disabling a
+module preserves its stored data; re-enabling restores access. Queued/retryable jobs must re-check
+the module before doing work rather than relying only on the state at enqueue time.
+
+Learning is the first implemented vertical: when disabled, Learning navigation/routes, learning
+assistance, vocabulary/preparation flows and Learning client capabilities are unavailable while
+existing Learning state remains stored.
+
 ## 4. Dependency rules
 
 Allowed conceptual direction:
