@@ -1,6 +1,6 @@
 # Calendar — Clean Design
 
-Status: **planned UX baseline; ready for visual mockup review**.
+Status: **approved planning direction for Desktop Month; implementation requires a final pre-merge UX approval**.
 
 This is the binding consumer specification for Jularr's unified cross-media release calendar.
 
@@ -109,29 +109,35 @@ Do not imply that Cinema release means downloadable/local availability.
 
 ## Page structure
 
-Desktop baseline:
+Approved Desktop Month baseline:
 
-1. Page header
-2. date navigation
-3. view switch: Month / Week / Agenda
-4. compact filters
-5. primary calendar surface
-6. optional selected-day / selected-event detail pane
-7. Later / Date TBA section
+1. normal Jularr left sidebar
+2. compact Calendar toolbar
+3. media-type filter row
+4. full-width month grid
+5. Later / Date TBA section only when needed
 
-No duplicated month title, duplicate prev/next controls, duplicate mini-calendar or redundant legend.
+The Calendar itself should use the available content width. There is **no permanent right-side event-detail pane** in the approved Month direction.
 
-## Header
+Do not add decorative header art, redundant top navigation, duplicate period controls, a mini-calendar or a permanent legend.
 
-Show:
+## Toolbar
 
-- `Calendar`
-- current period label
-- previous / Today / next controls
-- view switch
-- Filter action
+Keep the Calendar chrome compact and functional.
 
-Keep one authoritative period navigation row.
+Approved Desktop order:
+
+1. Calendar search field on the **left**
+2. `All Status` filter directly after the search
+3. view switch: `Month / Week / Agenda`
+4. previous period button
+5. current period label, e.g. `October 2026`
+6. next period button
+7. `Today`
+
+A separate `All Media` dropdown is not used in this baseline because media type is already handled by the filter row below.
+
+The current period label sits between previous and next.
 
 Do not repeat the same month/week title elsewhere.
 
@@ -139,21 +145,48 @@ Do not repeat the same month/week title elsewhere.
 
 ## 1. Month
 
-Desktop-oriented overview.
+Desktop-oriented overview and the currently approved visual direction.
 
-Each day cell can contain a small number of compact event rows/cards.
+### Grid density
 
-Each event shows only:
+The month grid must remain recognizably a normal calendar:
 
-- artwork thumbnail/icon where useful
-- title
-- unit label
-- time when exact
-- compact state indicator
+- realistic distribution of **0–6 events per day**;
+- many days may be empty;
+- some days may contain several releases;
+- do not artificially place exactly one event on nearly every day;
+- day cells must be tall enough to show up to six compact rows before overflow is considered.
 
-Overflow uses `+N more` and opens that day's agenda/detail rather than making cells unreadable.
+If more than six events exist, use `+N more` or open the day's Agenda rather than shrinking rows further.
 
-Month view must remain a calendar, not a wall of full media cards.
+### Event row
+
+Each event is a compact horizontal row, not a poster card.
+
+Show:
+
+- small cover/artwork thumbnail on the left;
+- title;
+- unit/release context, e.g. `Ep 4`, `Vol 9`, `Movie`, `Book 1`;
+- time when exact, otherwise `All day`/date-only semantics.
+
+Do **not** show separate Anime/Manga/Movie text badges inside every event.
+
+Media type is communicated through the shared media-type color system:
+
+- title uses the media-type accent color;
+- row gets a very light tint of the same media color;
+- tint stays subtle enough for dense calendar reading.
+
+The cover should be sized to fit the row and remain closer to a small square/compact crop than a tall poster. If a day contains only one event, the artwork may be slightly larger, but the row still belongs to the calendar grid.
+
+Do not use extra event icons merely to restate media type, time or generic state.
+
+### Release significance
+
+Premiere, finale/ending, new volume/publication and similar release significance may be represented only with a **small, low-noise marker/text treatment** when needed. It must not become another colored tag system or materially increase row height.
+
+The exact marker treatment remains subject to the final pre-merge UX review.
 
 ## 2. Week
 
@@ -191,50 +224,66 @@ Each event row/card may show:
 
 Agenda should be the clearest view for mixed media.
 
-## Selected event / day detail
+## Event interaction
 
-Desktop/Tablet may show a compact right-side pane when an event is selected.
+The approved Desktop Month baseline has **no permanent right-side detail pane**.
 
-It may contain:
+Selecting an event should use one of these lightweight patterns:
 
-- artwork
-- title
+- open the canonical detail/unit directly; or
+- open a compact popover/sheet when quick actions are useful.
+
+The final interaction choice must be reviewed before merge.
+
+Any quick detail surface may include:
+
+- title and cover
 - release/unit label
 - exact/coarse release date
 - release kind
-- compact availability state
-- preferred language where relevant
-- primary action: Open Details / Open Episode / Open Volume
+- compact availability/monitoring state
+- primary Open action
 - Request/Monitor only when permitted
 
-This is not a full media-detail page.
-
-Mobile opens the same content as a bottom sheet or compact detail screen.
+It must not duplicate the full media-detail page.
 
 ## Filters
 
 Keep V1 compact.
 
-Primary media-type filters:
+### Media-type row
+
+Directly under the toolbar:
 
 - All
 - Anime
 - Series / TV
 - Movies
 - Manga
-- Light Novels
 - Books
+- Light Novels
 - Audiobooks when supported
 
-State filters belong in a clean filter panel/sheet:
+These are text filter controls, not icon buttons.
 
-- Mine / relevant to me
+### Status filter
+
+`All Status` sits in the top toolbar immediately after Calendar search.
+
+Its semantics are about **Jularr state**, not media type.
+
+Candidate states include:
+
 - Available
+- Monitored
 - Requested / Wanted
 - Missing
+- Downloading / Importing
 - Needs attention
 
-Do not place a permanent chip for every possible state.
+The exact final state list, grouping and naming are **not merge-approved yet** and require final owner review during implementation.
+
+Do not place a permanent chip for every state.
 
 Permission-derived media visibility applies: hidden media types do not appear as disabled filters.
 
@@ -253,13 +302,16 @@ These states must remain semantically distinct.
 
 Do not label a followed item as acquisition-monitored unless canonical acquisition state actually says so.
 
-## Availability state
+## Availability / monitoring state
 
-Compact consumer states:
+Calendar status always comes from canonical Library/Acquisition/Monitoring state.
+
+Relevant consumer semantics include:
 
 - Available
 - Partial
-- Requested
+- Monitored
+- Requested / Wanted
 - Waiting
 - Searching
 - Downloading
@@ -267,7 +319,9 @@ Compact consumer states:
 - Missing
 - Needs attention
 
-State comes from canonical Library/Acquisition services.
+The Month grid should not be overloaded with large status badges. Status can be exposed through the status filter and, where useful, a restrained row state/text treatment.
+
+The exact visible in-grid treatment for `Monitored` vs `Available` remains part of the mandatory pre-merge UX review.
 
 Calendar does not own or persist a second status state machine.
 
@@ -361,14 +415,21 @@ Media type/state is never represented by color alone.
 
 ## Desktop
 
-Recommended composition:
+Approved Month composition:
 
-- normal Jularr sidebar + top search
-- header with period navigation and view switch
-- Month or Week as primary central surface
-- optional right-side selected event/day pane
-- filters open as compact panel rather than permanent sidebar clutter
-- Agenda available through view switch
+- normal Jularr **left sidebar**;
+- no redundant top Home/Browse/Discover/Calendar navigation row;
+- no decorative Calendar subtitle/header copy;
+- Calendar search begins the toolbar at the upper left;
+- `All Status` follows search;
+- Month/Week/Agenda follows;
+- previous → current period → next → Today are grouped clearly;
+- media-type text filters sit on the next row;
+- full-width Month grid uses the remaining content area;
+- no permanent right-side detail panel;
+- no extra list/view icon beside the filters;
+- realistic sparse/dense days with up to six visible events;
+- each event uses a compact cover + light media-color tinted row.
 
 Do not add a second mini month calendar beside the main month grid.
 
@@ -537,28 +598,58 @@ Visible Back behavior uses shared contextual navigation.
 - no assumption that theatrical Movie release equals acquisition availability
 - no admin acquisition queue in consumer Calendar
 - no raw provider IDs/indexer/download diagnostics
+- no redundant top consumer-navigation row above the Calendar
+- no decorative Calendar subtitle/header copy in the approved Desktop baseline
+- no `All Media` dropdown duplicating the media-type filter row
+- no extra generic list/view icon beside the toolbar
+- no permanent right-side event detail pane
 - no duplicated month title/navigation
 - no mini calendar duplicating the main Month grid
 - no permanent type legend duplicating the type filter
+- no per-event media-type badge/tag clutter
+- no per-event icon clutter
+- no tall poster cards inside normal Month cells
+- no artificial one-event-per-day distribution
 - no repeated empty-state text
 - no Mobile desktop-grid squeeze
 - no provider API fan-out on every render
 - no notification-delivery system inside Calendar
 
-## Mockup deliverables
+## Current mockup direction
 
-First review should show:
+The current Desktop Light Month mockup direction is accepted as the planning baseline.
 
-1. Desktop Light Month view with:
-   - mixed media
-   - one selected event/day pane
-   - compact filters
-   - exact and date-only events
-2. Mobile Light Agenda view
-3. one `Date TBA / imprecise` state
-4. one empty/filter-zero state
-5. TV only later if Calendar is retained as a meaningful TV destination
+It establishes:
 
-After Light approval, derive Dark from the same structure.
+- normal calendar proportions;
+- search + status + view/date toolbar;
+- separate media-type filter row;
+- full-width grid without a permanent detail pane;
+- realistic 0–6 events per day;
+- small cover before each event;
+- compact horizontal event rows;
+- light media-type background tint and media-colored title;
+- no per-event icon/tag clutter.
+
+This is **not yet final merge approval** for all interaction details.
+
+## Mandatory pre-merge UX approval
+
+Calendar implementation may be developed against this specification, but **must not be merged as complete without a final owner UX review**.
+
+That review must explicitly cover at least:
+
+- final status filter values and naming;
+- distinction between `Monitored`, `Available`, `Requested/Wanted` and related states;
+- final in-grid status treatment;
+- premiere/finale/release-significance treatment;
+- Calendar search behavior;
+- Month/Week/Agenda switching;
+- event click/open behavior;
+- overflow behavior for >6 events;
+- responsive Mobile/Tablet layout;
+- Light/Dark consistency.
+
+If the implementation materially differs from the approved planning mockup, update this SPEC before merge.
 
 Text specification wins over visual references on conflict.
