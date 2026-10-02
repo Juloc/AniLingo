@@ -1,4 +1,5 @@
 using System.Reflection;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Playback;
@@ -15,8 +16,12 @@ public static class ClientApiContract
     public const int MinimumSupportedApiVersion = 1;
     public const string BasePath = "/api/client/v1";
 
-    public static ClientCapabilitiesResponse Capabilities()
+    public static ClientCapabilitiesResponse Capabilities(
+        InstanceModuleSettings? instanceSettings = null)
     {
+        var learningEnabled =
+            instanceSettings?.IsEnabled(InstanceModule.Learning) ?? true;
+
         var assembly = typeof(ClientApiContract).Assembly;
         var informational = assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
@@ -37,8 +42,8 @@ public static class ClientApiContract
                 PlaybackProgress: true,
                 HttpRangeRequests: true,
                 MediaTrackMetadata: true,
-                NormalizedLearningCues: true,
-                LearningStateMutation: true,
+                NormalizedLearningCues: learningEnabled,
+                LearningStateMutation: learningEnabled,
                 LiveMp4Fallback: true,
                 HlsFallback: true,
                 PlaybackSessions: true,
