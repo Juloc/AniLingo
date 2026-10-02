@@ -265,6 +265,10 @@ public static class InstanceModuleRoutes
                 "/Acquisition",
                 "/api/acquisition/v1"
             ],
+            [InstanceModule.Manga] =
+            [
+                "/Discover/MangaImport"
+            ],
             [InstanceModule.Acquisition] =
             [
                 "/Acquisition",
