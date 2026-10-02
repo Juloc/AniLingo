@@ -4,25 +4,60 @@
 @using Jularr.Web.Features.Books
 @{
     var ui = Model.Ui;
-    var result = Model.Result!;
+    var target = Model.Target!;
+    var request = target.Request;
+    var statusName = AcquisitionAccessNames.Status(request.Status);
     ViewData["Title"] = ui["admin.wanted.manualSearch"];
-    string Size(long? bytes) => BookManualSearchModel.Size(bytes);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/book-manual-search.css" asp-append-version="true" />
 }
 
-<header class="page-header">
-    <div>
-        <h1>@ui["admin.wanted.manualSearch"]</h1>
-        <p>@result.Request.Title@if (!string.IsNullOrWhiteSpace(result.Request.Subtitle)) { <text> · @result.Request.Subtitle</text> }</p>
+<header class="page-header bms-header">
+    <div class="bms-target">
+        <span class="bms-cover">
+            @if (!string.IsNullOrWhiteSpace(request.CoverImageUrl))
+            {
+                <img src="@request.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+            }
+        </span>
+        <span>
+            <h1>@ui["admin.wanted.manualSearch"]</h1>
+            <strong>@request.Title</strong>
+            @if (!string.IsNullOrWhiteSpace(target.Payload.Author))
+            {
+                <small>@target.Payload.Author</small>
+            }
+        </span>
+        <span class="status-pill">@ui["requests.status." + statusName]</span>
     </div>
     <div class="inline-actions">
+        @if (Model.ActiveTab == BookManualSearchTab.Search)
+        {
+            <a class="button button-primary"
+               asp-page="/Admin/BookManualSearch"
+               asp-route-id="@request.Id"
+               asp-route-tab="search">@ui["common.search"]</a>
+        }
         <a class="button" asp-page="/Admin/Wanted">@ui["admin.requests.wanted"]</a>
     </div>
 </header>
 
 <partial name="_AdminNavigation" model="Model.Ui" />
+
+<nav class="library-type-tabs bms-tabs" aria-label="@ui["admin.manualSearch.tabsAria"]">
+    @foreach (var tab in Enum.GetValues<BookManualSearchTab>())
+    {
+        var active = Model.ActiveTab == tab;
+        var name = BookManualSearchModel.TabName(tab);
+        <a class="library-type-tab @(active ? "active" : "")"
+           asp-page="/Admin/BookManualSearch"
+           asp-route-id="@request.Id"
+           asp-route-tab="@name"
+           aria-current="@(active ? "page" : null)">@ui["admin.manualSearch.tab." + name]</a>
+    }
+</nav>
 
 @if (Model.Notice is not null)
 {
@@ -33,67 +68,264 @@
     <p class="metadata-error">@Model.Error</p>
 }
 
-<section class="panel usenet-booktest" aria-labelledby="book-manual-results">
-    <div class="panel-heading">
-        <h2 id="book-manual-results">@result.Request.Title</h2>
-    </div>
+@if (Model.ActiveTab == BookManualSearchTab.Search && Model.Result is { } result)
+{
+    <section class="panel bms-search" aria-labelledby="book-manual-results">
+        <div class="panel-heading">
+            <h2 id="book-manual-results">@ui["admin.manualSearch.searchResults"]</h2>
+            <span>@result.Search.Ranked.Count</span>
+        </div>
 
-    <p class="muted">
-        @ui.Format("admin.usenet.bookTestQueries", ("queries", string.Join(" · ", result.Search.Queries)))
-        @if (result.Search.UsedCategoryFallback)
-        {
-            <span class="status-pill status-warn">@ui["admin.usenet.bookTestFallback"]</span>
-        }
-    </p>
-
-    @foreach (var warning in result.Search.Warnings)
-    {
-        <p class="usenet-card-error">@warning.IndexerName: @warning.Message</p>
-    }
-
-    @if (result.Search.Ranked.Count == 0)
-    {
-        <p class="metadata-error">@result.Search.FailureMessage</p>
-    }
-    else
-    {
-        <ul class="usenet-releases">
-            @foreach (var ranked in result.Search.Ranked.Take(60))
+        <p class="muted">
+            @ui.Format("admin.usenet.bookTestQueries", ("queries", string.Join(" · ", result.Search.Queries)))
+            @if (result.Search.UsedCategoryFallback)
             {
-                var canGrab = result.CanGrab(ranked);
-                var tried = result.TriedReleaseTitles.Contains(ranked.Release.Title);
-                <li class="usenet-release @(ranked.Score == 0 ? "is-rejected" : "")">
-                    <span class="usenet-release-score">@(ranked.Score == 0 ? "–" : ranked.Score.ToString())</span>
-                    <div class="usenet-release-copy">
-                        <strong>@ranked.Release.Title</strong>
-                        <span>
-                            @(ranked.Release.Indexer ?? "—")
-                            · @Size(ranked.Release.SizeBytes)
-                            @if (ranked.Release.AgeDays is { } age)
-                            {
-                                <text> · @age d</text>
-                            }
-                        </span>
-                    </div>
+                <span class="bms-tag">@ui["admin.usenet.bookTestFallback"]</span>
+            }
+        </p>
 
-                    @if (ranked.RejectedBecause is not null)
+        @foreach (var warning in result.Search.Warnings)
+        {
+            <p class="usenet-card-error">@warning.IndexerName: @warning.Message</p>
+        }
+
+        <form method="get" class="bms-toolbar">
+            <input type="hidden" name="id" value="@request.Id" />
+            <input type="hidden" name="tab" value="search" />
+            <input type="search"
+                   name="q"
+                   value="@Model.Query"
+                   placeholder="@ui["admin.manualSearch.searchPlaceholder"]"
+                   aria-label="@ui["admin.manualSearch.searchPlaceholder"]" />
+            <label>
+                <span>@ui["admin.manualSearch.filter.state"]</span>
+                <select name="state">
+                    <option value="">@ui["admin.wanted.filter.any"]</option>
+                    <option value="eligible" selected="@(Model.State == "eligible")">@ui["admin.manualSearch.state.eligible"]</option>
+                    <option value="rejected" selected="@(Model.State == "rejected")">@ui["admin.manualSearch.state.rejected"]</option>
+                    <option value="tried" selected="@(Model.State == "tried")">@ui["admin.manualSearch.state.tried"]</option>
+                </select>
+            </label>
+            <label>
+                <span>@ui["admin.manualSearch.filter.indexer"]</span>
+                <select name="indexer">
+                    <option value="">@ui["admin.wanted.filter.any"]</option>
+                    @foreach (var indexer in Model.Indexers)
                     {
-                        <span class="status-pill status-error">@ranked.RejectedBecause</span>
+                        <option value="@indexer" selected="@string.Equals(Model.Indexer, indexer, StringComparison.OrdinalIgnoreCase)">@indexer</option>
                     }
-                    else if (tried)
+                </select>
+            </label>
+            <label>
+                <span>@ui["admin.manualSearch.filter.sort"]</span>
+                <select name="sort">
+                    <option value="">@ui["admin.manualSearch.sort.score"]</option>
+                    <option value="age" selected="@(Model.Sort == "age")">@ui["admin.manualSearch.sort.age"]</option>
+                    <option value="size" selected="@(Model.Sort == "size")">@ui["admin.manualSearch.sort.size"]</option>
+                    <option value="title" selected="@(Model.Sort == "title")">@ui["admin.manualSearch.sort.title"]</option>
+                </select>
+            </label>
+            <button class="button" type="submit">@ui["admin.filter.apply"]</button>
+        </form>
+
+        @if (Model.Candidates.Count == 0)
+        {
+            <p class="muted bms-empty">@ui["admin.manualSearch.noResults"]</p>
+        }
+        else
+        {
+            <div class="bms-workspace">
+                <div class="bms-results">
+                    <table class="bms-table">
+                        <thead>
+                            <tr>
+                                <th>Score</th>
+                                <th>Release</th>
+                                <th>Type</th>
+                                <th>Indexer</th>
+                                <th>Age</th>
+                                <th>Size</th>
+                                <th>Parsed</th>
+                                <th>Match</th>
+                                <th><span class="admwant-visually-hidden">@ui["admin.wanted.col.actions"]</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var candidate in Model.Candidates)
+                            {
+                                var candidateState = BookManualSearchModel.StatusName(result, candidate);
+                                var selected = Model.Selected?.Release.Identity == candidate.Release.Identity;
+                                <tr class="@(selected ? "is-selected" : "")">
+                                    <td class="bms-score">@(candidate.Score == 0 ? "–" : candidate.Score.ToString())</td>
+                                    <td><strong>@candidate.Release.Title</strong></td>
+                                    <td><span class="bms-tag">@BookManualSearchModel.Format(candidate.Release)</span></td>
+                                    <td>@(candidate.Release.Indexer ?? "—")</td>
+                                    <td>@(candidate.Release.AgeDays is { } age ? $"{age} d" : "—")</td>
+                                    <td>@BookManualSearchModel.Size(candidate.Release.SizeBytes)</td>
+                                    <td>@candidate.Release.ParsedRelease.SeriesTitle</td>
+                                    <td>
+                                        <span class="bms-tag bms-tag-@candidateState">@ui["admin.manualSearch.state." + candidateState]</span>
+                                        @if (candidate.RejectedBecause is not null)
+                                        {
+                                            <small>@candidate.RejectedBecause</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <a class="button button-small"
+                                           asp-page="/Admin/BookManualSearch"
+                                           asp-route-id="@request.Id"
+                                           asp-route-tab="search"
+                                           asp-route-q="@Model.Query"
+                                           asp-route-state="@Model.State"
+                                           asp-route-sort="@Model.Sort"
+                                           asp-route-indexer="@Model.Indexer"
+                                           asp-route-release="@candidate.Release.Identity">@ui["admin.manualSearch.inspect"]</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div class="bms-cards">
+                        @foreach (var candidate in Model.Candidates)
+                        {
+                            var candidateState = BookManualSearchModel.StatusName(result, candidate);
+                            var selected = Model.Selected?.Release.Identity == candidate.Release.Identity;
+                            <article class="bms-card @(selected ? "is-selected" : "")">
+                                <div class="bms-card-head">
+                                    <strong>@candidate.Release.Title</strong>
+                                    <span class="bms-score">@(candidate.Score == 0 ? "–" : candidate.Score.ToString())</span>
+                                </div>
+                                <div class="bms-card-tags">
+                                    <span class="bms-tag">@BookManualSearchModel.Format(candidate.Release)</span>
+                                    <span class="bms-tag">@candidate.Release.Indexer</span>
+                                    <span class="bms-tag bms-tag-@candidateState">@ui["admin.manualSearch.state." + candidateState]</span>
+                                </div>
+                                <small>@BookManualSearchModel.Size(candidate.Release.SizeBytes) · @(candidate.Release.AgeDays is { } mobileAge ? $"{mobileAge} d" : "—")</small>
+                                @if (candidate.RejectedBecause is not null)
+                                {
+                                    <small>@candidate.RejectedBecause</small>
+                                }
+                                <a class="button"
+                                   asp-page="/Admin/BookManualSearch"
+                                   asp-route-id="@request.Id"
+                                   asp-route-tab="search"
+                                   asp-route-q="@Model.Query"
+                                   asp-route-state="@Model.State"
+                                   asp-route-sort="@Model.Sort"
+                                   asp-route-indexer="@Model.Indexer"
+                                   asp-route-release="@candidate.Release.Identity">@ui["admin.manualSearch.inspect"]</a>
+                            </article>
+                        }
+                    </div>
+                </div>
+
+                <aside class="bms-detail" aria-label="@ui["admin.manualSearch.selected"]">
+                    @if (Model.Selected is { } selected)
                     {
-                        <span class="status-pill status-warn">@Jularr.Web.Features.Acquisition.Wanted.ReleaseRequestTracker.EveryReleaseTried</span>
+                        var selectedState = BookManualSearchModel.StatusName(result, selected);
+                        <h3>@ui["admin.manualSearch.selected"]</h3>
+                        <strong>@selected.Release.Title</strong>
+                        <div class="bms-detail-tags">
+                            <span class="bms-tag">@BookManualSearchModel.Format(selected.Release)</span>
+                            <span class="bms-tag">@selected.Release.Indexer</span>
+                            <span class="bms-tag bms-tag-@selectedState">@ui["admin.manualSearch.state." + selectedState]</span>
+                        </div>
+                        <dl class="bms-facts">
+                            <div><dt>Score</dt><dd>@selected.Score</dd></div>
+                            <div><dt>Size</dt><dd>@BookManualSearchModel.Size(selected.Release.SizeBytes)</dd></div>
+                            <div><dt>Age</dt><dd>@(selected.Release.AgeDays is { } selectedAge ? $"{selectedAge} d" : "—")</dd></div>
+                            <div><dt>Indexer</dt><dd>@(selected.Release.Indexer ?? "—")</dd></div>
+                            <div><dt>Parsed</dt><dd>@selected.Release.ParsedRelease.SeriesTitle</dd></div>
+                        </dl>
+
+                        @if (selected.RejectedBecause is not null)
+                        {
+                            <p class="bms-reason">@selected.RejectedBecause</p>
+                        }
+
+                        @if (selected.ScoreReasons.Count > 0)
+                        {
+                            <div class="bms-breakdown">
+                                <strong>@ui["admin.manualSearch.scoreBreakdown"]</strong>
+                                <ul>
+                                    @foreach (var reason in selected.ScoreReasons)
+                                    {
+                                        <li>@reason</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+
+                        @if (result.CanGrab(selected))
+                        {
+                            <form method="post" asp-page-handler="Grab">
+                                <input type="hidden" name="id" value="@request.Id" />
+                                <input type="hidden" name="releaseIdentity" value="@selected.Release.Identity" />
+                                <button class="button button-primary" type="submit">@ui["acquisition.grab"]</button>
+                            </form>
+                        }
                     }
-                    else if (canGrab)
+                    else
                     {
-                        <form method="post" asp-page-handler="Grab">
-                            <input type="hidden" name="id" value="@result.Request.Id" />
-                            <input type="hidden" name="releaseIdentity" value="@ranked.Release.Identity" />
-                            <button class="button button-primary" type="submit">@ui["acquisition.grab"]</button>
-                        </form>
+                        <p class="muted">@ui["admin.manualSearch.inspect"]</p>
                     }
+                </aside>
+            </div>
+        }
+    </section>
+}
+else if (Model.ActiveTab == BookManualSearchTab.Current)
+{
+    <section class="panel bms-context">
+        <div class="panel-heading"><h2>@ui["admin.manualSearch.currentHeading"]</h2></div>
+        <dl class="bms-facts">
+            <div><dt>@ui["admin.wanted.col.status"]</dt><dd>@ui["requests.status." + statusName]</dd></div>
+            <div><dt>Work</dt><dd>@request.Title</dd></div>
+            <div><dt>Author</dt><dd>@(target.Payload.Author ?? "—")</dd></div>
+            <div><dt>Catalog ID</dt><dd>@target.Payload.CatalogId</dd></div>
+            <div><dt>Provider</dt><dd>@request.Provider</dd></div>
+            <div><dt>Searches</dt><dd>@target.Payload.Searches</dd></div>
+            <div><dt>Next search</dt><dd>@(target.Payload.NextSearchUtc?.ToString("u") ?? "—")</dd></div>
+        </dl>
+        @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
+        {
+            <p class="muted">@request.StatusMessage</p>
+        }
+    </section>
+}
+else
+{
+    <section class="panel bms-context">
+        <div class="panel-heading"><h2>@ui["admin.manualSearch.historyHeading"]</h2></div>
+        <ol class="bms-history">
+            <li>
+                <time datetime="@request.CreatedAt.ToString("O")">@request.CreatedAt.ToString("u")</time>
+                <strong>Request created</strong>
+                <span>@request.Title</span>
+            </li>
+            <li>
+                <time datetime="@request.UpdatedAt.ToString("O")">@request.UpdatedAt.ToString("u")</time>
+                <strong>@ui["requests.status." + statusName]</strong>
+                @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
+                {
+                    <span>@request.StatusMessage</span>
+                }
+            </li>
+            @foreach (var tried in target.Payload.TriedReleases ?? [])
+            {
+                <li>
+                    <span class="bms-tag bms-tag-tried">@ui["admin.manualSearch.state.tried"]</span>
+                    <span>@tried</span>
                 </li>
             }
-        </ul>
-    }
-</section>
+            @if (request.OperationId is { } operationId)
+            {
+                <li>
+                    <strong>Operation</strong>
+                    <span>@operationId</span>
+                </li>
+            }
+        </ol>
+    </section>
+}
