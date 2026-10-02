@@ -1,5 +1,6 @@
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Events;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Acquisition.Access;
 
@@ -17,7 +18,8 @@ public sealed class AcquisitionRequestService(
     IMediaCapabilityService mediaCapabilities,
     AcquisitionRequestSettingsStore requestSettings,
     IJularrEventPublisher events,
-    ILogger<AcquisitionRequestService> logger)
+    ILogger<AcquisitionRequestService> logger,
+    IInstanceModuleService? instanceModules = null)
 {
     /// <summary>Where a profile finds the state of its requests; decision notifications open it.</summary>
     public const string HistoryPath = "/Requests";
@@ -30,6 +32,17 @@ public sealed class AcquisitionRequestService(
             account.User,
             AcquisitionAccessNames.WorkType(kind),
             cancellationToken);
+
+        if (instanceModules is not null)
+        {
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            if (!instance.IsEnabled(InstanceModule.Acquisition)
+                || !instance.IsEnabled(AcquisitionInstanceModules.For(kind)))
+            {
+                capability = MediaCapability.Hidden;
+            }
+        }
+
         var policy = await store.GetPolicyAsync(kind, cancellationToken);
         return AcquisitionCapabilities.Resolve(kind, capability, policy.Manual, account.Can(JularrPolicies.AdminMedia));
     }
@@ -232,6 +245,24 @@ public sealed class AcquisitionRequestService(
 
     private async Task<AcquisitionRequest> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
     {
+        if (instanceModules is not null)
+        {
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            if (!instance.IsEnabled(InstanceModule.Acquisition)
+                || !instance.IsEnabled(AcquisitionInstanceModules.For(request.Kind)))
+            {
+                await store.UpdateStatusAsync(
+                    request.Id,
+                    AcquisitionRequestStatus.Approved,
+                    "Acquisition is disabled for this media type.",
+                    null,
+                    null,
+                    null,
+                    cancellationToken);
+                return await RequireAsync(request.Id, cancellationToken);
+            }
+        }
+
         var executor = executors.FirstOrDefault(candidate => candidate.Kind == request.Kind);
         if (executor is null)
         {
