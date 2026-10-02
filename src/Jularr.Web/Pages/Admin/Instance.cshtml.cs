@@ -14,22 +14,11 @@ public sealed class InstanceModel(
     AppDbContext db,
     IInstanceModuleService modules) : PageModel
 {
-    public static IReadOnlyList<InstanceModule> MediaModules { get; } =
+    // Expose a switch only after its complete vertical is gated. Future modules already have
+    // stable enum identities, but are added here one by one as their runtime slice is completed.
+    public static IReadOnlyList<InstanceModule> ConfigurableModules { get; } =
     [
-        InstanceModule.Anime,
-        InstanceModule.Movie,
-        InstanceModule.Tv,
-        InstanceModule.Manga,
-        InstanceModule.Novel,
-        InstanceModule.Book,
-        InstanceModule.Audiobook
-    ];
-
-    public static IReadOnlyList<InstanceModule> FeatureModules { get; } =
-    [
-        InstanceModule.Learning,
-        InstanceModule.Acquisition,
-        InstanceModule.Tracking
+        InstanceModule.Learning
     ];
 
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -46,14 +35,15 @@ public sealed class InstanceModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        var values = Enum.GetValues<InstanceModule>()
-            .ToDictionary(
-                module => module,
-                module => Request.Form.ContainsKey(FieldName(module)));
+        var updated = await modules.GetAsync(cancellationToken);
+        foreach (var module in ConfigurableModules)
+        {
+            updated = updated.With(
+                module,
+                Request.Form.ContainsKey(FieldName(module)));
+        }
 
-        await modules.SaveAsync(
-            new InstanceModuleSettings(values),
-            cancellationToken);
+        await modules.SaveAsync(updated, cancellationToken);
 
         TempData["Status"] = Ui["admin.instance.saved"];
         return RedirectToPage();
