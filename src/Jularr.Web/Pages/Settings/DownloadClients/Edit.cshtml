@@ -37,22 +37,34 @@
         <span>@(Model.IsNew ? ui["settings.downloadClients.field.apiKey"] : ui["settings.downloadClients.field.apiKeyKeepCurrent"])</span>
         <input asp-for="Secret" type="password" autocomplete="new-password" />
     </label>
-    <label>
-        <span>@ui["settings.downloadClients.field.booksCategory"]</span>
-        <input asp-for="BooksCategory" placeholder="books" />
-    </label>
-    <label>
-        <span>@ui["settings.downloadClients.field.animeCategory"]</span>
-        <input asp-for="AnimeCategory" placeholder="anime" />
-    </label>
-    <label>
-        <span>@ui["settings.downloadClients.field.mangaCategory"]</span>
-        <input asp-for="MangaCategory" placeholder="manga" />
-    </label>
-    <label>
-        <span>@ui["settings.downloadClients.field.lightNovelCategory"]</span>
-        <input asp-for="LightNovelCategory" placeholder="lightnovels" />
-    </label>
+    @if (Model.ShowBooks)
+    {
+        <label>
+            <span>@ui["settings.downloadClients.field.booksCategory"]</span>
+            <input asp-for="BooksCategory" placeholder="books" />
+        </label>
+    }
+    @if (Model.ShowAnime)
+    {
+        <label>
+            <span>@ui["settings.downloadClients.field.animeCategory"]</span>
+            <input asp-for="AnimeCategory" placeholder="anime" />
+        </label>
+    }
+    @if (Model.ShowManga)
+    {
+        <label>
+            <span>@ui["settings.downloadClients.field.mangaCategory"]</span>
+            <input asp-for="MangaCategory" placeholder="manga" />
+        </label>
+    }
+    @if (Model.ShowLightNovels)
+    {
+        <label>
+            <span>@ui["settings.downloadClients.field.lightNovelCategory"]</span>
+            <input asp-for="LightNovelCategory" placeholder="lightnovels" />
+        </label>
+    }
     <p class="muted is-wide">@ui["settings.downloadClients.categoriesHint"]</p>
     <label class="usenet-form-check">
         <input asp-for="Enabled" type="checkbox" />
