@@ -26,6 +26,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `profile-activity/SPEC.md`
 - `add-request-flow/SPEC.md`
 - `language-edition-selector/SPEC.md` — shared language/Edition dialog/sheet
+- `collection-detail-edit/SPEC.md` — Manual/Smart Collection detail and editing
 
 ## Admin screen contracts
 
