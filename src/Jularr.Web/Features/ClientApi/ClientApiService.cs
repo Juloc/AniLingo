@@ -9,6 +9,7 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.ClientApi;
