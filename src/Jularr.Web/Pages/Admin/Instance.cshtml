@@ -1,0 +1,70 @@
+@page
+@using Jularr.Web.Features.Instance
+@model Jularr.Web.Pages.Admin.InstanceModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.instance.title"];
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.instance.title"]</h1>
+        <p>@ui["admin.instance.description"]</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" model="ui" />
+
+<form method="post" class="form-stack">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h2>@ui["admin.instance.media"]</h2>
+                <p class="muted">@ui["admin.instance.mediaDescription"]</p>
+            </div>
+        </div>
+
+        <div class="form-stack">
+            @foreach (var module in InstanceModel.MediaModules)
+            {
+                var enabled = Model.Settings.IsEnabled(module);
+                <label class="checkbox-row">
+                    <input type="checkbox"
+                           name="@InstanceModel.FieldName(module)"
+                           value="true"
+                           checked="@enabled" />
+                    <span>@Model.Name(module)</span>
+                </label>
+            }
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h2>@ui["admin.instance.features"]</h2>
+                <p class="muted">@ui["admin.instance.featuresDescription"]</p>
+            </div>
+        </div>
+
+        <div class="form-stack">
+            @foreach (var module in InstanceModel.FeatureModules)
+            {
+                var enabled = Model.Settings.IsEnabled(module);
+                <label class="checkbox-row">
+                    <input type="checkbox"
+                           name="@InstanceModel.FieldName(module)"
+                           value="true"
+                           checked="@enabled" />
+                    <span>@Model.Name(module)</span>
+                </label>
+            }
+        </div>
+    </section>
+
+    <p class="muted">@ui["admin.instance.retentionNote"]</p>
+
+    <div class="inline-actions">
+        <button class="button button-primary" type="submit">@ui["admin.instance.save"]</button>
+    </div>
+</form>
