@@ -2,6 +2,7 @@ using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaCore;
+using Jularr.Web.Features.Search;
 using Microsoft.AspNetCore.Http;
 
 namespace Jularr.Tests;
@@ -110,6 +111,15 @@ public sealed class InstanceModuleTests
         Assert.AreEqual(InstanceModule.Book, InstanceModuleMedia.For(WorkMediaType.Book));
         Assert.AreEqual(InstanceModule.Manga, InstanceModuleMedia.For(WorkMediaType.Manga));
         Assert.AreEqual(InstanceModule.Novel, InstanceModuleMedia.For(WorkMediaType.LightNovel));
+    }
+
+    [TestMethod]
+    public void SearchTypesMapAudiobooksSeparatelyFromBooks()
+    {
+        Assert.AreEqual(InstanceModule.Book, MediaSearchTypes.ToInstanceModule(MediaSearchType.Book));
+        Assert.AreEqual(InstanceModule.Audiobook, MediaSearchTypes.ToInstanceModule(MediaSearchType.Audiobook));
+        Assert.AreEqual(InstanceModule.Movie, MediaSearchTypes.ToInstanceModule(MediaSearchType.Movie));
+        Assert.AreEqual(InstanceModule.Tv, MediaSearchTypes.ToInstanceModule(MediaSearchType.Series));
     }
 
     [TestMethod]
