@@ -265,6 +265,24 @@ public static class InstanceModuleRoutes
                 "/Acquisition",
                 "/api/acquisition/v1"
             ],
+            [InstanceModule.Acquisition] =
+            [
+                "/Acquisition",
+                "/Requests",
+                "/Admin/Requests",
+                "/Admin/Wanted",
+                "/Admin/Usenet",
+                "/Admin/ReadingSources",
+                "/Admin/Sonarr",
+                "/Settings/Acquisition",
+                "/Settings/Naming",
+                "/Settings/ReadingNaming",
+                "/Settings/Indexers",
+                "/Settings/DownloadClients",
+                "/Settings/Sonarr",
+                "/Settings/SonarrMigration",
+                "/api/acquisition/v1"
+            ],
             [InstanceModule.Learning] =
             [
                 "/Learn",
@@ -277,18 +295,23 @@ public static class InstanceModuleRoutes
             ]
         };
 
+    public static IReadOnlyList<InstanceModule> Resolve(PathString path) =>
+        Roots
+            .Where(pair => pair.Value.Any(root =>
+                path.StartsWithSegments(
+                    new PathString(root),
+                    StringComparison.OrdinalIgnoreCase)))
+            .Select(pair => pair.Key)
+            .Distinct()
+            .ToArray();
+
     public static bool TryResolve(PathString path, out InstanceModule module)
     {
-        foreach (var (candidate, roots) in Roots)
+        var resolved = Resolve(path);
+        if (resolved.Count > 0)
         {
-            if (roots.Any(root =>
-                    path.StartsWithSegments(
-                        new PathString(root),
-                        StringComparison.OrdinalIgnoreCase)))
-            {
-                module = candidate;
-                return true;
-            }
+            module = resolved[0];
+            return true;
         }
 
         module = default;
