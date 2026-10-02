@@ -149,7 +149,7 @@ public sealed class IndexModel(
         var animeEnabled = instance.IsEnabled(InstanceModule.Anime);
 
         ContinueWatching = animeEnabled
-            && ActiveType is DiscoveryCategory.All or DiscoveryCategory.Anime
+            && (ActiveType is DiscoveryCategory.All or DiscoveryCategory.Anime)
                 ? await progress.GetContinueWatchingAsync(cancellationToken: cancellationToken)
                 : [];
         PlaybackHistory = animeEnabled
