@@ -315,10 +315,14 @@ public sealed class AnimeAcquisitionScheduler(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var modules = scope.ServiceProvider.GetService<IInstanceModuleService>();
-        return modules is null
-            || await modules.IsEnabledAsync(
-                InstanceModule.Anime,
-                cancellationToken);
+        if (modules is null)
+        {
+            return true;
+        }
+
+        var instance = await modules.GetAsync(cancellationToken);
+        return instance.IsEnabled(InstanceModule.Anime)
+            && instance.IsEnabled(InstanceModule.Acquisition);
     }
 
     private async Task<AnimeMonitoringSchedule> LoadScheduleAsync(CancellationToken stoppingToken)
