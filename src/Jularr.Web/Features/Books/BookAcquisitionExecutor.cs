@@ -26,7 +26,7 @@ public sealed record BookRequestPayload(
 /// </summary>
 public sealed class BookAcquisitionExecutor(
     BookCatalogService books,
-    IndexerSearchCoordinator indexers,
+    BookSearchCoordinator search,
     DownloadClientStore downloadClients,
     DownloadClientSubmissionService downloads,
     ReleaseRequestTracker tracker) : IAcquisitionRequestExecutor
@@ -62,16 +62,10 @@ public sealed class BookAcquisitionExecutor(
         try
         {
             var opdsQuery = BookWorkSearch.MainTitle(payload.Title);
-            var offers = await books.SearchOpdsAsync(
-                null,
-                opdsQuery,
+            var offer = await search.FindOpdsOfferAsync(
+                payload.Title,
+                payload.Author,
                 cancellationToken);
-            var offer = offers.FirstOrDefault(candidate =>
-                BookWorkSearch.SameWork(
-                    payload.Title,
-                    payload.Author,
-                    candidate.Title,
-                    candidate.Author));
 
             if (offer is not null)
             {
@@ -95,7 +89,7 @@ public sealed class BookAcquisitionExecutor(
             opdsNote = exception.Message;
         }
 
-        if (!await indexers.HasEnabledIndexerAsync(cancellationToken))
+        if (!await search.HasEnabledIndexerAsync(cancellationToken))
         {
             return new AcquisitionExecution(
                 AcquisitionRequestStatus.Failed,
@@ -111,12 +105,15 @@ public sealed class BookAcquisitionExecutor(
                 $"No direct/free or OPDS edition is available ({directNote}; {opdsNote}) and no download client is configured.");
         }
 
-        var search = await BookUsenetSearch.SearchAsync(indexers, payload.Title, payload.Author, cancellationToken);
+        var usenetSearch = await search.SearchUsenetAsync(
+            payload.Title,
+            payload.Author,
+            cancellationToken);
         return await tracker.ContinueAsync(
             request,
             payload,
-            Candidates(search),
-            search.FailureMessage,
+            Candidates(usenetSearch),
+            usenetSearch.FailureMessage,
             async release =>
             {
                 var outcome = await downloads.SubmitAsync(
