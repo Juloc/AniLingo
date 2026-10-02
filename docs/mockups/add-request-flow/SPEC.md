@@ -188,10 +188,11 @@ All normal request choices are visible on one page beneath the compact media hea
 
 Recommended order:
 1. Scope, only when the media has meaningful selectable structure.
-2. Language / edition, only when relevant.
-3. Acquisition monitoring for future releases, only when relevant.
-4. Optional privileged Advanced override, collapsed by default.
-5. Compact request summary near the footer when useful.
+2. Included content tree derived from Scope; collapsed by default where appropriate.
+3. Language / edition, only when relevant.
+4. Acquisition monitoring for future releases, only when relevant.
+5. Optional privileged Advanced override, collapsed by default.
+6. Compact request summary near the footer when useful.
 
 Do not include personal media-list controls such as `Watching`, `Planning`, `Completed`, `Add to Watchlist`, `Add to list` or `Start watching automatically`.
 
@@ -288,11 +289,12 @@ Server authorization is authoritative.
 One medium modal only:
 - MediaIdentityHeader;
 - all relevant Request settings in one scrollable content area;
-- compact Scope/Language/Edition/Monitoring groups;
+- one Scope control followed by the derived expandable Included content tree;
+- compact Language/Edition/Monitoring groups;
 - sticky Cancel + Request footer;
 - no steps, stepper, wizard rail, Next or Back.
 
-Only show season/episode/chapter lists after the user asks for granular selection. Large granular lists may use a temporary focused selector dialog/sheet and return to the same Request modal.
+The Included content tree is a preview of the Scope result and can be expanded in place. Detailed checkboxes become editable in Custom mode. Editing a child while using All/Future automatically switches to Custom.
 
 ## Mobile layout
 
