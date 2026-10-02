@@ -19,9 +19,12 @@ public sealed class InstanceModel(
     public static IReadOnlyList<InstanceModule> ConfigurableMediaModules { get; } =
     [
         InstanceModule.Anime,
+        InstanceModule.Movie,
+        InstanceModule.Tv,
         InstanceModule.Manga,
         InstanceModule.Novel,
-        InstanceModule.Book
+        InstanceModule.Book,
+        InstanceModule.Audiobook
     ];
 
     public static IReadOnlyList<InstanceModule> ConfigurableFeatureModules { get; } =
