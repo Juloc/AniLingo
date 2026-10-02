@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,9 @@ namespace Jularr.Web.Pages.Settings;
 /// browser-local state (IndexedDB/OPFS, wwwroot/js/offline-library*.js); the
 /// server side only renders the localized shell.
 /// </summary>
-public sealed class OfflineModel(AppDbContext db) : PageModel
+public sealed class OfflineModel(
+    AppDbContext db,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<OfflineMediaEntry> Media { get; private set; } = [];
@@ -19,17 +22,37 @@ public sealed class OfflineModel(AppDbContext db) : PageModel
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
         var entries = new List<OfflineMediaEntry>();
-        entries.AddRange(await db.Episodes.AsNoTracking().OrderBy(x => x.DiscoveredAt)
-            .Select(x => new OfflineMediaEntry("episode", x.Id, x.Title)).ToListAsync(cancellationToken));
-        entries.AddRange(await db.Movies.AsNoTracking().OrderBy(x => x.Title)
-            .Select(x => new OfflineMediaEntry("movie", x.Id, x.Title)).ToListAsync(cancellationToken));
-        entries.AddRange(await db.TvSeries.AsNoTracking().OrderBy(x => x.Title)
-            .Select(x => new OfflineMediaEntry("tv", x.Id, x.Title)).ToListAsync(cancellationToken));
-        entries.AddRange(await db.Audiobooks.AsNoTracking().OrderBy(x => x.Title)
-            .Select(x => new OfflineMediaEntry("audiobook", x.Id, x.Title)).ToListAsync(cancellationToken));
-        entries.AddRange(await db.BookEditions.AsNoTracking().OrderBy(x => x.Title)
-            .Select(x => new OfflineMediaEntry("book", x.WorkId, x.Title ?? "Book")).Distinct().ToListAsync(cancellationToken));
+
+        if (instance.IsEnabled(InstanceModule.Anime))
+        {
+            entries.AddRange(await db.Episodes.AsNoTracking().OrderBy(x => x.DiscoveredAt)
+                .Select(x => new OfflineMediaEntry("episode", x.Id, x.Title)).ToListAsync(cancellationToken));
+        }
+        if (instance.IsEnabled(InstanceModule.Movie))
+        {
+            entries.AddRange(await db.Movies.AsNoTracking().OrderBy(x => x.Title)
+                .Select(x => new OfflineMediaEntry("movie", x.Id, x.Title)).ToListAsync(cancellationToken));
+        }
+        if (instance.IsEnabled(InstanceModule.Tv))
+        {
+            entries.AddRange(await db.TvSeries.AsNoTracking().OrderBy(x => x.Title)
+                .Select(x => new OfflineMediaEntry("tv", x.Id, x.Title)).ToListAsync(cancellationToken));
+        }
+        if (instance.IsEnabled(InstanceModule.Audiobook))
+        {
+            entries.AddRange(await db.Audiobooks.AsNoTracking().OrderBy(x => x.Title)
+                .Select(x => new OfflineMediaEntry("audiobook", x.Id, x.Title)).ToListAsync(cancellationToken));
+        }
+        if (instance.IsEnabled(InstanceModule.Book))
+        {
+            entries.AddRange(await db.BookEditions.AsNoTracking().OrderBy(x => x.Title)
+                .Select(x => new OfflineMediaEntry("book", x.WorkId, x.Title ?? "Book")).Distinct().ToListAsync(cancellationToken));
+        }
+
         Media = entries;
     }
 }
