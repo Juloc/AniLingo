@@ -260,6 +260,11 @@ public static class InstanceModuleRoutes
     private static readonly IReadOnlyDictionary<InstanceModule, string[]> Roots =
         new Dictionary<InstanceModule, string[]>
         {
+            [InstanceModule.Anime] =
+            [
+                "/Acquisition",
+                "/api/acquisition/v1"
+            ],
             [InstanceModule.Learning] =
             [
                 "/Learn",
