@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +15,11 @@ public sealed record TvSeriesEntry(TvSeries Series, Guid WorkId);
 /// per-type episode table. Idempotent on the series' <see cref="TvSeries.Key"/> and on each episode's
 /// (season, episode) number.
 /// </summary>
-public sealed class TvLibraryService(AppDbContext db, LegacyWorkBridge bridge, WorkStructureService structure)
+public sealed class TvLibraryService(
+    AppDbContext db,
+    LegacyWorkBridge bridge,
+    WorkStructureService structure,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<TvSeriesEntry> EnsureSeriesAsync(
         string title,
@@ -24,6 +29,8 @@ public sealed class TvLibraryService(AppDbContext db, LegacyWorkBridge bridge, W
         string? libraryPath,
         CancellationToken cancellationToken)
     {
+        await EnsureEnabledAsync(cancellationToken);
+
         var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim();
         var key = SeriesKey(cleanTitle, year);
 
@@ -69,6 +76,8 @@ public sealed class TvLibraryService(AppDbContext db, LegacyWorkBridge bridge, W
         string? episodeTitle,
         CancellationToken cancellationToken)
     {
+        await EnsureEnabledAsync(cancellationToken);
+
         var season = await structure.AddOrUpdateSeasonAsync(workId, seasonNumber, title: null, cancellationToken);
         await structure.AddOrUpdateEpisodeAsync(
             workId,
@@ -80,6 +89,17 @@ public sealed class TvLibraryService(AppDbContext db, LegacyWorkBridge bridge, W
             airedAt: null,
             seasonId: season.Id,
             cancellationToken);
+    }
+
+    private async Task EnsureEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Tv,
+                cancellationToken))
+        {
+            throw new InvalidOperationException("TV module is disabled.");
+        }
     }
 
     /// <summary>The stable de-duplication key of a series: folded title plus first-air year.</summary>
