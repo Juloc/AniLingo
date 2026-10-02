@@ -7,6 +7,7 @@
     "build": "vite build && npm run build:icons",
     "build:icons": "node scripts/build-icons.mjs",
     "check": "tsc --noEmit && npm run build",
+    "prepare": "node scripts/install-git-hooks.mjs",
     "watch": "vite build --watch"
   },
   "devDependencies": {

@@ -18,6 +18,13 @@ The central `Juloc/agent-control` engineering and C# conventions are binding for
 - Do not split coherent control flow into artificial mini-methods. Introduce a helper only when it owns real domain behavior, validation/policy, complexity, reuse or an architectural/framework boundary. Never add a forwarding wrapper that merely calls another method unchanged.
 - Keep method calls, constructors/object creation, conditions, signatures and LINQ pipelines on one physical line whenever the resulting line is at most 230 characters and remains readable. Do not turn ordinary calls into vertically fragmented argument lists. Lines over 280 characters are not allowed; between 231 and 280, prefer the clearest structure and restructure before fragmenting ordinary control flow.
 - Review the edited C# area against these rules before declaring work complete. Generated, vendored and tool-owned code is exempt where manual edits would be overwritten.
+
+## Authorship enforcement
+
+- Commits must use the configured real contributor identity. AI, agent and service identities or attribution trailers are prohibited.
+- Run `npm ci` before committing to activate the repository-local authorship hooks. Do not bypass them with `--no-verify`.
+- CI verifies authorship again for every pull request and push; the protected `main` branch requires that verification to pass.
+
 ## Fallback if the central repository cannot be read
 
 Continue safely without blocking repository recovery:
