@@ -38,7 +38,8 @@
             <a class="button button-primary"
                asp-page="/Admin/BookManualSearch"
                asp-route-id="@request.Id"
-               asp-route-tab="search">@ui["common.search"]</a>
+               asp-route-tab="search"
+               asp-route-refresh="true">@ui["common.search"]</a>
         }
         <a class="button" asp-page="/Admin/Wanted">@ui["admin.requests.wanted"]</a>
     </div>
