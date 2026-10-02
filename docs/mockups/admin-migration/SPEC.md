@@ -18,15 +18,28 @@ Migration never keeps a legacy source model as a second long-term authority.
 
 ## Main flow
 
-1. Übersicht
-2. Quelle wählen
-3. Verbindung & Scan
-4. Inhalte analysieren
-5. Mapping
-6. Optionen
-7. Zusammenfassung / Dry Run
-8. Ausführung
-9. Ergebnis
+The migration engine uses one normalized plan, but the wizard is **adaptive by source**.
+
+Conceptual phases:
+1. Quelle
+2. Verbindung / Scan
+3. Medien & Identitäten
+4. Policies / Profile / Monitoring
+5. Dateien & Benutzer
+6. Konflikte
+7. Optionen
+8. Dry Run
+9. Migration / Report
+
+The UI does not force every source through nine visible pages.
+
+Examples:
+- Folder migration skips Users, Progress and Acquisition Profiles.
+- Jellyfin/Plex/Emby skip Acquisition Profiles and Custom Formats.
+- Sonarr/Radarr expose Monitoring, Profiles and Custom Formats prominently.
+- Old Jularr may expose nearly all phases.
+
+The existing mockup stepper is a visual baseline; implementation may combine adjacent phases into one screen when that keeps the flow clearer.
 
 ## Supported migration source families
 
@@ -119,6 +132,13 @@ The dry run must show this transformation.
 
 Import Sonarr Custom Formats and their profile-specific scores.
 
+Every source Custom Format/condition must receive one explicit conversion result:
+- **1:1 übernommen** — native Jularr rule has equivalent semantics
+- **Übersetzt** — converted into one or more Jularr-native scoring rules with equivalent intent
+- **Nicht unterstützt** — no safe equivalent; not imported automatically
+
+Approximate/heuristic conversion without a visible warning is not allowed.
+
 Preserve, where supported:
 - Custom Format name
 - condition groups
@@ -168,19 +188,35 @@ Do not blindly persist Sonarr paths as canonical identity.
 
 Remote/path mappings must be reviewed against Jularr Storage.
 
-Files are linked in place by default; copying/moving is a separate explicit option.
+**Default behavior is link/reconcile in place.**
 
-#### Sonarr settings that may optionally migrate
+Sonarr migration itself does not rename/move the media library by default.
 
-Only when Jularr has a clear semantic equivalent:
+If the admin wants cleanup/reorganization after migration, hand the resulting library to the dedicated **Library Reconciliation** flow for explicit rename/move preview and execution.
+
+#### Sonarr configuration migration — separate from data migration
+
+Sonarr **data/policy migration** and **instance-configuration migration** are separate selections.
+
+Normal Sonarr data/policy migration includes:
+- Series/Season/Episode identity
+- files/path links
+- monitoring state
+- Quality Profiles
+- Custom Formats + per-profile scores
+- operational tag relationships where meaningful
+
+Optional configuration migration may additionally propose:
 - naming policy
 - quality definitions/size limits
 - delay/release timing policy
 - indexer configuration
-- download-client adapter configuration
+- external download-client adapter configuration
 - selected media-management/import settings
 
-Secrets/credentials require explicit handling and must not be exposed in clear text.
+Configuration is imported only when Jularr has a clear semantic equivalent.
+
+Indexer/download-client credentials are never silently copied as trusted working configuration. Imported connection settings are shown as proposals and must be reviewed/tested; secrets require explicit protected handling.
 
 Unsupported settings are listed in the final report rather than silently ignored.
 
@@ -213,11 +249,19 @@ May import:
 - file paths
 - provider/external IDs
 - collections/playlists where compatible
-- users through explicit account mapping
 - watched/unwatched state
 - resume position
 - play count/history where supported
 - artwork/metadata references where useful
+
+Source users are **never silently created as Jularr accounts**.
+
+For each source profile/user, the wizard must offer:
+- map to existing Jularr user
+- explicitly create a new Jularr user
+- skip this user
+
+Progress/history is imported only after that mapping is resolved.
 
 Jellyfin is not an acquisition-policy source.
 
@@ -233,12 +277,16 @@ May import:
 - file locations
 - provider IDs/metadata evidence
 - collections/playlists where compatible
-- user/account mapping
 - watched state
 - resume position
 - playback history where available
 
 Plex libraries must be mapped to Jularr LibraryRoots/content types.
+
+Source users/profiles use the same explicit mapping flow:
+- existing Jularr user
+- create new Jularr user
+- skip
 
 Plex labels/collections are imported only when semantics are clear.
 
@@ -247,9 +295,10 @@ Plex labels/collections are imported only when semantics are clear.
 Same general migration family as Jellyfin:
 - existing library/file identity
 - provider IDs
-- users/account mapping
 - watched/resume/history
 - collections/playlists where compatible
+
+Emby users/profiles must be explicitly mapped to an existing/new Jularr user or skipped.
 
 Do not treat Emby metadata as a second permanent authority after canonical resolution.
 
@@ -386,6 +435,10 @@ Never identify media by title alone when stronger IDs are available.
 
 ## Import options
 
+Separate options into two conceptual groups.
+
+### A. Daten & Policies
+
 Selectable entity groups:
 - Media
 - Metadata/provenance
@@ -397,15 +450,27 @@ Selectable entity groups:
 - Progress/history
 - Requests
 - Lists/collections
-- Provider/indexer settings
-- Download-client settings
-- Naming/media-management settings
 
-Options:
-- link files only
-- never move/delete source files by default
+### B. Instanz-Konfiguration
+
+Optional, separately enabled:
+- Provider/indexer settings
+- External download-client settings
+- Naming/media-management settings
+- Quality definitions/size limits
+- Delay/release timing policy
+- other source settings with a clear Jularr equivalent
+
+Configuration import is never implied by selecting media migration.
+
+Default file behavior:
+- link/reconcile files in place
+- never move/delete/rename source files during normal application migration
+
+Optional:
 - import missing metadata after migration
 - store detailed migration report
+- hand off library cleanup to Library Reconciliation after migration
 
 ## Conflict handling
 
@@ -475,10 +540,13 @@ Report:
 For Sonarr/Radarr specifically, report profile/rule conversion separately:
 - Quality Profiles imported
 - Custom Formats imported
+- Custom Formats converted 1:1
+- Custom Formats translated to native Jularr rules
+- unsupported conditions/rules
 - score mappings imported
-- unsupported conditions
-- monitoring states imported
+- monitoring states imported by Work/Season/Episode scope
 - tags/policies imported/skipped
+- optional configuration proposed/imported/skipped
 
 ## Light / Dark
 
@@ -527,7 +595,9 @@ Required:
 - Progress imports into Progress domain.
 - Users import through Accounts.
 - Files/paths import through Library + Storage contracts.
-- Migration may invoke Library Reconciliation for unresolved filesystem mapping.
+- Migration may invoke Library Reconciliation for unresolved filesystem mapping or post-migration organization.
+- Data migration and instance-configuration migration are separate plan sections.
+- Source users require explicit account mapping before their progress/history is imported.
 - Dry run and validation are required before destructive mutation.
 
 ## Must not implement
@@ -540,5 +610,9 @@ Required:
 - No silent dropping of unsupported Custom Format/rule conditions.
 - No flattening all Sonarr monitor state into one Work boolean.
 - No copying Sonarr/Radarr settings blindly when Jularr lacks a semantic equivalent.
+- No automatic trust/import of indexer/download-client secrets without explicit protected review/test.
+- No silent creation of Jularr users from Jellyfin/Plex/Emby source profiles.
+- No rename/move of source media as part of normal Sonarr/Radarr/media-server migration.
+- No approximate Custom Format conversion without an explicit conversion result/warning.
 - No plaintext secret exposure.
 - No skipping dry run for full migrations.
