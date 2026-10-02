@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.ChapterArtwork;
@@ -45,6 +46,18 @@ public sealed class ChapterArtworkAutoGenerator(
 
     public async Task SweepAsync(CancellationToken cancellationToken)
     {
+        await using (var moduleScope = scopeFactory.CreateAsyncScope())
+        {
+            var modules = moduleScope.ServiceProvider.GetService<IInstanceModuleService>();
+            if (modules is not null
+                && !await modules.IsEnabledAsync(
+                    InstanceModule.Novel,
+                    cancellationToken))
+            {
+                return;
+            }
+        }
+
         IReadOnlyList<string> profiles;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
