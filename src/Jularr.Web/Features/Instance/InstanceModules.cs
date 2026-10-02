@@ -263,11 +263,20 @@ public static class InstanceModuleRoutes
             [InstanceModule.Anime] =
             [
                 "/Acquisition",
+                "/Admin/Media",
+                "/Admin/Sonarr",
+                "/Settings/Naming",
+                "/Settings/Sonarr",
+                "/Settings/SonarrMigration",
                 "/api/acquisition/v1"
             ],
             [InstanceModule.Manga] =
             [
                 "/Discover/MangaImport"
+            ],
+            [InstanceModule.Novel] =
+            [
+                "/Admin/ReadingSources"
             ],
             [InstanceModule.Book] =
             [
