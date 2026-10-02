@@ -21,11 +21,15 @@ Only the signed-in user's own personal state is shown.
 
 ## Information architecture
 
-Profile is one coherent consumer area with three conceptual sections:
+Profile is one coherent consumer area with shared profile chrome and tabs:
 
-1. **Profile overview**
-2. **Activity**
-3. **Devices & Sessions**
+1. **Activity** — default
+2. **Stats**
+3. **Ratings**
+4. **Friends**
+5. **Settings**
+
+The profile hero, mini stats and activity heatmap stay above the tabs.
 
 Do not create many tiny account pages.
 
@@ -131,7 +135,61 @@ Where supported: open media, resume, remove one personal history item, or clear 
 
 Deleting visible history must not silently reset canonical progress. History deletion and progress reset are separate actions.
 
-## 4. Devices
+## 4. Ratings
+
+Ratings are a first-class personal media feature and use one universal canonical rating model across all media types.
+
+The Ratings tab shows the signed-in profile's ratings in a compact sortable/filterable list or grid.
+
+Useful information:
+
+- cover/poster
+- Work title
+- media type only where context requires it
+- user's rating rendered in the user's selected rating system
+- date rated / last changed
+- optional short review/comment when that feature exists
+
+Actions:
+
+- change rating
+- remove rating
+- open Work
+- filter/sort by media type, score and date
+
+Do not create separate AnimeRating, MovieRating, MangaRating, BookRating or AudiobookRating stores.
+
+### Rating display system
+
+Each profile can choose how ratings are entered and displayed.
+
+Supported presentation/input systems:
+
+- **Three-level thumbs**: Thumbs Down / Thumbs Up / Double Thumbs Up
+- **5 stars**
+- **0–10 integer**
+- **0.0–10.0 decimal**
+- **0–100**
+
+The selected system is a **profile preference**, not a database schema choice.
+
+Changing the display system must never rewrite all stored ratings. A canonical normalized score is converted only for display/input.
+
+For discrete systems such as thumbs:
+
+- existing canonical values are bucketed for display;
+- choosing a thumb state writes a defined canonical anchor value;
+- `No rating` remains distinct from the lowest possible rating.
+
+The exact visual control for each rating system belongs to shared components so Detail pages, Ratings tab and Activity use the same behavior.
+
+### Rating visibility in Activity
+
+Activity may show a rating only when the activity item genuinely includes a rating action/change.
+
+Normal Watch/Read/Listen Activity rows must not automatically show rating badges.
+
+## 5. Devices
 
 Personal devices/clients only.
 
@@ -139,7 +197,7 @@ Each device may show friendly name, device/client type, last active, current-ses
 
 Current device should be identifiable. Stale devices can move behind Show inactive devices. Never show another user's devices.
 
-## 5. Personal links
+## 6. Personal links
 
 Use compact navigation rows, not dashboard tiles:
 
@@ -227,6 +285,8 @@ Opening media from Activity and returning should preserve Activity filter, scrol
 
 - no social followers/friend profile system
 - no XP/gamification dashboard
+- no separate rating tables or scales per media type
+- no storing a user's chosen visual rating scale as the canonical score itself
 - no watch-time statistics wall
 - no Admin operations/jobs/history
 - no other users' sessions/devices
@@ -243,9 +303,12 @@ Opening media from Activity and returning should preserve Activity filter, scrol
 
 First review:
 
-1. Desktop Light: profile header, one current session, mixed Watch/Read/Listen Activity, compact filters, Devices, Settings/Admin destination.
-2. Mobile Light Profile hub.
-3. Mobile Activity only if the hub does not communicate the history layout clearly.
+1. Desktop Light: shared profile hero + mini stats + heatmap, then Activity as the default tab.
+2. Desktop/Mobile Stats tab.
+3. Desktop/Mobile Ratings tab using the selected profile rating system.
+4. Desktop/Mobile Friends tab.
+5. Desktop/Mobile Settings tab.
+6. Mobile Activity state.
 
 Later only where useful: Dark derivation, new-profile empty state and TV profile/focus state.
 
