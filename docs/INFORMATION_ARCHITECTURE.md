@@ -195,7 +195,7 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 **Admin → Instance** is the owner-only server-wide module surface. A module appears there only when
 its full runtime gate is implemented. The instance switch has higher precedence than per-user media
 capabilities and per-profile feature settings; disabled modules are hidden rather than shown as
-unavailable. The currently exposed switches are Anime, Learning, Acquisition and Tracking.
+unavailable. The currently exposed switches are Anime, Manga, Novel, Learning, Acquisition and Tracking.
 
 ## 5. Parity matrices
 
