@@ -25,7 +25,7 @@ Required before broad feature implementation:
 - Learning Home
 - Lesson / Review
 
-Secondary user surfaces that should normally be dialogs/sheets or states rather than independent destinations: media preview, collection detail/edit, language/version selector, person/creator view, request status/details, active-session mini player/reader, permission/forbidden state, login/profile selection.
+Secondary user surfaces that should normally be dialogs/sheets or states rather than independent destinations: media preview, collection detail/edit, person/creator view, request status/details, active-session mini player/reader, permission/forbidden state, login/profile selection.
 
 ## 4. Missing Admin screens/flows
 
