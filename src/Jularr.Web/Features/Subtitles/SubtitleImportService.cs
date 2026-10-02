@@ -849,13 +849,10 @@ public sealed class SubtitleImportService
                                     jobCancellationToken))
                             {
                                 await operation.ReportAsync(
-                                    Math.Clamp(
-                                        (int)Math.Round(index * 100d / pendingIds.Count),
-                                        0,
-                                        99),
+                                    100,
                                     "Learning module was disabled; remaining preparation skipped.",
                                     cancellationToken: jobCancellationToken);
-                                break;
+                                return;
                             }
 
                             var episodeId = pendingIds[index];
