@@ -12,7 +12,7 @@ Status: planning baseline. No feature implementation is authorized by this docum
 
 ## 2. Current approved/planned screen coverage
 
-Existing screen contracts: Home, Library/Collections, Discover/Search, Anime/Series Detail, Movie Detail, Reading Detail (Book/Light Novel/Manga), Audiobook Detail, Calendar, Admin Dashboard, Admin Media Detail, Admin Wanted, Admin Requests, Admin Activity and Admin History.
+Existing screen contracts: Home, Library/Collections, Discover/Search, Anime/Series Detail, Movie Detail, Reading Detail (Book/Light Novel/Manga), Audiobook Detail, Calendar, Profile/Activity, Admin Dashboard, Admin Media Detail, Admin Wanted, Admin Requests, Admin Activity and Admin History.
 
 Library currently uses `README.md` as its binding draft instead of `SPEC.md`; this should be normalized after approval without changing its current decisions.
 
@@ -25,7 +25,6 @@ Required before broad feature implementation:
 - Learning Home
 - Lesson / Review
 - User Settings
-- Profile / Activity
 - Add / Request flow
 
 Secondary user surfaces that should normally be dialogs/sheets or states rather than independent destinations: media preview, collection detail/edit, language/version selector, person/creator view, request status/details, active-session mini player/reader, permission/forbidden state, login/profile selection.
