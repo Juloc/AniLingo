@@ -27,7 +27,7 @@ public sealed class ReadModel(
     CurrentAccountContext account,
     BackgroundJobQueue jobs,
     AppDbContext db,
-    IInstanceModuleService instanceModules) : PageModel
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookReaderChapter Reader { get; private set; } = null!;
