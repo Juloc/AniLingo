@@ -536,6 +536,8 @@ The target Admin shell uses **one permanent navigation destination per owning ar
 - Wanted
 - Requests
 
+Library here is a navigation bridge to the canonical Library/media-management context; it does not create a second Admin-only library identity/store. Authorized management actions may open Admin Media Detail from that canonical library context.
+
 Admin Media Detail and Manual Search are contextual workflows opened from Library/Wanted/Requests/related objects. Manual Search is the Search tab of the reusable Acquisition dialog and is not a permanent sidebar page.
 
 ### Acquisition & integrations
