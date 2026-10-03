@@ -14,7 +14,8 @@ public sealed record DownloadSubmissionSpec(
     string? Name,
     MediaAcquisitionKind MediaKind,
     Stream? File = null,
-    string? FileName = null);
+    string? FileName = null,
+    string? MediaTargetKey = null);
 
 public sealed record DownloadSubmissionOutcome(
     bool Accepted,
@@ -109,7 +110,10 @@ public sealed class DownloadClientSubmissionService(
                     new DownloadOperationDetails(
                         entry.Id,
                         spec.MediaKind,
-                        entry.CategoryFor(spec.MediaKind)).Serialize(),
+                        entry.CategoryFor(spec.MediaKind),
+                        TargetKey: string.IsNullOrWhiteSpace(spec.MediaTargetKey)
+                            ? null
+                            : spec.MediaTargetKey.Trim()).Serialize(),
                     cancellationToken);
                 await store.ReportProgressAsync(
                     operationId,
