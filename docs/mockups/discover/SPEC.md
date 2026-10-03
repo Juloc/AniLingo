@@ -155,7 +155,7 @@ Discover/Search must cover:
 - local title
 - discover-only title
 - requested title
-- downloading/importing title
+- downloading/preparing title
 - trailer unavailable
 
 ## Mockup reference naming
@@ -241,7 +241,7 @@ Show:
 Examples:
 - In Bibliothek
 - Anfragen
-- requested/downloading/importing progress where the shared request pipeline exposes it
+- requested/downloading/preparing progress where the shared request pipeline exposes it
 
 Do not show on Discover cards:
 - emulator/runtime names
