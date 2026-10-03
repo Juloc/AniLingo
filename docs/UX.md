@@ -86,6 +86,24 @@ Visual rules:
 - Original Jularr Login: same controls/layout with Japanese watercolor/cherry-blossom skin and red/pink default accent.
 - Both use the same semantic tokens and support accent hue shifting.
 
+## 2b. Error / permission / availability states
+
+Binding specification: `docs/mockups/error-permission-states/SPEC.md`.
+
+Shared consumer state family:
+- Not found / hidden
+- Forbidden
+- Module unavailable
+- Resource missing
+- Session expired
+- Internal error (500)
+
+Unauthenticated protected routes redirect to the normal Login flow instead of rendering a separate “Bitte einloggen” error page.
+
+Original J uses the approved dark-haired anime character with state-specific emotion/action and Japanese ink/sakura styling. Clean remains visually separate: neutral background, modern minimal illustration/iconography, no anime/sakura/torii motifs.
+
+Hidden routes/resources must not leak feature existence. 500 must never expose raw exception details. All states use normalized application errors and shared components.
+
 ## 3. Search and Discover
 
 Search and Discover are one coherent surface.
