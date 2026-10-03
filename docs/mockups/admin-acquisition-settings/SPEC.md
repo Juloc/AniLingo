@@ -1,135 +1,1015 @@
-# Admin Acquisition / Downloader Settings — V1
+# Admin Acquisition Profiles & Scoring — V1
 
-Status: planning baseline updated for Jularr's native Usenet downloader.
+Status: approved planning direction. Existing generic `QualityProfileStore`, `ReleaseScorer` and acquisition registrations on `dev` are the implementation starting point. Approved mockups uploaded to this folder are visual references; this text remains binding.
 
 Global UX rules: `docs/UX.md`.
+Manual Search: `docs/mockups/admin-manual-search/SPEC.md`.
+Wanted: `docs/mockups/admin-wanted/SPEC.md`.
+Providers: `docs/mockups/admin-providers/SPEC.md`.
+Downloader: `docs/mockups/admin-downloader/SPEC.md`.
+Storage: `docs/mockups/admin-storage/SPEC.md`.
+Migration: `docs/mockups/admin-migration/SPEC.md`.
+
+If an image and this specification conflict, this specification wins.
 
 ## Purpose
 
-Configure the universal acquisition stack:
-- acquisition profiles/scoring
-- indexers/release-search providers
-- Jularr native Usenet downloader
-- optional external download-client adapters
-- routing/categories
-- import defaults
+Admin → Acquisition owns the reusable decision policy that answers:
 
-Normal Jularr operation must not require SABnzbd or NZBGet.
+- which releases are acceptable;
+- which qualities/formats are preferred;
+- when an existing file should be upgraded;
+- how languages and release attributes influence the result;
+- which releases are explicitly rejected;
+- whether Jularr should wait for a preferred release before grabbing;
+- which sources/providers are allowed/preferred;
+- which profile is the default for a media kind or explicitly assigned to a Work.
 
-## Primary sections
+The goal is at least the practical decision power of Sonarr quality profiles + custom formats + release profiles + delay profiles, but presented as one coherent Jularr model rather than several disconnected concepts.
 
-1. Profiles & Scoring
-2. Indexers
-3. Native Usenet
-4. External Download Clients
-5. Routing / Categories
-6. Import Defaults
+It does **not** own:
 
-Native Usenet is the default downloader path.
+- indexer/provider credentials or provider health;
+- native Usenet servers or downloader processing;
+- Storage paths/mounts;
+- Wanted items;
+- Manual Search candidate presentation;
+- post-download mapping/import assignment;
+- canonical media identity.
 
-External clients are compatibility/migration integrations, not the center of the product.
+## Product model
 
-## Native Usenet settings
+The main user-facing object is one **Acquisition Profile**.
 
-Configure downloader behavior such as:
-- Usenet servers
-- TLS
-- credentials/secrets
-- server priority/failover
-- connection limits
-- bandwidth limits
-- queue defaults
-- retry policy
-- verification/repair policy
-- extraction policy
-- duplicate/history policy
-- categories/routes
-- health/test
+An Acquisition Profile combines:
 
-Storage paths are not configured as arbitrary strings here.
+1. general identity/default assignment;
+2. quality and upgrade policy;
+3. language policy;
+4. reusable Release Rules and their effect in this profile;
+5. size/age limits where meaningful;
+6. wait/delay/source policy;
+7. usage/assignments;
+8. live score/test preview.
 
-The downloader selects a configured Native Download Workspace from Storage.
+The normal admin workflow is:
 
-## Storage integration
+`Profile öffnen → Regeln/Qualität ändern → Testen → Speichern`
 
-Binding storage spec:
-- `docs/mockups/admin-storage/SPEC.md`
+not:
 
-Acquisition/downloader settings reference:
-- Native Download Workspace
-- optional repair/extract workspace
-- Generic Downloads Root
-- LibraryRoots through routing/import policy
+`Custom Format separat anlegen → Quality Profile öffnen → Score zuweisen → Release Profile konfigurieren → Delay Profile konfigurieren`.
 
-Physical Mount/path management remains in Storage.
+## Current implementation on dev
 
-## External download clients
+Existing canonical pieces that must be reused:
 
-Optional adapters may include SABnzbd/NZBGet-compatible or other supported clients.
+- `QualityProfileStore`
+- `QualityProfileState`
+- `QualityProfile`
+- `ReleaseScorer`
+- `ReleaseScoreRule`
+- `ReleaseRuleField`
+- `ReleaseRuleMatch`
+- `ReleaseCandidate`
+- `ReleaseScoreResult`
+- `MediaAcquisitionRegistry`
+- per-media default profile registrations
+- media-kind defaults
+- per-Work profile assignment
 
-Client configuration may include:
-- endpoint
-- authentication
-- category mapping
-- remote path mapping
-- health/test
-- capabilities
+Current generic scoring already supports:
 
-External client paths must resolve into permitted Storage paths before import.
+- allowed qualities;
+- quality order;
+- upgrades on/off;
+- upgrade cutoff quality;
+- minimum score;
+- absolute minimum/maximum size;
+- Must Contain;
+- Must Not Contain;
+- required regex;
+- rejected regex;
+- score rules over:
+  - raw title
+  - release group
+  - source
+  - resolution
+  - video codec
+  - bit depth
+  - HDR format
+  - audio codec
+  - audio language
+  - subtitle language
+  - dual audio
+  - multi audio
+  - Proper
+  - Repack
 
-## Profiles & scoring
+The current store is media-type-agnostic and already supports:
+- a default profile per registered media kind;
+- a Work-specific override.
 
-Reusable AcquisitionProfiles include:
-- quality
+Do not replace this with media-specific parallel stores.
+
+## Required implementation evolution
+
+The existing backend is a good base but is not yet sufficient for the approved target UX.
+
+Required additions should extend the generic model, not create a second engine.
+
+Needed target capabilities include:
+
+- quality groups / equal-quality tiers;
+- upgrade-until-score;
+- normalized language policy;
+- reusable shared Release Rule definitions;
+- multiple conditions per rule;
+- explicit AND/OR/NOT condition grouping;
+- negated conditions;
+- first-class `Reject` rule effect;
+- source/indexer/provider matching/preference;
+- release type / pack matching where parser data exists;
+- per-quality or per-quality-group size policy;
+- video-friendly size normalization such as MB/min or bitrate when supported;
+- wait/delay policy;
+- preferred acquisition/download path where multiple supported paths exist;
+- rule/profile import/export;
+- Sonarr migration into the Jularr model.
+
+Exact persistence schema can evolve, but the semantics in this document are binding.
+
+## Primary page structure
+
+Desktop uses a profile list on the left and the selected profile editor on the right.
+
+Primary profile tabs:
+
+1. **Allgemein**
+2. **Qualität & Upgrade**
+3. **Release-Regeln**
+4. **Wartezeit & Quellen**
+5. **Verwendung & Test**
+
+Language controls may live in Allgemein or Qualität/Release policy depending on final shared component design, but remain part of the same Acquisition Profile.
+
+Do not create permanent top-level pages named:
+- Custom Formats
+- Release Profiles
+- Delay Profiles
+
+for the normal Jularr workflow.
+
+## Profile list
+
+The left panel shows reusable profiles.
+
+Each row may show:
+
+- name;
+- media kind(s);
+- primary language(s);
+- target/cutoff quality summary;
+- active/default indicator;
+- assignment count;
+- overflow actions.
+
+Filters:
+
+- search;
+- media kind;
+- language;
+- status/default.
+
+Actions:
+
+- Neues Profil
+- Duplizieren
+- Importieren
+- Exportieren
+- Löschen when safe
+
+### Delete safety
+
+A profile cannot be deleted while it is:
+
+- a media-kind default;
+- assigned to one or more Works;
+- referenced by another canonical acquisition policy.
+
+The existing `QualityProfileStore.DeleteAsync` already blocks default/Work references; preserve and extend that safety.
+
+The UI must show **where it is used** instead of only returning a generic delete failure.
+
+## 1. Allgemein
+
+Fields:
+
+- Name
+- enabled/available state if profile disabling is supported
+- applicable media kinds
+- preferred/default languages
+- fallback languages where supported
+- optional description
+- default assignment per media kind
+
+### Default profile assignment
+
+A profile may be the default for one or more registered media kinds.
+
+Examples:
+- Anime
+- Series
+- Movie
+- Book
+- Light Novel
+- Manga
+- Audiobook
+
+Only kinds registered in `MediaAcquisitionRegistry` are available.
+
+### Per-Work override
+
+Individual Works may explicitly use another profile.
+
+The profile editor does not need to list thousands of assignments inline; `Verwendung` owns the detailed list.
+
+## 2. Qualität & Upgrade
+
+### Quality ladder
+
+Show allowed qualities as an ordered drag/drop list.
+
+Each quality row can expose where relevant:
+
+- allowed checkbox;
+- quality key/name;
+- source/resolution/format;
+- group/tier;
+- min/preferred/max size;
+- upgrade/cutoff relation.
+
+Ordering is significant.
+
+Higher rows are preferred unless a quality group declares items equal.
+
+### Quality groups / tiers
+
+A group means several quality keys are considered equal for quality rank.
+
+Examples:
+
+`1080p WEB`
+- WEB-DL 1080p
+- WEBRip 1080p
+
+`4K WEB`
+- WEB-DL 2160p
+- WEBRip 2160p
+
+Rules:
+
+- grouping affects quality comparison/rank;
+- score rules can still differentiate members inside an equal-quality group;
+- a release can only belong to one effective quality tier;
+- group ordering is explicit.
+
+The UI should make this simpler than editing raw quality keys.
+
+### Upgrade policy
+
+Controls:
+
+- Upgrades aktivieren
+- Upgrade bis Qualität / Ziel-Tier
+- Mindestscore für akzeptierten Download
+- Upgrade bis Score
+
+Semantics:
+
+- `MinimumScore`: a candidate below this score is rejected.
+- `Upgrade bis Score`: once the existing release reaches this score at the relevant quality/tier, same-quality score-only upgrades stop.
+- quality upgrades stop at the configured target quality/tier.
+
+Do not conflate minimum acceptance score with the upgrade stop score.
+
+### Size policy
+
+The existing absolute min/max size support remains valid.
+
+Target UX should also support media-appropriate sizing where practical.
+
+For video:
+- MB/min
+- bitrate-derived range
+- or equivalent normalized measure
+
+For books/documents:
+- absolute size may remain more appropriate.
+
+For each quality or quality group, allow where supported:
+
+- Minimum
+- Preferred
+- Maximum
+
+`Preferred` influences ranking only if the scoring model explicitly supports it; it must not be decorative.
+
+If the backend only supports min/max initially, hide Preferred rather than fake it.
+
+### Quality acceptance and scoring are separate
+
+Quality determines whether/rank class a release belongs to.
+
+Release Rules determine additional preference/rejection.
+
+A higher-resolution release is not automatically the best release if it violates language/rule policy.
+
+## 3. Release-Regeln
+
+This is Jularr's integrated replacement for the normal UX of Sonarr Custom Formats + Release Profiles.
+
+### Core model
+
+A Release Rule has two conceptual layers:
+
+#### Shared definition
+
+Answers:
+
+`What does this rule detect?`
+
+Examples:
+
+- Dual Audio
+- SubsPlease
+- Dolby Vision
+- x265 / HEVC
+- Atmos
+- Unwanted Groups
+- Dub Only
+- Season Pack
+
+#### Profile effect
+
+Answers:
+
+`What should this Acquisition Profile do when the rule matches?`
+
+Examples:
+
+- Bevorzugen +50
+- Benachteiligen -25
+- Ablehnen
+- Nur Information / 0
+
+The same shared rule definition can have a different effect/score in different profiles.
+
+### Why this is not a separate Custom Formats page
+
+The normal workflow stays inside the profile:
+
+`Release-Regeln → Regel hinzufügen`
+
+The admin chooses:
+
+- **Vorhandene Regel verwenden**
+- **Neue Regel erstellen**
+
+A secondary **Regelbibliothek** is allowed inside the page/dialog for reuse and management.
+
+There is no required permanent Admin sidebar destination named `Custom Formats`.
+
+### Rule table
+
+Default columns:
+
+- Aktiv
+- Name
+- Bedingungen
+- Wirkung
+- Score
+- Reihenfolge
+- Aktionen
+
+One rule per row.
+
+### Rule actions
+
+Supported effects:
+
+- **Bevorzugen** — positive score
+- **Benachteiligen** — negative score
+- **Ablehnen** — hard rejection independent of an arbitrary giant negative score
+- **Nur Information** — match visible in diagnostics but no score/reject effect
+
+The backend must implement `Reject` explicitly before the UI exposes it.
+
+Do not emulate hard reject only through magic values such as `-10000`.
+
+### Conditions
+
+A rule may contain one or more conditions.
+
+Target fields include, as parser/domain capability permits:
+
+#### Generic
+- Raw Title
+- Release Group
+- Provider / Indexer / Source Provider
+- Release Type
+- Pack Type / Season Pack / Multi
+- Size
+- Age
+- Proper
+- Repack
+
+#### Video
+- Source
+- Resolution
+- Video Codec
+- Bit Depth
+- HDR format / Dolby Vision
+- Audio Codec
+- Audio Channels
+- Atmos / object audio where parser data exists
+- Audio Language
+- Subtitle Language
+- Dual Audio
+- Multi Audio
+
+#### Reading/document
+- document format such as EPUB/PDF/CBZ where normalized
 - language
+- retail/source marker
+- edition/release attributes where parsed
+
+Only conditions meaningful for the profile's applicable media kinds are shown by default.
+
+### Match operators
+
+At minimum:
+
+- Equals
+- Not Equals
+- Contains
+- Does Not Contain
+- Regex
+- Not Regex
+
+Additional numeric operators where appropriate:
+
+- <
+- <=
+- >
+- >=
+- between
+
+Regex belongs under advanced behavior when a normalized field/operator can express the same rule.
+
+### Condition groups
+
+Rules must support explicit boolean structure.
+
+At minimum:
+
+- **ALLE** conditions must match (AND)
+- **EINE DAVON** must match (OR)
+- **NICHT** / negation for a condition or group
+
+The UI must make this visible.
+
+Do not copy implicit/opaque grouping semantics that admins have to memorize.
+
+### Rule editor
+
+Right-side editor or sheet:
+
+- Name
+- optional description
+- condition group mode
+- conditions
+- `+ Bedingung`
+- effect
+- score when effect uses score
+- advanced settings
+- save/cancel
+
+Live validation:
+- invalid regex
+- incompatible field/operator
+- duplicate/redundant condition
+- impossible AND group where detectable
+
+### Shared rule library
+
+The lower/secondary Rule Library may filter:
+
+- All
+- Video
+- Audio
+- Language
+- Release
+- Source
+- Size
+- Other
+
+Each library row shows:
+
+- rule name
+- concise normalized condition summary
+- category
+- usage count
+- add-to-profile action
+
+### Editing shared rules
+
+If a shared rule is used in multiple profiles, editing its **definition** must not silently change all profiles.
+
+Before a shared-definition edit, offer:
+
+- **Für alle Profile ändern**
+- **Als eigene Kopie bearbeiten**
+
+Changing only this profile's effect/score does not alter the shared definition.
+
+## Languages
+
+Language policy should be normalized, not encoded only through title regex.
+
+Support as appropriate:
+
+- required audio languages;
+- preferred audio languages;
+- required subtitle languages;
+- preferred subtitle languages;
+- fallback policy;
+- dual/multi-audio preference.
+
+Language rules may be represented as shared Release Rules under the hood, but the normal profile editor may expose common language choices through simpler controls.
+
+Do not require users to build regex for normal language requirements.
+
+## 4. Wartezeit & Quellen
+
+This integrates the useful concept of delay profiles into the Acquisition Profile.
+
+### Purpose
+
+Allow Jularr to wait briefly for a preferred release instead of grabbing the first merely acceptable candidate.
+
+### Controls
+
+Where supported:
+
+- preferred acquisition path/source class;
+- Native Usenet delay;
+- external/torrent delay when such acquisition path is supported;
+- grab immediately at target/highest desired quality;
+- grab immediately at score >= X;
+- optional maximum wait;
+- provider/source allowlist;
+- provider/source preference or penalty.
+
+### Source/provider restrictions
+
+The profile may say:
+
+- all eligible release-search providers;
+- only selected providers;
+- prefer selected providers;
+- avoid selected providers.
+
+This references Provider IDs/capabilities.
+
+It does **not** own:
+- provider URL/API key;
+- rate limits;
+- provider health.
+
+Those remain in Admin Providers.
+
+### Downloader path
+
+If multiple download paths are available:
+
+- Native Downloader
+- compatible external client
+
+the profile may express a preference only if routing architecture supports it.
+
+Downloader credentials/configuration remain in Downloader.
+
+## 5. Verwendung & Test
+
+Two purposes:
+
+1. explain where the profile is used;
+2. test exactly how the profile evaluates a release.
+
+## Verwendung
+
+Show:
+
+- media-kind defaults using this profile;
+- Works explicitly assigned to it;
+- number of assignments;
+- links to affected Works where practical.
+
+Actions may include:
+
+- set as default for media kind;
+- bulk reassign selected Works;
+- clear explicit override and return to kind default.
+
+Bulk operations require preview/count before save when many Works are affected.
+
+## Score-Test
+
+The test surface is a first-class feature.
+
+Input options:
+
+- paste a release title;
+- select/use a real normalized candidate from Manual Search where context exists;
+- optionally enter size/source/provider when not derivable from the title.
+
+### Test result pipeline
+
+Show the same decision stages used by automatic acquisition:
+
+1. **Target / identity match**
+2. **Hard rejection rules**
+3. **Quality eligibility**
+4. **Release Rules / score contributions**
+5. **Minimum score**
+6. **Wait/delay policy**
+7. **Upgrade decision** when comparing against an existing local release
+
+Example result:
+
+`Akzeptiert · Score 125 · WEB-1080p · keine Wartezeit`
+
+or:
+
+`Abgelehnt · Regel "Dub only"`
+
+### Rule breakdown
+
+Show every relevant evaluation:
+
+- base quality / tier
+- matched positive rule +score
+- matched negative rule -score
+- hard reject
+- unmatched optional rules may remain hidden by default
+- total score
+- minimum score comparison
+- upgrade comparison where requested
+
+### Parsed release information
+
+Show normalized parser output:
+
+- title/target
+- source
+- resolution
+- codec
+- HDR
+- audio
+- languages
+- subtitles
+- release group
 - release type
-- custom/release rules
-- score contributions
-- upgrade thresholds
-- size/age limits where applicable
+- size
+- provider/indexer
 
-No media-specific parallel scoring engines.
+Only show values actually parsed/known.
 
-## Routing
+### One scorer everywhere
 
-Routing can decide:
-- specialized LibraryRoot destination by canonical content type
-- Generic Downloads fallback
-- category/priority
-- preferred downloader path where external adapters are explicitly enabled
+Automatic search, Manual Search and Score-Test must use the same canonical decision/scoring engine.
 
-Routing must not duplicate canonical media identity.
+No hidden second UI-only scorer.
 
-## Light / Dark
+Manual Search may add identity confidence/rejection context around the same profile score.
 
-Both first-class.
+## Candidate decision order
+
+The target decision order is conceptually:
+
+`Target/Identity → Hard Reject → Quality Eligibility → Rule Score → Minimum Score → Wait Policy → Upgrade Decision`
+
+Important:
+
+- identity mismatch cannot be repaired by a high score;
+- hard reject cannot be overridden by a high positive score unless a future explicit override policy is designed;
+- quality/rules are independent dimensions;
+- waiting does not make an otherwise rejected release acceptable.
+
+## Import / Export
+
+### Jularr format
+
+Support import/export for:
+
+- full Acquisition Profile;
+- shared Release Rule definitions;
+- profile effects/scores;
+- quality groups;
+- wait/source policy where supported.
+
+Use a versioned Jularr schema.
+
+Import validates before writing.
+
+### Sonarr migration
+
+Sonarr data is an **import source**, not a permanent parallel model.
+
+Migration mapping target:
+
+- Sonarr Quality Profile → Jularr Acquisition Profile quality/upgrade policy
+- Sonarr Custom Format definition → shared Jularr Release Rule definition
+- Custom Format score in a Sonarr Quality Profile → Jularr profile effect/score
+- Sonarr Release Profile Must Contain / Must Not Contain → Jularr Release Rules
+- Sonarr Release Profile preferred terms → scored Jularr Release Rules
+- Sonarr Delay Profile → Jularr Wait/Source policy
+- Sonarr Tags → migration matching/assignment evidence; do not require tags as the permanent runtime mechanism when direct profile assignment is sufficient
+- Sonarr monitoring state → monitoring/import migration contract, not profile scoring itself
+
+Imported values must be reviewable before commit.
+
+### Hard-reject migration
+
+If Sonarr used extreme negative scores to simulate rejection, migration may **suggest** converting them to explicit `Reject`, but must not guess silently where intent is ambiguous.
+
+Preview the conversion.
+
+## Relationship to Monitoring
+
+Acquisition Profile answers **what release is acceptable/preferred**.
+
+Monitoring answers **what media/unit is wanted and when**.
+
+They are related but distinct.
+
+A monitored Work/unit references the effective Acquisition Profile.
+
+Do not copy quality/release rules into per-Work monitoring rows.
+
+## Relationship to Wanted
+
+Wanted shows targets that need acquisition.
+
+Each Wanted target resolves its effective Acquisition Profile.
+
+Wanted may show:
+- profile name
+- language target
+- current quality target
+
+Editing the reusable profile happens here, not inline in Wanted.
+
+## Relationship to Manual Search
+
+Manual Search shows normalized candidates and the exact profile evaluation.
+
+Candidate rows may expose:
+- quality
+- score
+- matched rule summary
+- rejection reasons
+
+Opening score details reuses the same explanation contract as Score-Test.
+
+## Relationship to Providers
+
+Provider/indexer configuration remains in Admin Providers.
+
+Acquisition Profile may reference:
+- allowed provider IDs;
+- preferred/avoided provider IDs.
+
+It never stores provider credentials.
+
+## Relationship to Downloader
+
+Native Usenet server settings, bandwidth, queue, verify/repair/extract and external-client adapter configuration remain in Downloader.
+
+Acquisition Profile may only choose a supported preferred acquisition path/routing policy when such a choice is enabled by architecture.
+
+## Relationship to Storage / Import
+
+Storage owns:
+- Mounts;
+- LibraryRoots;
+- Native Download Workspaces;
+- Generic Downloads Roots;
+- default LibraryRoot per content/media type;
+- effective LibraryRoot import placement policy: HardlinkOrCopy / Hardlink / Copy / Move.
+
+A Work may hold an explicit target-root override through the canonical library/monitoring contract.
+
+Acquisition Profile does not store:
+- arbitrary filesystem paths;
+- LibraryRoot routing tables;
+- Hardlink/Copy/Move policy;
+- remote-path mappings.
+
+External downloader path translation belongs to the specific Downloader external-client adapter.
+
+Migration/coexistence path translation belongs to the relevant Migration/integration adapter.
+
+There is no separate permanent `Import & Routing` Admin page. Physical placement is resolved from Storage + Work target-root state after Acquisition has already selected the release.
+
+## Current backend migration path
+
+Implementation should evolve incrementally.
+
+### Keep
+
+- generic `QualityProfileStore`
+- `MediaAcquisitionRegistry`
+- kind defaults
+- Work assignments
+- `ReleaseScorer`
+- normalized `ReleaseInfo` parsing
+- existing score fields
+- current validation and regex timeout behavior
+
+### Extend
+
+- version the persisted profile state;
+- introduce quality groups;
+- introduce upgrade-until-score;
+- introduce shared Release Rule definitions + profile-specific effects;
+- add composite boolean conditions;
+- add explicit Reject effect;
+- add source/provider/release-type fields where normalized parser/provider data exists;
+- add wait/source policy;
+- add richer size policy.
+
+### Migrate existing persisted profiles
+
+Existing profile files must migrate forward automatically and deterministically.
+
+Current simple `ReleaseScoreRule` entries can migrate to:
+- one-condition shared rule definition;
+- profile effect = scored preference/penalty.
+
+Current:
+- MustContain
+- MustNotContain
+- RequiredRegex
+- RejectedRegex
+
+can migrate into explicit Release Rules while preserving behavior.
+
+Do not require admins to recreate existing profiles manually.
+
+## Validation
+
+Profile validation includes:
+
+- unique ID/name policy where required;
+- at least one usable quality/format;
+- valid quality ordering/groups;
+- no duplicate group membership;
+- valid cutoff/target quality;
+- valid score thresholds;
+- min <= max sizes;
+- valid regex with timeout;
+- valid rule field/operator/value;
+- referenced shared rule exists;
+- referenced provider exists or is clearly unresolved;
+- no impossible circular/shared-rule reference model.
+
+Invalid profiles cannot become defaults.
+
+## Unsaved changes
+
+The editor uses explicit Save.
+
+Changes across the current profile tabs are saved atomically as one profile transaction/version.
+
+Score-Test may evaluate the **unsaved draft** and must label that clearly, so admins can test before committing.
+
+Navigation away with unsaved changes uses standard unsaved-change protection.
+
+## Detailed / Compact Admin mode
+
+The global Admin density preference applies.
+
+### Detailed
+
+- explanatory help for thresholds;
+- richer rule summaries;
+- visible test breakdown;
+- usage context.
+
+### Compact
+
+- dense profile list;
+- table-oriented quality/rules;
+- less repeated help text;
+- same capabilities and validation.
+
+No rule or score information disappears solely because Compact is selected.
+
+## Clean design baseline
+
+Planning mockups use Clean:
+
+- neutral light background;
+- purple Jularr accent;
+- compact Admin shell;
+- table/list-driven configuration;
+- border/light-tint status chips;
+- no decorative anime background artwork.
+
+Media artwork may appear only as actual profile/example media content.
+
+Dark mode remains required for implementation.
 
 ## Platforms
 
-Desktop primary; tablet/mobile may use stacked settings editors. TV unsupported.
+### Desktop
 
-## States
+Primary full editor.
 
-Required:
-- unconfigured native downloader
-- healthy/degraded Usenet server
-- no usable Usenet server
-- workspace unavailable
-- insufficient workspace capacity
-- external client unavailable
-- invalid rule
-- no eligible route
-- test running/failure
-- unsaved changes
+Left profile list + right editor is preferred.
+
+### Tablet
+
+Supported:
+- collapsible profile list;
+- full-width tab editor;
+- rule editor as side sheet/full-height panel.
+
+### Mobile
+
+Supported for:
+- profile selection;
+- quality ordering/toggles;
+- simple rule enable/effect/score editing;
+- score test;
+- usage inspection.
+
+Complex composite rule creation may use a full-screen editor.
+
+Do not squeeze desktop tables into phone width.
+
+### TV
+
+Unsupported.
+
+## Required states
+
+- no profiles
+- profile loading
+- profile ready
+- unsaved draft
+- saving
+- save failed
+- invalid profile
+- invalid regex
+- unresolved provider reference
+- profile in use
+- delete blocked
+- migrated legacy profile
+- imported profile preview
+- import conflict
+- test parsing
+- test accepted
+- test rejected by identity
+- test rejected by quality
+- test rejected by rule
+- test below minimum score
+- test delayed/waiting
+- upgrade available
+- upgrade cutoff reached
 - permission denied
 
 ## Must not implement
 
-- No Anime-only acquisition settings.
-- No requirement for SABnzbd/NZBGet in normal operation.
-- No external Download Clients section presented as the only downloader.
-- No arbitrary native downloader filesystem paths that bypass Storage.
-- No `IsBooks`-style routing booleans.
-- No separate per-media acquisition engines.
-- No raw YAML as primary UX.
+- No separate Anime/Movie/Book scoring engines.
+- No separate permanent Custom Formats page required for normal use.
+- No duplicate Release Profile model just to mimic Sonarr.
+- No duplicate Delay Profile model just to mimic Sonarr.
+- No magic giant negative score as the only hard-reject mechanism.
 - No hidden scoring rules.
+- No UI-only scorer.
+- No raw YAML/JSON as the primary editor.
+- No regex requirement for normal language/codec/source rules.
+- No provider credentials in Acquisition Profiles.
+- No downloader server settings in Acquisition Profiles.
+- No Storage paths in Acquisition Profiles.
+- No Hardlink/Copy/Move setting in Acquisition Profiles.
+- No final LibraryRoot routing table in Acquisition Profiles.
+- No remote-path mapping in Acquisition Profiles.
+- No separate permanent Import & Routing page.
+- No target/identity mismatch overridden by score.
+- No silent cross-profile edits to shared rule definitions.
+- No silent Sonarr-import guess that converts ambiguous negative scores to Reject.
+- No loss of current persisted profile behavior during migration.

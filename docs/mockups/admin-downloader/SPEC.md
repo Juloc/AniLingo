@@ -132,7 +132,11 @@ Downloader references Storage roles by ID/configuration:
 
 It does not own arbitrary filesystem path configuration.
 
-Final specialized LibraryRoots and Generic Downloads Root are selected by Acquisition/import routing, not by individual queue jobs unless an authorized manual override flow explicitly permits it.
+Final specialized LibraryRoots and Generic Downloads Root are resolved from the canonical Storage/LibraryRoot destination contract, including content-type defaults and explicit Work target-root overrides.
+
+Individual downloader queue jobs do not own final filesystem routing unless an authorized manual recovery flow explicitly overrides a failed/ambiguous import.
+
+There is no separate permanent `Import & Routing` Admin page.
 
 ## Secrets
 

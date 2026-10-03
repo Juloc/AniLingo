@@ -1,6 +1,6 @@
 # Admin Games — Shared Contract
 
-Status: planning scaffold from #725. Detailed Admin Games UX pending page-by-page approval.
+Status: shared Admin Games contract. Required non-player Games-specific Admin surfaces are approved.
 
 Shared Games contract: `docs/mockups/games/SPEC.md`.
 
@@ -38,3 +38,21 @@ A runtime must never receive broad Jularr/host access merely because it is confi
 Desktop primary.
 Tablet/mobile support essential monitoring/configuration where practical.
 TV unsupported for Admin.
+
+
+## Approval status
+
+Approved Games-specific Admin surfaces:
+- Runtimes;
+- Runtime editor;
+- BIOS/Firmware overview;
+- BIOS/Firmware Add/Replace;
+- ambiguous import resolution.
+
+Shared Admin pages remain authoritative for:
+- Games LibraryRoot -> Storage;
+- Games metadata-provider configuration/health -> Providers;
+- indexers/acquisition/downloader -> shared acquisition/downloader settings;
+- cross-system failures -> Activity / To-Do / History.
+
+No additional Games-specific Admin page is currently required for the non-player scope.

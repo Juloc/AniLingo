@@ -141,17 +141,16 @@ Examples:
 - Manga
 - Books
 - Audiobooks
-- Games/Software where supported
-- Requests
 - Learning
-- Native Downloader
-- AI
-- Generic Downloads
+
+Additional concepts such as Games, Requests, Native Downloader, AI or Generic Downloads appear as independent module switches **only after** their complete canonical instance runtime gate exists. Setup Wizard must not invent switches that Admin -> Instance cannot actually enforce.
 
 Rules:
-- module state controls feature availability and navigation;
+- Software is not a separate module in the current architecture; software/installers remain admin-only Generic Downloads unless a later approved requirement changes that.
+- Games is its own specialized module/library and does not use Generic Downloads as its final library, but it appears as a Setup module switch only when the canonical Games instance-module contract exists.
+- canonical module state controls feature availability and navigation;
 - disabled modules hide their later setup steps;
-- module switches remain editable later in Instance Settings;
+- module switches shown here remain editable later in Instance Settings;
 - disabling a module must not silently delete its data.
 
 The wizard must not invent feature-specific storage/settings outside their owning modules.
@@ -182,8 +181,18 @@ Examples:
 - Movies
 - Manga
 - Books
+- Audiobooks
+- Games
 
 One physical mount may contain multiple LibraryRoots.
+
+### Games storage
+
+When a canonical Games instance module exists and is enabled, or when the setup flow is explicitly configuring an available Games installation without pretending there is a module switch:
+- allow creation/selection of a Games-capable LibraryRoot;
+- the Games importer owns final Game/platform/release folder organization inside that root;
+- do not route identified Games to Generic Downloads;
+- BIOS/Firmware storage is restricted Games runtime data and is configured later through Games Admin, not as a normal LibraryRoot.
 
 ### Optional storage roles
 
@@ -261,6 +270,19 @@ The wizard should clearly distinguish:
 Identity/Login providers selected here define which configured external sign-in methods may be offered after setup. Login auto-provisioning, when enabled, must use conservative explicit default roles/capabilities.
 
 Advanced priorities, capability matrices, rate limits and provider-specific tuning remain in Admin Provider settings.
+
+### Games provider requirements
+
+When Games is actually available in the installation/setup context, the Provider step may offer/recommend configured Metadata providers that declare Games capabilities.
+
+Use the normal Metadata provider family. Do not create a separate Games-provider setup model.
+
+At minimum the setup summary should make it clear whether Games metadata is:
+- Ready;
+- Optional/degraded;
+- Not configured.
+
+Game runtime/emulator and BIOS/Firmware configuration remain owned by Admin Games and are not duplicated into generic Provider configuration.
 
 Secrets are masked/write-only.
 

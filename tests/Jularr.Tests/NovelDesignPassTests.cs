@@ -124,22 +124,25 @@ public sealed class NovelDesignPassTests
     public void ContentsViewsRenderChapterGroupsCollapsibleAndWithoutAnEyebrow()
     {
         var work = Read("src", "Jularr.Web", "Pages", "Novels", "Work.cshtml");
+        var volumeGroup = Read("src", "Jularr.Web", "Pages", "Novels", "_NovelVolumeGroup.cshtml");
         var row = Read("src", "Jularr.Web", "Pages", "Novels", "_NovelChapterRow.cshtml");
         var drawer = Read("src", "Jularr.Web", "wwwroot", "js", "novel-chapter-drawer.js");
         var libraryCss = Read("src", "Jularr.Web", "wwwroot", "css", "novel-library.css");
         var frameCss = Read("src", "Jularr.Web", "wwwroot", "css", "novel-reader-frame.css");
 
-        // Work page: a grouped run draws once under a native, collapsible <details> heading;
-        // an ungrouped run (every novel today) renders the same row partial with no wrapper.
-        StringAssert.Contains(work, "GroupRuns(group.Chapters)");
-        StringAssert.Contains(work, "<details class=\"novel-chapter-group\" open>");
-        StringAssert.Contains(work, "<summary class=\"novel-chapter-group-heading\">@run.GroupTitle</summary>");
-        StringAssert.Contains(work, "_NovelChapterRow");
-        StringAssert.Contains(row, "novel-chapter-row");
+        // The work page owns presentation-group selection and delegates chapter rendering
+        // to the canonical volume-group partial for both grouped and ungrouped layouts.
+        StringAssert.Contains(work, "Model.PresentationVolumeSections.Count > 0");
+        StringAssert.Contains(work, "Model.PresentationChapterSections.Count > 0");
+        StringAssert.Contains(work, "<details class=\"presentation-group\" open>");
+        StringAssert.Contains(work, "<partial name=\"_NovelVolumeGroup\"");
 
-        // The row partial is the single source of a chapter row; it is not duplicated
-        // inline for the grouped and ungrouped branches.
-        Assert.AreEqual(2, CountOccurrences(work, "<partial name=\"_NovelChapterRow\""));
+        // The volume-group partial remains the single owner of chapter-run grouping.
+        StringAssert.Contains(volumeGroup, "GroupRuns(Model.Chapters)");
+        StringAssert.Contains(volumeGroup, "<details class=\"novel-chapter-group\" open>");
+        StringAssert.Contains(volumeGroup, "<summary class=\"novel-chapter-group-heading\">@run.GroupTitle</summary>");
+        Assert.AreEqual(2, CountOccurrences(volumeGroup, "<partial name=\"_NovelChapterRow\""));
+        StringAssert.Contains(row, "novel-chapter-row");
 
         // Reader drawer: a group heading only appears when the loaded window carries a
         // groupTitle, and toggles its own rows via a plain data attribute (no eyebrow text).

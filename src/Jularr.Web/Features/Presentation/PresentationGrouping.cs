@@ -17,14 +17,14 @@ public static class PresentationGrouping
 {
     /// <summary>
     /// Assigns each item to the first group (in group order) whose ranges contain the item's unit
-    /// number; items no group claims fall into a trailing fallback section. Returns an empty list
+    /// number; items with no unit or no matching group fall into a trailing fallback section. Returns an empty list
     /// when there are no groups OR when no group matched any item — in both cases the caller renders
     /// the plain, ungrouped list exactly as before.
     /// </summary>
     public static IReadOnlyList<PresentationSection<T>> Arrange<T>(
         IReadOnlyList<PresentationGroup> groups,
         IReadOnlyList<T> items,
-        Func<T, int> unitOf,
+        Func<T, int?> unitOf,
         string fallbackName)
     {
         ArgumentNullException.ThrowIfNull(groups);
@@ -49,7 +49,8 @@ public static class PresentationGrouping
                     continue;
                 }
 
-                if (group.Ranges.Any(range => range.Contains(unitOf(items[i]))))
+                var unit = unitOf(items[i]);
+                if (unit is int value && group.Ranges.Any(range => range.Contains(value)))
                 {
                     picked.Add(items[i]);
                     claimed[i] = true;

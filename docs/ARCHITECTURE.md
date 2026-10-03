@@ -166,15 +166,35 @@ Feature modules define task intent; AI executes it. AI must not absorb feature/d
 
 ### Discovery
 Owns cross-provider discovery/recommendation presentation data:
-- discover queries
-- filters
-- recommendation candidates
-- resolution to canonical Work
+- discover queries;
+- filters;
+- recommendation candidates;
+- resolution to the canonical target owned by the relevant domain.
+
+For watch/read/listen media, that target is canonical `Work` plus optional presentation/structure context.
+
+Games remains deliberately outside MediaCore. Games discovery resolves through an explicit Games application port to canonical `Game` identity; Discovery must not force Game/GameRelease into Work/Edition merely to share Search UI.
 
 A discovery result is not automatically a library item.
 
 ### Collections
-Owns static/smart collections of canonical Work references.
+Owns profile-scoped Collection metadata and canonical Work membership.
+
+Persisted modes:
+- Manual — explicit membership/order;
+- Smart — versioned rule expression + include/exclude overrides evaluated against local/cached Media Facts;
+- Linked — locally persisted Work membership synchronized from an external provider list.
+
+Boundary rules:
+- cross-media is normal Collection behavior, not a separate Collection type;
+- franchise/adaptation grouping uses canonical Work relations through Smart/derived views;
+- CollectionEntry stores WorkId, never provider identity as canonical membership;
+- Games is outside the V1 Work-based Collection boundary; adding it later requires an explicit typed cross-domain collection contract;
+- Smart render/preview performs no provider network calls;
+- Linked render performs no provider network calls;
+- Linked sync persists provider list/item evidence first, resolves to canonical Work IDs, then updates local membership;
+- ambiguous identity becomes mapping/review state instead of title-only silent merge;
+- removing/deleting Collection membership never deletes media/progress/request state.
 
 ### Accounts
 Owns authentication, Accounts, Profiles, linked login identities, profile selection, authorization and user/group policy.
@@ -422,6 +442,8 @@ query/external id
 
 Refreshing metadata must not overwrite manual/admin corrections without policy. Provider removal must not invalidate canonical internal IDs.
 
+Provider responses used for durable product features are persisted as local evidence/snapshots (`ProviderEntitySnapshot` concept) with provider/entity/external identity, normalized fields, refresh timestamps/stale state and optional resolved WorkId. Linked Collections additionally persist external list/membership evidence. Normal UI rendering consumes local state rather than making provider availability a page-render dependency.
+
 ## 12. Playback flow
 
 ```text
@@ -642,7 +664,15 @@ Critical bug/security fixes remain allowed. New feature work must not expand leg
 
 ### Canonical search/discovery identity
 
-Provider records are discovery/metadata inputs, never parallel domain identities. Search and recommendation adapters resolve provider hits through the canonical Work identity layer before normal presentation. Series/Anime remain Work -> Season -> Episode internally; one Work can have multiple provider mappings, including multiple AniList entries for seasons/parts/specials.
+Provider records are discovery/metadata inputs, never parallel domain identities.
 
-The application contract for a resolved search/discovery item is therefore conceptually **canonical Work + optional provider/presentation target**. Default surfaces deduplicate to the Work. Provider-native views (for example the explicit AniList view inside the Anime search filter) may expose individual provider entries, but selecting them resolves back to the same Work and optional season/presentation target. This rule is shared by Search, Discover, Home, Library, Calendar and Requests.
+For watch/read/listen media, Search and recommendation adapters resolve provider hits through canonical Work identity before normal presentation. Series/Anime remain `Work -> Season -> Episode`; one Work can have multiple provider mappings, including AniList entries for seasons/parts/specials.
+
+For Games, Search/Discover resolves through the isolated Games module to canonical `Game` identity and optional GameRelease/platform presentation context. A Game is not converted into a Work.
+
+The shared presentation contract is therefore conceptually a **typed canonical target + optional provider/presentation target**:
+- Media target -> Work;
+- Games target -> Game.
+
+Default surfaces deduplicate by the owning domain's canonical identity. Provider-native views may expose individual provider entries, but durable actions first resolve back to the canonical target. This rule is shared by Search, Discover, Home and Requests; Library/Calendar use only the target kinds they explicitly support.
 

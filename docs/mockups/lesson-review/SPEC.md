@@ -2,6 +2,8 @@
 
 Status: **binding V1 planning specification for Lesson and Review mockups**. This defines the focused learning-session surfaces that pair with the V1 Learning Dashboard. It intentionally does not pull future Speaking/Writing/AI-Tutor/exam systems into the first delivery.
 
+Binding pedagogy and Lesson sequencing: `docs/LEARNING_PEDAGOGY.md`. This screen spec defines presentation/interaction; pedagogy defines when content is introduced, guided, retrieved, corrected, transferred and summarized.
+
 ## 1. Product role
 
 Lesson and Review are separate session types over the same canonical Learning domain.
@@ -21,6 +23,11 @@ Lesson and Review are separate session types over the same canonical Learning do
 - never creates a second scheduling system.
 
 Both are distraction-minimized and resumable.
+
+The approved Original Jularr visual direction uses the canonical Jularr mascot reference:
+`docs/assets/original-j/jularr-mascot-reference.png`.
+
+The mascot/illustration is a presentation layer only. It must never change Lesson/Review data, scoring, scheduling, exercise semantics or navigation.
 
 ## 2. Shared session shell
 
@@ -43,40 +50,23 @@ Do not show:
 
 ## 3. Lesson structure
 
-V1 Lesson is a mostly linear flow divided into meaningful sections.
-
-Example:
+The canonical pedagogical sequence is defined in `docs/LEARNING_PEDAGOGY.md`:
 
 ```text
-Lesson
-  Section 1 — Introduction
-    Explanation
-    Example
-    Vocabulary
-    Practice
-
-  Section 2 — Use
-    Listening
-    Cloze
-    Sentence order
-    Recognition
-
-  Section summary
-
-  Section 3 — Apply
-    Practice
-    Comprehension
-
-  Lesson summary
+Orient -> Introduce -> Example -> Guided Practice
+-> Independent Retrieval -> Apply/Transfer -> Checkpoint -> Summary
 ```
+
+The visible Lesson remains a mostly linear flow divided into meaningful sections. Simple content may combine adjacent phases; the UI must not invent a different teaching sequence.
 
 Rules:
 - learner normally proceeds forward;
 - previous/review-current-section may be allowed;
-- lesson can be exited and resumed exactly;
+- Lesson can be exited and resumed exactly;
 - sections provide natural checkpoints;
 - short section summaries prevent one giant endless card flow;
-- no unnecessary route change between every exercise.
+- no unnecessary route change between every exercise;
+- ordinary Lesson completion does not require 100% accuracy or retry-until-green.
 
 ## 4. V1 Lesson step types
 
@@ -122,6 +112,32 @@ Each exercise has:
 Instructions must be short and stable in placement.
 
 Avoid repeating long pedagogical explanations above every card.
+
+### Illustration / companion rule
+
+Original Jularr Lessons may use the canonical mascot as a visual companion:
+- beside the exercise;
+- in the header/background edge;
+- presenting a lesson card;
+- explaining a rule;
+- encouraging after an answer;
+- celebrating completion.
+
+Illustration must stay subordinate to the exercise.
+
+**Never use an illustration that reveals the correct answer unless the exercise explicitly tests image recognition.**
+
+Examples:
+- a neutral mascot beside `食べる` is allowed;
+- a bowl of food beside a meaning-recall question for `食べる` is not allowed because it gives away the answer;
+- a contextual scene is allowed only when that context is intentionally part of the exercise.
+
+Review is stricter than Lesson:
+- neutral mascot/atmosphere is allowed;
+- direct object/action illustrations that provide a semantic clue are forbidden for recall/meaning questions;
+- optional media context may appear only when the exercise intentionally includes that context.
+
+Clean uses the same exercise layout/semantics without the Original J mascot by default.
 
 ## 6. Answer behavior
 
@@ -266,6 +282,8 @@ Rating baseline:
 - **Easy**
 
 On exercises with objective correctness, Jularr may visually recommend an appropriate rating based on result/response behavior, but the stored scheduler result follows the explicit supported review contract. Do not silently invent a second difficulty scale.
+
+The four FSRS ratings are shown/enabled **only after the learner answered or explicitly revealed the answer**. A visual mockup may place the rating area in the eventual feedback layout, but the live UI must not let the learner rate an unrevealed card.
 
 Keyboard shortcuts may map to the four ratings on Desktop after answer/reveal.
 
@@ -427,6 +445,13 @@ Do not mark the Lesson complete from mere entry or partial progress.
 
 Desktop is keyboard + pointer optimized.
 
+Original J approved direction:
+- warm paper/ink surface;
+- red/pink accent;
+- restrained sakura/landscape decoration around, not over, the exercise;
+- canonical mascot may occupy the side/background edge without shrinking the exercise below a comfortable width;
+- the mascot changes pose/expression between Question, Feedback, Help and Summary while remaining the same character.
+
 Requirements:
 - centered exercise area;
 - controlled maximum width;
@@ -436,7 +461,7 @@ Requirements:
 - Enter can submit/continue only when unambiguous;
 - review rating shortcuts after answer.
 
-No permanent side navigation competing with the current exercise.
+The normal global Jularr shell may remain on wide Desktop if the product shell requires it, but it must stay visually subordinate. Do not add a second dense Learning navigation tree inside the session merely because a mockup happens to show one.
 
 ## 25. Mobile
 
@@ -477,9 +502,26 @@ Not suitable baseline:
 
 Unsupported exercises offer a handoff rather than a broken control.
 
-## 28. Light / Dark
+## 28. Visual skins / Light / Dark
 
 Both first-class.
+
+Original Jularr uses the same canonical mascot reference as other Original J surfaces:
+`docs/assets/original-j/jularr-mascot-reference.png`.
+
+For Lesson/Review:
+- Question: focused/neutral/explaining pose;
+- Hint/help: pointing or tablet/help pose;
+- Correct feedback: happy/encouraging pose;
+- Incorrect feedback: supportive/focused pose, not punitive;
+- Session completion: celebrating-success pose;
+- Error/degraded state: apologetic/error pose where a mascot is appropriate.
+
+The character identity, face, hair, eyes, outfit family and ornaments stay canonical. Pose, crop, expression and props may vary.
+
+Future language/course-specific companion sets may be introduced later, but they remain optional visual assets only. They must never fork layout, exercise logic, scoring or scheduler behavior. Until such a set is explicitly specified, Original Jularr uses the canonical Jularr mascot.
+
+Clean keeps the same layout and behavior and does not use the Original J mascot by default.
 
 Use color carefully:
 - correct;
@@ -541,19 +583,23 @@ Required:
 
 ## 32. Required mockups
 
-Create in this order:
+Approved Original Jularr reference direction:
+1. **Desktop Lesson — Question** — approved visual direction;
+2. **Desktop Lesson — Correct/feedback** — approved visual direction;
+3. **Desktop Review — Question + post-answer FSRS rating layout** — approved visual direction, with rating disabled/hidden until answer/reveal;
+4. **Mobile Lesson — Question** — approved visual direction;
+5. **Mobile Lesson — Feedback** — approved visual direction;
+6. **Mobile Review — Question/Feedback** — approved visual direction;
+7. **Desktop Lesson Session Summary** — approved visual direction.
 
-1. **Desktop Light — Lesson multiple-choice/recognition Step**
-2. **Desktop Light — Lesson incorrect feedback**
-3. **Desktop Light — Lesson section summary**
-4. **Mobile Light — Lesson exercise**
-5. **Desktop Light — Review prompt/answer state**
-6. **Desktop Light — Review rating state (Again/Hard/Good/Easy)**
-7. **Mobile Light — Review rating**
-8. **Desktop Light — Lesson Session Summary**
-9. **Desktop Light — Review Session Summary**
-10. **Dark validation — one Lesson + one Review state**
-11. **No reviews due / TTS unavailable reference**
+Still required as validation:
+8. **Desktop Lesson — incorrect feedback**;
+9. **Desktop Review Session Summary**;
+10. **Dark validation — one Lesson + one Review state**;
+11. **No reviews due / TTS unavailable reference**;
+12. **Clean parity reference** using the same layout/behavior without Original J decoration.
+
+The approved image is a visual aid. This text specification remains authoritative for timing, accessibility, answer visibility and scheduler semantics.
 
 ## 33. Future-proofing, not V1 scope
 
@@ -589,6 +635,10 @@ Do not implement these simply because the architecture permits them.
 - No endless `Again` punishment loop.
 - No unsupported TV text-entry exercises.
 - No future Speaking/Writing/AI Tutor implementation in the V1 slice.
+- No answer-spoiling illustration for recall/meaning exercises.
+- No alternate Original J mascot identity when the canonical mascot is used.
+- No FSRS rating before answer/reveal.
+- No language-specific companion variant that changes lesson/review behavior.
 
 ## 35. Acceptance
 
@@ -605,4 +655,6 @@ Lesson/Review V1 is complete only when:
 - Desktop/Mobile/Tablet are intentional;
 - TV only exposes compatible exercise types;
 - Light/Dark and accessibility states are designed;
-- optional AI/TTS failure does not break core learning.
+- optional AI/TTS failure does not break core learning;
+- Original J companion artwork uses the canonical mascot and never reveals an answer;
+- Clean and Original J remain the same learning product, not separate session implementations.

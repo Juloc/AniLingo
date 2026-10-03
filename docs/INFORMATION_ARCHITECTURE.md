@@ -1,5 +1,7 @@
 # Information architecture
 
+Target UX sections in this document are authoritative together with `docs/UX.md` and binding screen specs. Historical/current-implementation inventory tables below describe implementation state only; they do **not** override the target navigation or canonical domain model.
+
 ## 0. Account entry and active Profile
 
 Before the consumer shell, Jularr resolves:
@@ -32,69 +34,109 @@ Related docs, not repeated here: [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md),
 
 ## 1. Consumer vs Admin
 
-Rule (#510): a normal user must never need to understand Sonarr/Radarr/Bazarr/Readarr concepts —
-provider IDs, root folders, naming profiles, indexers, download clients, scans, mapping conflicts,
-remux jobs, transcodes or acquisition pipelines. Everything that exposes those concepts is Admin.
-Admin and consumer UI are visually related but structurally separate; no raw technical metadata
-appears on consumer pages unless a user genuinely needs it (dub/sub availability, progress).
+A normal consumer must not need to understand Sonarr/Radarr/Bazarr/Readarr-style internals such as provider IDs, root folders, naming profiles, indexers, download clients, scans, mapping conflicts, remux jobs or acquisition pipelines.
 
-### Desktop/tablet sidebar
+Consumer and Admin use the same design system but remain structurally distinct.
 
-Base navigation stays visible; Admin and Settings expand inline instead of opening a disconnected
-shell:
+### Desktop / wide Tablet
 
-- Home, Library, Watchlist, Calendar, Activity, Admin (permission-gated), Settings, Profile.
-- Selecting **Admin** expands the sidebar section directly under it with the Admin navigation.
-  Selecting **Settings** does the same for personal settings.
-- Only one large contextual section expands at a time on narrower layouts; the last selected
-  child page is remembered.
-- Today's implementation (`UiShellNavigation.Build`, `Features/Localization/UiShellNavigation.cs`)
-  already renders Admin/Settings as an inline expanding `Context` under the app shell rather than a
-  separate shell — the structural piece exists. What #517 must still finish: an explicit
-  **Activity** primary destination (today Activity-equivalent pages sit only under Admin →
-  Operations/Scans/Logs) and the mobile Profile grouping below.
+Persistent consumer navigation:
 
-### Mobile bottom navigation
+- Home;
+- Library;
+- Games;
+- Calendar;
+- Learning;
+- global Search/Discover access.
 
-Netflix-style consumer app, not a management console:
+Bottom/account area:
+- Profile;
+- Settings;
+- Admin only when authorized.
 
-- Bottom bar: Home, Calendar, Watchlist, Profile. Search stays globally accessible at the top.
-- No separate Library tab: Home and Library are one experience with type filters
-  (All/Movies/TV/Anime/Manga/Novels/Books).
-- Activity, Downloads, Devices, Settings and Admin (permission-gated) all live under **Profile**,
-  which drills into dedicated navigation screens rather than permanent nested menus.
-- Today's mobile bar (`UiNavigationCatalog.MobilePrimarySlots`) is
-  `home, library, reading, learn|discover` with no Profile slot and no Calendar slot — this is the
-  concrete gap #517 closes.
+Do not create permanent top-level destinations for:
+- individual media types;
+- Collections;
+- Activity;
+- Downloads.
 
-### TV sidebar
+Collections lives inside `Library -> Collections`.
 
-Aggressively simplified for D-pad use, intentionally different from desktop:
+Activity/history belongs under Profile. Operational jobs/downloads belong in Admin.
 
-- Home, Watchlist, Activity, Profile/Settings. No dedicated Library page (availability is a
-  state/filter inside Home, not a destination) and no separate Search item — Home carries a
-  search field at the top and combines search, discovery and Continue Watching in one surface.
-  No separate Movies/TV/Anime destinations: content filters instead.
-- Trailer preview on focus (no hover, no mouse dependency); strong focus state; Back restores
-  previous view/focus; remembers last focused item per screen.
-- None of this exists yet for Android TV nav; it is entirely #522's scope (the current Android TV
-  contract in [ANDROID_CLIENTS.md](ANDROID_CLIENTS.md) §9 only fixes
-  Library → Anime → Episode → Player browse layering and remote key semantics, not the sidebar
-  itself).
+### Mobile
 
-### Home as Discover entry
+Primary bottom navigation:
 
-Home's Netflix-style rows are dual-purpose: scrolling browses the row, activating the row heading
-opens Discover pre-filtered to that row's facet (media type, genre, "Trending Anime", franchise,
-etc.). Discover/Search must therefore be filter-driven and able to receive a filter from Home,
-Calendar, Watchlist, franchises, genres and tags alike. `/Discover` exists today
-(`Features/Discovery`) but only as an AniList-backed browse/import surface; it does not yet accept
-row-sourced filters or show local availability/watchlist state on cards. That wiring is #520.
-The local half of search exists at `/Search` (#434): one ranked list over everything on the server
-with canonical grouping across media types, franchise results and the Media Facts filters, limited
-to the profile's visible media types (see [PERSISTENCE.md](PERSISTENCE.md#unified-global-search-434-local-half)).
-Merging online provider results into it, and pointing the global search field at it, waits for the
-provider-driven discovery contract (#595).
+- Home;
+- Library;
+- Calendar;
+- Learning;
+- Profile.
+
+Search remains globally accessible from the top/app bar.
+
+Library is a real destination and is not merged into Home.
+
+Collections remains an internal Library subview.
+
+Admin/settings/detail workflows use contextual navigation rather than trying to fit desktop sidebar structures into the bottom bar.
+
+### TV
+
+Remote-first primary destinations:
+
+- Home;
+- Library;
+- Games when the Games destination is available to the active profile/installation;
+- Calendar where useful;
+- Search;
+- Profile.
+
+Learning appears only where the TV interaction is useful. Optional module entries disappear when unavailable to the active Profile.
+
+Library uses large remote-friendly media cards and an internal `Library | Collections` switch. Collections is not a second TV top-level destination.
+
+Games/Player-specific TV behavior follows its own binding specs when enabled; normal media Library remains independent.
+
+### Home and Discover
+
+Home is personalized continuation/recommendation context.
+
+Discover/Search is the explicit surface for finding media not already in durable Library context.
+
+Home recommendation/genre/media rows may deep-link into Discover with a pre-applied facet. This does not merge Home and Library or make Library an external discovery surface.
+
+Global search:
+- empty query may show Discover;
+- typed query searches canonical/local/provider-resolvable results according to the Discover contract;
+- selecting provider-native presentation still resolves to canonical Work identity.
+
+Normal Library search stays scoped to durable Library context and does not silently trigger external discovery.
+
+### Library and Collections
+
+Library is one cross-media consumer catalog.
+
+Inside it:
+
+`Library | Collections`
+
+Library media scope:
+- All;
+- Anime;
+- Series;
+- Movies;
+- Manga;
+- Light Novels;
+- Books;
+- Audiobooks.
+
+Collections is not a media type and not top-level navigation.
+
+Consumer Library has no generic Add/import menu. New media is found through Discover and requested through the shared Request flow. Manual file/folder import and reconciliation belong to Admin.
+
+Watchlist/Reading List is represented as profile-state filtering/deep-linking inside Library rather than another top-level destination or a fake Collection.
 
 ## 2. Media model
 
@@ -105,7 +147,7 @@ Four layers per #510. Mapped to what exists in `src/Jularr.Web/Data` and `Featur
 | 1. Storage/Admin structure | Root, work folder, season/special folder, media file/sidecars | **Exists** | `LibraryRoot`, `MediaFile` (`Data/AppDbContext.cs`); root config and wake state on `/Admin/System` |
 | 2. Jularr internal structure | Work, season/unit, episode/chapter/volume, stable internal IDs | **Exists** | `Anime`, `Episode`, `MediaFile` for video; `NovelWork`/`NovelVolume`/`NovelChapter`, `BookEdition`/`BookFile` for reading. Manga is file-based (`MangaModels.cs`: `MangaSeriesItem`/`MangaChapterItem`), not a DB entity — its "stable ID" is a derived series key, not a row id |
 | 3. Provider mappings | AniList, TVDB, TMDb, IMDb, MAL, future providers | **Exists** | `AnimeMetadata` (AniList match: provider+external id, cover/banner, unique per anime) and `AnimeLocalMetadata` (TVDB/MAL ids, NFO-sourced) exist; `NovelAnimeMapping` cross-references novel↔anime. Provider **roles are now independently configurable** (display metadata, episode structure, acquisition identity, progress tracking, artwork, cross-reference IDs — `Features/Mapping/MappingProviderRoles.cs`) with a global default per role plus a per-anime override, stored via `ProviderRoleAssignmentStore` (raw-SQL migration `20260929150000`, no EF entity). With nothing stored the resolved roles reproduce Jularr's implicit behaviour (AniList = display/progress/artwork, local numbering = structure/acquisition, TVDB = cross-reference); assigned on `/Settings/MappingReview`. See [#525](https://github.com/Juloc/Jularr/issues/525) |
-| 4. User presentation groups | Seasons, parts, cours, story arcs, specials, person/week/round groups (reality shows), independent of files/provider coordinates | **Partial** | The presentation-group layer now exists (#524). A `PresentationGroup` is a per-work free-text name plus an ordered list of inclusive internal-unit ranges (episode `Number` / chapter / volume number) with a group order; it is keyed by (`MediaType`, `WorkId`) and is media-type-agnostic. Stored in `PresentationGroups`/`PresentationGroupRanges` (raw-SQL migration `20260929130000_AddPresentationGroups`, accessed via `Features/Presentation/PresentationGroupStore.cs` as derived state — no EF entity, so it never touches episode identity, file paths or provider mappings). `PresentationGrouping.Arrange` derives the display sections; the anime detail page (`Pages/Library/Anime.cshtml`) renders episodes under collapsible group headings when groups exist and falls back to the plain list otherwise, and an owner-only editor (`Pages/Library/PresentationGroups.cshtml`, linked from the `_ManageSheet` Files group) creates/reorders/deletes groups and assigns ranges with a preview before apply. **Follow-up:** the model and store are ready for reading media, but the editor and consumer wiring for manga/novel volumes/chapters are not built yet. See [#524](https://github.com/Juloc/Jularr/issues/524) |
+| 4. User presentation groups | Seasons, parts, cours, story arcs, specials, person/week/round groups (reality shows), independent of files/provider coordinates | **Exists** | A `PresentationGroup` is a per-work free-text name plus an ordered list of inclusive internal-unit ranges (episode `Number` / chapter / volume number) with a group order; it is keyed by (`MediaType`, `WorkId`) and is media-type-agnostic. Stored in `PresentationGroups`/`PresentationGroupRanges` (raw-SQL migration `20260929130000_AddPresentationGroups`, accessed via `Features/Presentation/PresentationGroupStore.cs` as derived state — no EF entity, so it never touches episode identity, file paths or provider mappings). `PresentationGrouping.Arrange` derives the display sections. The shared owner-only editor (`Pages/Library/PresentationGroups.cshtml`, linked from each detail page's `_ManageSheet` Files group) previews and saves anime episode, manga volume, EPUB light-novel volume, or web-novel chapter groups. Consumer pages render those sections when defined and otherwise retain their existing plain episode/chapter/volume layouts. See [#524](https://github.com/Juloc/Jularr/issues/524), [#567](https://github.com/Juloc/Jularr/issues/567) |
 
 Reality-show example ("Anna: E01-E05" over S01E01-E20) and anime-cour example (AniList Part 1
 E01-E11 / Part 2 E01-E12 over one local season) are both now expressible through layer 4 for anime;
@@ -372,9 +414,9 @@ policy checks below; the table states the target state, not today's binary Owner
 
 | Area / action | Owner | Media manager | User |
 | --- | --- | --- | --- |
-| Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
+| Consumer pages (Home, Library including Watchlist/Reading List filtered views, Calendar, Discover, playback, reading) | Full | Full | Full |
 | Own account settings, own sessions/history | Full | Full | Full |
-| Request media (Requests queue, own history at `/Requests`) | Full | Full | Allowed per the media-type capability (Request creates a request, Instant adds at once); auto-approval rules can approve a request without the owner |
+| Request media | Full | Full | Allowed per the media-type capability; the consumer action is always `Request`, while Instant capability means the Request may be auto-approved immediately |
 | Per-media-type capability: Hidden/Browse/Request/Instant (`/Admin/Capabilities`, #436) | Unrestricted (always Instant) | Configurable (default Instant) | Configurable (default Request), with per-user overrides |
 | Approve/reject requests | Full | Full | No |
 | View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
@@ -397,19 +439,18 @@ another user's session, storage/settings/integration changes).
 
 Orthogonal to the role/policy table above, each media type (`WorkMediaType`: Movie, Series/TV,
 Anime, Book, Manga, Light Novel) resolves to one ordered capability per profile:
-`Hidden < Browse < Request < Instant`. The owner edits the matrix on `/Admin/Capabilities`
+`Hidden < Browse < Request < Instant`. These are authorization/policy levels, not four different consumer buttons. The owner edits the matrix on `/Admin/Capabilities`
 (owner-only, `admin.system`): a default per configurable role (Media manager, User) plus sparse
 per-user overrides. The policy is the canonical JSON settings store
 `Features/Auth/MediaCapabilityStore` (`/data/auth/media-capabilities.json`) — no EF table.
 Resolution precedence: **Owner is always Instant (unrestricted); otherwise a per-user override
 wins over the role default.** Features consume the resolved capability through
 `IMediaCapabilityService` (`Features/Auth/MediaCapabilityService`) instead of re-deriving rules:
-`GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — Instant vs Request gating),
+`GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — whether Request requires approval or may auto-approve),
 `GetVisibleMediaTypesAsync` (permission-derived shell #598 and discovery categories #595 — Hidden
 removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-media-type guard).
 
-`AcquisitionRequestService` (#597) is the request-side consumer: Request creates a request, Instant
-adds at once, Browse/Hidden cannot add. This replaces the former per-media-type "adding from
+`AcquisitionRequestService` (#597) is the request-side consumer: both Request and Instant capability use the same consumer `Request` action. `Request` capability creates a request subject to approval policy; `Instant` capability permits immediate/auto-approved processing. Browse/Hidden cannot create acquisition requests. This replaces the former per-media-type "adding from
 search" rule (`UserAddMode`), which #597 retired in favour of the capability matrix; its
 `AcquisitionAccessPolicies.UserAddMode` table column was dropped by the Movie/TV schema migration
 (#593/#594). On top of a Request capability the

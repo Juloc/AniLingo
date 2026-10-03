@@ -4,9 +4,39 @@ Status: visual direction approved from the current Desktop / Tablet / Mobile Gam
 
 Shared contract: `docs/mockups/games/SPEC.md`.
 Touch controls: `docs/mockups/game-touch-controls/SPEC.md`.
+Nintendo DS extension: `docs/mockups/game-player-nintendo-ds/SPEC.md`.
+PlayStation extension: `docs/mockups/game-player-playstation/SPEC.md`.
 Games architecture: #725.
 UX planning: #729.
 Initial browser runtime: #771.
+
+## Global visual rule for all platform players
+
+All platform-specific Game Player mockups use the Jularr UI, not a visual recreation of the original console hardware.
+
+Forbidden unless explicitly required by a real interaction:
+- fake console shells;
+- fake handheld/device frames;
+- fake bezels that imitate original hardware;
+- ornamental hinges, speaker holes, plastic bodies or controller-shaped page containers;
+- decorative phone/tablet frames inside the actual app screen.
+
+Use modern Jularr content surfaces, responsive layout and real controls.
+
+Platform identity comes from:
+- game content;
+- platform badge;
+- control scheme;
+- layout behavior;
+- platform-specific capabilities.
+
+It does **not** come from drawing a fake Game Boy, DS, PSP, console or TV around the emulator.
+
+For Clean theme, use the existing light Jularr visual language from Admin/Activity as the baseline: white/light surfaces, navy text, restrained purple accent, subtle borders/shadows and compact controls.
+
+For Original Jularr, use the established warm Japanese watercolor/cherry-blossom skin and red accent over the same structure.
+
+This rule applies to all future platform-player specs and mockups unless a later approved platform requirement explicitly overrides it.
 
 ## Purpose
 

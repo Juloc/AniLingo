@@ -224,6 +224,10 @@ Metadata examples:
 - discovery/trending
 - images/artwork
 - external IDs
+- Game metadata
+- Game platform mappings
+- Game release/region/revision metadata where a provider supports it
+- Game artwork/screenshots
 
 Indexer/Search examples:
 - Anime
@@ -443,3 +447,38 @@ Required:
 - No silent fallback with unexplained priority.
 - No health based only on ping when stronger checks exist.
 - No logs containing secrets or sensitive payloads.
+
+
+## Games metadata providers
+
+Games reuses the existing Metadata provider family. Do not create a separate Games Provider settings product.
+
+A Game metadata adapter may declare capabilities such as:
+- canonical Game search/metadata;
+- platform identity/mappings;
+- release date/year;
+- developer/publisher;
+- genres/themes;
+- cover/backdrop/screenshots;
+- external IDs;
+- region/release/revision evidence where the provider actually exposes it;
+- discovery/trending/recommendation evidence where supported.
+
+Provider IDs remain provenance/mapping evidence. They never replace Jularr's canonical `Game`, `GamePlatform` or `GameRelease` IDs.
+
+The Games module consumes normalized provider contracts. Admin Provider Settings owns:
+- adapter configuration;
+- credentials/endpoints;
+- capability enablement;
+- priority/fallback;
+- health/test/logs/rate limits.
+
+Games owns:
+- canonical matching;
+- platform/release interpretation;
+- import identity;
+- Game library behavior.
+
+Do not put emulator/runtime/BIOS configuration into Metadata providers.
+
+When the Games module is disabled at instance level, Games-specific provider capabilities may be hidden/disabled without deleting provider configuration.

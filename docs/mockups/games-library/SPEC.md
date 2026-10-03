@@ -99,7 +99,7 @@ Avoid speculative sort modes.
 
 The Games collection is primarily locally available/imported Games.
 
-A known Game may show a compact requested/downloading/importing state, but this page is never a second Wanted/Downloader queue.
+A known Game may show a compact requested/downloading/preparing state, but this page is never a second Wanted/Downloader queue.
 
 Missing/new Games are found through global Search/Discover.
 
@@ -200,7 +200,7 @@ Phone-as-controller is a separate later game-session mode, not a Games-library i
 - no search/filter results;
 - Continue Playing absent;
 - local Game but no playable runtime;
-- requested/downloading/importing;
+- requested/downloading/preparing;
 - metadata/artwork partial;
 - error/offline;
 - permission denied.

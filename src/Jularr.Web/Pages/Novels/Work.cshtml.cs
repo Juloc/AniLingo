@@ -5,6 +5,7 @@ using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Presentation;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,18 @@ namespace Jularr.Web.Pages.Novels;
 /// between ungrouped chapters and chapters nested under a collapsible group heading (#512).</summary>
 public sealed record NovelChapterRowModel(
     NovelChapterItem Chapter,
+    NovelChapterItem? CurrentChapter,
+    NovelProgress? Progress,
+    UiTextBundle Ui);
+
+/// <summary>
+/// The stable volume-plus-chapter structure rendered both directly and inside a presentation
+/// group. Keeping the structure in one partial ensures a custom display group cannot discard a
+/// volume's cover, reading state, or chapter actions.
+/// </summary>
+public sealed record NovelVolumeGroupModel(
+    NovelVolumeItem? Volume,
+    IReadOnlyList<NovelChapterItem> Chapters,
     NovelChapterItem? CurrentChapter,
     NovelProgress? Progress,
     UiTextBundle Ui);
@@ -48,6 +61,8 @@ public sealed class WorkModel(
     public bool IsOwner => account.IsOwner;
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
     public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
+    public IReadOnlyList<PresentationSection<NovelVolumeItem>> PresentationVolumeSections { get; private set; } = [];
+    public IReadOnlyList<PresentationSection<NovelChapterItem>> PresentationChapterSections { get; private set; } = [];
 
     /// <summary>
     /// Language availability for this work (#426). The header already states the chapter/volume
@@ -94,6 +109,17 @@ public sealed class WorkModel(
         ExternalProgress = await aniListAccount.GetNovelProgressSummaryAsync(
             id,
             cancellationToken);
+        var presentationGroups = await new PresentationGroupStore(db).ListForWorkAsync(PresentationMediaType.Novel, id, cancellationToken);
+        var epubVolumes = Detail.Volumes.Where(volume => volume.IsEpub).ToArray();
+        if (epubVolumes.Length > 0)
+        {
+            PresentationVolumeSections = PresentationGrouping.Arrange(presentationGroups, epubVolumes, volume => volume.Number, Ui.Format("library.presentation.otherHeading", ("units", Ui["library.presentation.volumes"])));
+        }
+        else
+        {
+            var fallbackName = Ui.Format("library.presentation.otherHeading", ("units", Ui["library.presentation.chapters"]));
+            PresentationChapterSections = PresentationGrouping.Arrange(presentationGroups, Detail.Chapters, chapter => chapter.Number, fallbackName);
+        }
 
         AnimeChoices = account.IsOwner
             ? await mappings.GetAnimeChoicesAsync(cancellationToken)

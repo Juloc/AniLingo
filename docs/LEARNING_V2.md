@@ -1,5 +1,7 @@
 # Learning v2 architecture
 
+Binding V1 teaching/lesson behavior: [LEARNING_PEDAGOGY.md](LEARNING_PEDAGOGY.md). Learning architecture owns data/capability boundaries; pedagogy owns how authored content is introduced, practiced, retrieved, corrected and transferred.
+
 GitHub issue #226 is the umbrella backlog. This file describes durable architecture only; it is not a second backlog or AGENDA.
 
 ## Product rule

@@ -315,7 +315,7 @@ A module may appear in Admin → Instance only after its full runtime gate is im
 
 Do not show a toggle that only hides navigation while jobs/services/API behavior remain active.
 
-Examples such as AI, Requests, Native Downloader, Games/Software or Generic Downloads require their own full module contract before becoming independent Instance switches.
+Examples such as AI, Requests, Native Downloader, Games or Generic Downloads require their own full module contract before becoming independent Instance switches.
 
 Until then, the UI follows the canonical module enum/runtime implementation rather than the conceptual Setup Wizard list.
 

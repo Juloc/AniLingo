@@ -131,6 +131,30 @@ public sealed class PresentationGroupingTests
         Assert.IsFalse(range.Contains(0));
     }
 
+    [TestMethod]
+    public void MangaVolumeGroups_LeaveChaptersWithoutAVolumeInTheFallback()
+    {
+        var chapters = new[]
+        {
+            new ReadingUnit("Chapter 1", 1),
+            new ReadingUnit("Chapter 2", 1),
+            new ReadingUnit("Special chapter", null),
+            new ReadingUnit("Chapter 3", 2)
+        };
+
+        var sections = PresentationGrouping.Arrange(
+            [Group("Opening", 0, (1, 1)), Group("Finale", 1, (2, 2))],
+            chapters,
+            chapter => chapter.Unit,
+            "Other volumes");
+
+        Assert.AreEqual(3, sections.Count);
+        CollectionAssert.AreEqual(new[] { "Chapter 1", "Chapter 2" }, sections[0].Items.Select(chapter => chapter.Title).ToArray());
+        CollectionAssert.AreEqual(new[] { "Chapter 3" }, sections[1].Items.Select(chapter => chapter.Title).ToArray());
+        Assert.IsTrue(sections[2].IsFallback);
+        CollectionAssert.AreEqual(new[] { "Special chapter" }, sections[2].Items.Select(chapter => chapter.Title).ToArray());
+    }
+
     private static PresentationGroup Group(string name, int order, params (int Start, int End)[] ranges) =>
         new(
             Guid.NewGuid(),
@@ -141,4 +165,6 @@ public sealed class PresentationGroupingTests
             ranges.Select(range => new PresentationRange(range.Start, range.End)).ToArray(),
             DateTime.UtcNow,
             DateTime.UtcNow);
+
+    private sealed record ReadingUnit(string Title, int? Unit);
 }

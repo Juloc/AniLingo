@@ -7,6 +7,8 @@ Status: planning baseline. This document defines information architecture, navig
 - One shared Jularr UX/layout system with two visual skins: **Clean** and **Original Jularr**.
 - Clean is the compact Fluent 2 / Windows 11-inspired neutral baseline and never uses decorative Japanese/anime background artwork.
 - Original Jularr applies the established Japanese ink/watercolor/cherry-blossom visual treatment over the same layout/components.
+- When an Original Jularr screen intentionally uses the Jularr mascot/anime character, it uses the canonical reference at `docs/assets/original-j/jularr-mascot-reference.png`. The mascot is optional; screens do not invent replacement characters. Pose/expression/props may vary while identity stays canonical.
+- Clean does not use the Original J mascot by default. Mascot presence never changes information architecture, feature availability or behavior.
 - No unnecessary explanatory text, duplicated headings or nested pages when a direct interaction works.
 - Media is the visual focus; administration is information-dense but structured.
 - User UI and Admin UI are distinct modes.
@@ -16,6 +18,7 @@ Status: planning baseline. This document defines information architecture, navig
 - Clean defaults to the purple Jularr accent/mark; Original Jularr defaults to the established red/pink accent/mark.
 - Accent changes may hue-shift permitted branded/decorative tokens consistently, but must not recolor third-party provider logos or semantic error/success meaning.
 - Clean and Original are skins, not separate page implementations or information architectures.
+- Legacy screen titles that say `Clean Design` describe their visual baseline only; unless a spec explicitly says otherwise, the same behavior/information architecture applies to Original Jularr.
 - Every screen defines loading, empty, partial, error and ready states.
 - Permission-restricted actions disappear from UI but are also enforced server-side.
 - Never expose half-implemented controls.
@@ -52,11 +55,14 @@ Search is globally accessible from the top/app bar. Activity belongs under Profi
 Remote-first primary destinations:
 - Home
 - Library
+- Games when the Games destination is available to the active profile/installation
 - Calendar where useful
 - Search
 - Profile
 
 Learning appears when the TV interaction is meaningful; detailed learning workflows may hand off to phone/tablet.
+
+Optional module destinations disappear when disabled by instance policy, authorization or the active Profile's module preference.
 
 ## 2a. Login and Profile selection
 
@@ -86,6 +92,24 @@ Visual rules:
 - Original Jularr Login: same controls/layout with Japanese watercolor/cherry-blossom skin and red/pink default accent.
 - Both use the same semantic tokens and support accent hue shifting.
 
+## 2b. Error / permission / availability states
+
+Binding specification: `docs/mockups/error-permission-states/SPEC.md`.
+
+Shared consumer state family:
+- Not found / hidden
+- Forbidden
+- Module unavailable
+- Resource missing
+- Session expired
+- Internal error (500)
+
+Unauthenticated protected routes redirect to the normal Login flow instead of rendering a separate “Bitte einloggen” error page.
+
+Original J uses the approved dark-haired anime character with state-specific emotion/action and Japanese ink/sakura styling. Clean remains visually separate: neutral background, modern minimal illustration/iconography, no anime/sakura/torii motifs.
+
+Hidden routes/resources must not leak feature existence. 500 must never expose raw exception details. All states use normalized application errors and shared components.
+
 ## 3. Search and Discover
 
 Search and Discover are one coherent surface.
@@ -112,6 +136,47 @@ Rows scroll horizontally. Selecting a row title opens the corresponding filtered
 
 Discovery includes items not yet in the local library. Detail pages clearly distinguish available, requested/downloading and discover-only states.
 
+## 3a. Media Preview / Quick View
+
+Binding specification: `docs/mockups/media-preview/SPEC.md`.
+
+Media Preview is an optional cinematic Quick View used mainly in Discover/Search, recommendations and TV browsing. It is not a mandatory intermediate page.
+
+Desktop cards do not expand/reflow on hover. A secondary Quick View action opens the Preview; ordinary card activation opens Detail.
+
+Video Preview:
+- wide hero/trailer;
+- autoplay only after Preview is actually open/visible;
+- muted by default;
+- one active trailer maximum;
+- external trailer embed preferred over proxying public trailers through Jularr;
+- fallback is backdrop, then cover-derived presentation.
+
+Reading Preview uses the same shell but does not force video. It shows cover/backdrop, concise metadata, language/Edition context, short synopsis, progress/next structure where relevant, and Read/Continue/Request.
+
+Preview actions reuse canonical Play/Read/Listen/Request contracts. Trailer playback is promotional and does not create an ActiveSession or MediaProgress.
+
+Clean and Original Jularr use identical structure/behavior; only visual skin tokens differ.
+
+## 3b. Consumer acquisition status vocabulary
+
+All consumer surfaces project the same user-facing Request/acquisition vocabulary.
+
+Preferred labels:
+- Waiting for approval;
+- Requested / Approved where needed;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Available / Partially available;
+- Monitoring future releases;
+- Needs attention / Failed;
+- Cancelled.
+
+`Search`, `ImportJob`, importer phases, verification and post-processing are internal/Admin concepts. Consumer pages may show progress, but should use `Looking for media` and `Preparing` instead of exposing `Searching` / `Importing` as separate product states.
+
+This vocabulary is a projection over the canonical Request -> Wanted -> Search -> Download -> Import pipeline; it does not create a second state machine.
+
 ## 4. Home
 
 Home is personalized, not a duplicate library index.
@@ -120,6 +185,7 @@ Priority sections:
 - Continue Watching / Reading / Listening
 - Continue Playing, when the profile has resumable Games activity
 - Up Next
+- optional Watchlist / Reading List shelf when useful
 - Recommendations based on the user's library/progress
 - Recently relevant additions only when useful
 - media-type/genre recommendation rows
@@ -130,23 +196,47 @@ Cards show only useful glanceable information: artwork, title, progress and a sm
 
 ## 5. Library
 
-One Library supports watch/read/listen media types.
+Binding specification: `docs/mockups/library/SPEC.md`.
 
-Games is intentionally a separate top-level consumer destination. This is a navigation/interaction exception only: Games still reuses global Search/Discover, Request, Acquisition, Storage, Activity/History and profile infrastructure.
+Library is the profile-facing catalog for media with durable Jularr Library/monitoring context. Discover/Search remains the place for finding new media.
 
-Desktop/tablet:
-- title + compact controls
-- type switch/filter: All, Anime, Series, Movies, Manga, Books/Light Novels, Audiobooks
-- optional user preference to combine or separate related types
-- filters/sort/view controls
-- responsive grid/list presentation
+Structure:
+- one Library destination;
+- internal `Library | Collections` switch;
+- media-type scope: All, Anime, Series, Movies, Manga, Light Novels, Books, Audiobooks;
+- Search within Library;
+- Filter;
+- Sort;
+- Grid/List where useful.
 
-Mobile:
-- compact filter chips/dropdown
-- poster grid optimized for thumb use
-- no desktop table squeezed onto phone
+Consumer Library does not expose a generic Add/import menu. New media comes through Discover -> Request. Manual file/folder import and repair are Admin flows.
 
-Library cards use one shared visual grammar with media-specific secondary information.
+Cards reuse one shared media grammar: poster/cover, title, one useful progress/status line, preferred-language availability and optional progress bar. Normal card activation opens Detail. Cards do not expand/reflow on hover; optional Quick View uses the shared Media Preview contract.
+
+Library must not become an Admin dashboard: no statistics sidebar, active-genre panel, release/download internals or duplicated Home-style Continue shelf.
+
+Personal Watchlist/Reading List is a profile-state projection of Library, not a separate acquisition model or mandatory top-level destination. Home/profile links may open Library with the personal-list filter already applied. For written media, the same canonical personal-list state may be labeled Reading List.
+
+Mobile uses a two-column poster/cover grid where width permits. TV is remote-first with large posters and strong focus treatment, not a scaled Desktop grid.
+
+## 5a. Collections
+
+Binding specification: `docs/mockups/collection-detail-edit/SPEC.md`.
+
+Collections live under `Library -> Collections` and reuse normal Library media cards.
+
+V1 modes:
+- Manual: explicit membership/order;
+- Smart: rules + include/exclude overrides;
+- Linked: local Collection synchronized from an external provider/list.
+
+Cross-media is not a separate Collection type. Franchise/adaptation grouping should use canonical relations through Smart/derived views.
+
+Landing stays simple: Search, Filter, Sort, New Collection and mosaic Collection cards. Do not require a permanent Manual/Smart/Linked chip row.
+
+Details use a compact header + Library toolbar/grid. Manual gets Add/Reorder, Smart gets Edit Rules, Linked gets Sync/last-sync. Linked Collections render from local state and remain readable when the provider is offline.
+
+TV is browse-first; complex editing belongs to Web/Mobile/Tablet.
 
 ## 6. Canonical media detail page
 
@@ -158,8 +248,9 @@ All media detail pages share a common skeleton while adapting content.
 - title and useful alternate title where configured
 - concise metadata
 - progress/status
-- primary action: Play / Continue / Read / Listen / Request
-- secondary actions: add/remove library/watchlist, options
+- primary action is state-dependent: Play / Continue / Read / Listen when usable, otherwise Request when acquisition is permitted;
+- secondary actions are personal-state/context actions such as Watchlist/Reading List, Favorite, Collection and options where supported;
+- never expose a separate consumer `Add to Library` acquisition action.
 
 ### Content
 Media-specific sections appear only when relevant.
@@ -313,10 +404,31 @@ User Learning home:
 - media-derived learning
 - progress
 
+Vocabulary / Sentences:
+- binding specification: `docs/mockups/vocabulary-sentences/SPEC.md`
+- one shared Learning Library shell with Vocabulary and Sentences tabs
+- Vocabulary remains canonical LearningUnit/Variant/Card state
+- Sentences reuses canonical LearningContext/Sentence Practice data rather than inventing a second sentence store
+
+Progress / Achievements:
+- binding specification: `docs/mockups/progress-achievements/SPEC.md`
+- bounded learner analytics over canonical Learning state/events
+- Course progress, Review/FSRS state, Vocabulary state and gamification remain separate
+- unavailable XP/time/Streak/Achievement metrics are omitted until their canonical contracts exist
+
+Script Trainer / Kana:
+- binding specification: `docs/mockups/script-trainer/SPEC.md`
+- one trainer flow with sequential Overview -> Practice -> Feedback -> Summary states
+- Japanese currently provides Hiragana/Katakana via the ScriptTrainer toolkit
+- Kana uses canonical LearningUnit/LearningCard/Review state; no second Kana scheduler
+- handwriting Writing mode stays hidden until real stroke/evaluation capability exists
+
 Course detail:
-- units/lessons
-- progress
-- resume action
+- binding specification: `docs/mockups/course-detail/SPEC.md`
+- canonical Curriculum -> Level -> Chapter -> Lesson structure
+- curriculum progress separated from FSRS review mastery
+- exact resume/start action
+- compact responsive curriculum navigator rather than a game-map hierarchy
 
 Lesson/review surfaces are distraction-minimized and touch/keyboard friendly.
 
@@ -328,7 +440,7 @@ Contains:
 - user identity/profile switch where applicable
 - Activity/history
 - watch/read/listen history
-- devices/sessions where appropriate
+- quick link to Devices & Sessions under Settings
 - quick link to Settings
 
 Activity is not a main mobile navigation item.
@@ -344,10 +456,14 @@ Sections:
 - Playback
 - Audio & subtitles
 - Reader
+- Ratings
 - **Modules & Features** — personal On/Off for instance-enabled, permitted optional modules
 - Learning
+- Notifications
 - AI / personal provider
-- Devices
+- Connections
+- Devices & Sessions
+- Profile & Privacy
 - Account/security
 
 Module availability resolves as:
@@ -357,33 +473,50 @@ A profile module toggle can only narrow availability. It cannot enable an instan
 
 Appearance supports Visual style (Clean / Original Jularr), Light/Dark/System and configurable accent/color scheme through shared tokens. Visual style changes skin/branding only; it never changes page structure or feature availability.
 
-## 15. Add media flow
+## 15. Request flow
 
-Binding specification: `docs/mockups/add-request-flow/SPEC.md`
+Binding specification: `docs/mockups/add-request-flow/SPEC.md`.
 
-`Add` / `Request` is contextual from Library/Search/Discover/Calendar/detail surfaces and opens one coherent flow rather than permanent import forms on normal pages.
+There is exactly one consumer acquisition action: **Request**.
 
-Flow:
-1. search/identify work
-2. choose desired edition/language where relevant
-3. choose monitoring/request behavior
-4. optional acquisition profile override
-5. confirm
+Request starts from an already selected/resolved canonical Work/target. The Request surface does not contain media search or title selection.
 
-Manual local import is an Admin/advanced path, not dominant user UI.
+Normal Request UI:
+1. compact media identity;
+2. Scope only when structural selection is meaningful;
+3. Included content derived from Scope;
+4. Language / Edition where relevant;
+5. privileged Advanced override only when permitted;
+6. Cancel + Request.
+
+There is no Add/Add & Monitor consumer path and no numbered wizard.
+
+Approval policy is backend behavior:
+- a normal Request may wait for Admin approval;
+- an authorized/policy-matched Request may be auto-approved immediately.
+
+Both still use the same visible `Request` action.
+
+Personal state such as Watchlist/Reading List, Watching/Reading/Listening, progress, completed state, ratings and external sync is separate from acquisition and never embedded into the Request dialog.
+
+Manual local import and release selection remain Admin/advanced workflows.
 
 ## 16. Request / missing media UX
 
-User detail pages show a simple state:
-- Available
-- Request
-- Requested
-- Searching
-- Downloading
-- Importing
-- Failed with understandable retry/details where permitted
+Consumer surfaces project one shared state vocabulary:
+- Available / Partially available;
+- Request;
+- Waiting for approval / Requested;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Monitoring future releases where relevant;
+- Needs attention / Failed;
+- Cancelled where relevant.
 
-Normal users do not need Sonarr-like release tables.
+Do not expose `Wanted`, `Searching`, `Importing`, release candidates, downloader state or importer phases as normal consumer product states.
+
+Status/details behavior is owned by `docs/mockups/request-status-details/SPEC.md`.
 
 ## 17. Admin mode/navigation
 
@@ -576,6 +709,45 @@ It does **not** duplicate:
 
 Overview may show downloader-specific throughput, workspace pressure and bottlenecks. Queue owns deep per-job diagnostics. Server owns NNTP configuration/health. Processing owns Verify/Repair/Extract/Cleanup. Speed & Schedule owns bandwidth, concurrency and timed actions. Settings owns general retry/duplicate/retention/cache behavior. External Clients is compatibility-only; native Usenet remains the normal/default path.
 
+## 23b. Acquisition Profiles & Scoring
+
+Binding specification:
+- `docs/mockups/admin-acquisition-settings/SPEC.md`
+
+Acquisition is centered on one reusable **Acquisition Profile** rather than separate Sonarr-style Quality Profile, Custom Format, Release Profile and Delay Profile screens.
+
+One profile owns:
+- quality/tier ordering and upgrade cutoff;
+- minimum acceptance score and upgrade-until-score;
+- normalized language policy;
+- reusable Release Rules with profile-specific effect/score;
+- explicit hard Reject rules;
+- per-quality/group size policy where supported;
+- wait/delay and source/provider preference;
+- default-per-media-kind and per-Work assignment;
+- one canonical Score-Test/explanation flow.
+
+Shared Release Rule definitions answer *what is detected*; the effect inside a profile answers *what this profile does with it*. A shared rule can therefore score differently or reject in different profiles without duplicating its matcher.
+
+Normal workflow stays inside the profile. A secondary Rule Library is allowed, but there is no required permanent Custom Formats sidebar destination.
+
+Automatic acquisition, Manual Search and Score-Test must use the same scorer/decision explanation. Sonarr Quality Profiles, Custom Formats, Release Profiles and Delay Profiles are migration inputs translated into the Jularr model, not parallel runtime models.
+
+Provider credentials remain in Providers, downloader transport in Downloader and paths in Storage.
+
+### Import/routing ownership
+
+There is no standalone permanent **Import & Routing** Admin destination.
+
+Ownership is split by why the setting exists:
+- **Storage → LibraryRoot** owns the default final destination per media/content type and the effective import placement policy: `HardlinkOrCopy`, `Hardlink`, `Copy`, or `Move`.
+- **Downloader → Externe Clients** owns remote-path mappings needed because an external downloader reports a different path than Jularr sees.
+- **Migration / coexistence adapter** owns source-path mappings needed by Sonarr/Radarr/legacy integrations.
+- **Acquisition Profile** owns release selection, scoring, language, wait/delay and source/provider preference, never filesystem paths.
+- the native Jularr downloader normally requires no remote-path mapping.
+
+All local mapping targets resolve into permitted Storage. A Work-level target-root override may supersede the content-type default through the canonical library/monitoring contract.
+
 ## 24. Provider settings
 
 All provider types use a common configuration pattern:
@@ -618,6 +790,20 @@ User detail:
 
 UI is capability-based; avoid scattering hard-coded `IsAdmin` assumptions through pages.
 
+## 26a. Admin Devices & Sessions
+
+Binding specification:
+- `docs/mockups/admin-devices-sessions/SPEC.md`
+
+Devices & Sessions consolidates the current Admin Sessions and Admin Devices surfaces into one cross-user area with:
+- Live Sessions
+- Geräte
+- Anmeldungen & Sicherheit
+
+The Admin Dashboard keeps only the live operational summary. User detail reuses the same data/components filtered to one account/profile, and profile self-service exposes only the current profile's own devices/sessions.
+
+Current device removal is explicitly **not** permanent authentication revocation: the existing KnownDevice registry can forget a device and end matching playback, but a true `Gerät abmelden` requires a revocable per-device authentication/session contract.
+
 ## 27. Admin Requests, Activity and History
 
 Binding screen specifications:
@@ -655,6 +841,76 @@ Boundaries:
 - Downloader/Provider/AI keep their own technical settings.
 
 Overview may show small current resource values, but detailed charts/history live only in Resources. System must not become a second Storage/Downloader/Provider/AI configuration hub.
+
+## 27b. Admin Appearance
+
+Binding specification:
+- `docs/mockups/admin-appearance/SPEC.md`
+
+Admin Appearance owns the instance default visual style and whether profiles may override theme/accent. It also exposes the current admin's existing profile-scoped `Detailliert | Kompakt` preference as a shortcut; that preference remains separate from instance appearance settings.
+
+Visual contract:
+- **Original Jularr** uses the established Japanese ink/watercolor/cherry-blossom treatment with red/pink default accent and may use anime/Japanese decorative references.
+- **Clean** is neutral/minimal with the purple default accent and never uses decorative anime/Japanese artwork. Clean theme previews should use representative film/series or real configured library media rather than anime artwork purely for decoration.
+
+Both styles are skins over the same routes, components, permissions and information architecture.
+
+## 27c. Admin General Instance Settings
+
+Binding specification:
+- `docs/mockups/admin-general-settings/SPEC.md`
+
+General Instance Settings owns only instance-wide identity and regional/default presentation values such as instance name, default UI language, locale, timezone, time/date/number formatting and normalized metadata/title-language defaults.
+
+This is a normal settings page, **not a Setup Wizard continuation**. It must not show numbered setup steps. Setup status may appear only as a compact read-only instance-information block with a link to reopen Setup.
+
+The Setup Wizard and this page must use the same canonical settings store. Appearance, Modules, Storage, Providers, Acquisition, AI, Backup and Runtime remain in their owning Admin areas.
+
+## 27d. Admin Notifications
+
+Binding specification:
+- `docs/mockups/admin-notifications/SPEC.md`
+
+Admin Notifications owns the instance's technical notification delivery layer:
+- registered/configured notification sinks;
+- channel health and tests;
+- read-only canonical event catalog/audience/severity;
+- delivery diagnostics/history once backed by a durable delivery-attempt store.
+
+Current implementation has a real **In-App** sink only. Push/Digest exist in the model but must not appear as working transports until a real sink/configuration contract exists. Future E-Mail, Web Push, Webhook/Home Assistant or other channels plug into the shared `INotificationSink` pipeline rather than creating parallel notification systems.
+
+Profile Notification Settings continue to own each user's event preferences. Activity/History remain operational-job surfaces and are not duplicated by notification delivery history.
+
+## 27e. Admin Backup & Restore
+
+Binding specification:
+- `docs/mockups/admin-backup-restore/SPEC.md`
+
+Backup & Restore manages versioned Jularr **application-state** backups, automatic scheduling/retention, validation and compatibility-aware restore.
+
+Normal backups include canonical database/application/configuration state and explicitly registered durable non-database state. They do **not** copy canonical media payload files.
+
+Backup destinations are Storage-owned Backup Targets. Restore uses preflight + semantic preview + explicit confirmation, creates a verified Pre-Restore safety backup before destructive mutation, validates after restore and reports partial/failure states explicitly. Legacy Acquisition-only backup bundles are migration inputs, not a second permanent backup system.
+
+## 27f. Admin Migration Center
+
+Binding specification:
+- `docs/mockups/admin-migration/SPEC.md`
+
+Migration Center is the preview-first import/handover surface for older Jularr data and supported external managers/media servers.
+
+It normalizes source state into canonical Jularr contracts:
+- Media Core / Library;
+- Storage LibraryRoots;
+- Monitoring/Wanted;
+- Acquisition Profiles + shared Release Rules;
+- Accounts/Profile progress where the source supports them.
+
+Source-specific path translation belongs to that migration/coexistence adapter and resolves only into permitted Storage. External downloader mappings remain with Downloader → Externe Clients. There is no standalone global Import & Routing/Remote Path Mapping destination.
+
+Dry Run is mandatory before persistent migration. Unsupported or ambiguous source semantics remain visible in preview/report rather than being silently guessed.
+
+The existing Sonarr coexistence safety behavior remains preserved until the general cross-source ownership/coexistence product contract is explicitly approved.
 
 ## 28. Responsive profiles
 

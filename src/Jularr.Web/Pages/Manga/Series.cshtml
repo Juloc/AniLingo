@@ -13,6 +13,7 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/library-presentation.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
 }
@@ -124,6 +125,7 @@
                     </div>;
 
                     Func<dynamic?, IHtmlContent> filesGroup = @<div class="manga-inline-actions">
+                        <a class="button" href="/Library/PresentationGroups/@series.Id?media=manga">@ui["library.presentation.manageLink"]</a>
                         <form method="post" asp-page-handler="Refresh" asp-route-id="@series.Id">
                             <button class="button" type="submit">@ui["manga.series.refreshSource"]</button>
                         </form>
@@ -193,23 +195,55 @@
 
 <section class="manga-chapters">
     <h2>@ui["manga.chapters.title"]</h2>
-    @foreach (var chapter in series.Chapters)
+    @if (Model.PresentationSections.Count > 0)
     {
-        var isCurrent = current?.Id == chapter.Id;
-        var earlier = current is not null && chapter.Number < current.Number;
-        <a class="manga-chapter-row @(isCurrent ? "current" : earlier ? "earlier" : "")"
-           href="/Manga/Read/@chapter.Id">
-            <span>@chapter.Number</span>
-            <strong>@chapter.Title</strong>
-            @if (chapter.VolumeNumber is int volume)
-            {
-                <small>@ui.Format("manga.series.volume", ("volume", volume))</small>
-            }
-            <small>@ui.Format("manga.series.pageCount", ("count", chapter.PageCount))</small>
-            @if (isCurrent)
-            {
-                <span class="manga-current-dot"></span>
-            }
-        </a>
+        @foreach (var presentationSection in Model.PresentationSections)
+        {
+            <details class="presentation-group" open>
+                <summary class="presentation-group-summary">
+                    <span class="presentation-group-name">@presentationSection.Name</span>
+                    <span class="presentation-group-count">@ui.Format("library.presentation.itemCount", ("count", presentationSection.Items.Count), ("units", ui["library.presentation.chapters"]))</span>
+                </summary>
+                @foreach (var chapter in presentationSection.Items)
+                {
+                    var isCurrent = current?.Id == chapter.Id;
+                    var earlier = current is not null && chapter.Number < current.Number;
+                    <a class="manga-chapter-row @(isCurrent ? "current" : earlier ? "earlier" : "")" href="/Manga/Read/@chapter.Id">
+                        <span>@chapter.Number</span>
+                        <strong>@chapter.Title</strong>
+                        @if (chapter.VolumeNumber is int volume)
+                        {
+                            <small>@ui.Format("manga.series.volume", ("volume", volume))</small>
+                        }
+                        <small>@ui.Format("manga.series.pageCount", ("count", chapter.PageCount))</small>
+                        @if (isCurrent)
+                        {
+                            <span class="manga-current-dot"></span>
+                        }
+                    </a>
+                }
+            </details>
+        }
+    }
+    else
+    {
+        @foreach (var chapter in series.Chapters)
+        {
+            var isCurrent = current?.Id == chapter.Id;
+            var earlier = current is not null && chapter.Number < current.Number;
+            <a class="manga-chapter-row @(isCurrent ? "current" : earlier ? "earlier" : "")" href="/Manga/Read/@chapter.Id">
+                <span>@chapter.Number</span>
+                <strong>@chapter.Title</strong>
+                @if (chapter.VolumeNumber is int volume)
+                {
+                    <small>@ui.Format("manga.series.volume", ("volume", volume))</small>
+                }
+                <small>@ui.Format("manga.series.pageCount", ("count", chapter.PageCount))</small>
+                @if (isCurrent)
+                {
+                    <span class="manga-current-dot"></span>
+                }
+            </a>
+        }
     }
 </section>

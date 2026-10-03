@@ -2,8 +2,8 @@ namespace Jularr.Web.Features.Presentation;
 
 /// <summary>
 /// Media types a presentation grouping can apply to (#524, epic #510). Kept deliberately generic so
-/// the same grouping mechanism serves anime episodes today and reading (manga/novel) volumes and
-/// chapters later; the editor UI is wired for <see cref="Anime"/> first.
+/// the same grouping mechanism serves anime episodes and reading (manga/novel) volumes and
+/// chapters without changing their underlying item identities.
 /// </summary>
 public enum PresentationMediaType
 {

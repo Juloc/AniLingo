@@ -271,9 +271,13 @@ Media Learning is first-class V1 but not required for structured course use.
 Sources:
 - Player subtitle learning interactions;
 - Reader selections;
-- saved vocabulary;
-- saved sentences;
+- saved/tracked vocabulary;
+- sentence practice/context candidates derived from canonical LearningContext;
 - canonical LearningContext entries.
+
+Binding Vocabulary & Sentences specification: `docs/mockups/vocabulary-sentences/SPEC.md`.
+
+V1 does not assume a separate SavedSentence persistence model.
 
 Each compact context can show:
 - artwork/cover;
@@ -297,7 +301,9 @@ Course cards show:
 - compact progress;
 - Continue/Start.
 
-A separate Course Detail page owns the complete `Level -> Chapter -> Lesson` tree.
+Binding Course Detail specification: `docs/mockups/course-detail/SPEC.md`.
+
+Course Detail owns navigation over the canonical `Curriculum -> Level -> Chapter -> Lesson -> Exercise` hierarchy; Exercise remains inside Lesson.
 
 Switching active course changes the dashboard context but never deletes another course's progress.
 
@@ -337,7 +343,7 @@ It may show a small set such as:
 - XP today/week;
 - Review accuracy.
 
-Do not show a full analytics chart on Learning Home. Detailed charts, heatmaps and trends belong to Progress/Stats.
+Do not show a full analytics chart on Learning Home. Detailed charts and trends belong to the binding Progress/Achievements surface: `docs/mockups/progress-achievements/SPEC.md`.
 
 ## 15. Learning tools
 
@@ -352,7 +358,9 @@ Courses and Achievements have their own dashboard sections/routes and do not nee
 
 On wide Desktop, Learning Tools forms the top of the right rail. On narrower layouts it reflows below the primary learning sections.
 
-Visibility remains capability-driven. Do not substitute unrelated modules such as generic Flashcards, Grammar, Dictionary or Notes as separate top-level Learning modules unless they are later specified as canonical product modules.
+Visibility remains capability-driven. Script/Kana opens the binding Script Trainer surface: `docs/mockups/script-trainer/SPEC.md`.
+
+Do not substitute unrelated modules such as generic Flashcards, Grammar, Dictionary or Notes as separate top-level Learning modules unless they are later specified as canonical product modules.
 
 ## 16. New learner
 
@@ -473,6 +481,11 @@ The approved Learning Home visual reference for this specification is **Original
 
 ### Original Jularr binding visual direction
 
+Canonical mascot reference when a mascot/companion character is used:
+`docs/assets/original-j/jularr-mascot-reference.png`
+
+The mascot is optional on Learning Home. If present, use the same canonical character as Lesson/Review and Error States; do not invent a different anime girl for the dashboard.
+
 Use:
 - warm off-white/paper surfaces;
 - subtle ink/wash texture in page/background regions;
@@ -486,7 +499,8 @@ Do not:
 - let petals/ink overlap labels, inputs, progress or buttons;
 - make every card ornamental;
 - encode product state solely through red/pink decoration;
-- hard-code anime characters or a specific franchise as permanent Jularr branding.
+- hard-code third-party anime/franchise characters as permanent Jularr branding;
+- replace the canonical Jularr mascot with a different Original J character when a mascot is intentionally used.
 
 ### Clean parity
 

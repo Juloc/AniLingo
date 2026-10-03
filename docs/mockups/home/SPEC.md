@@ -34,6 +34,7 @@ The Clean design is the canonical UX/layout baseline. Original Jularr is the sup
 ### Desktop / wide tablet
 - Home
 - Library
+- Games
 - Calendar
 - Learning
 - global Search at the top
@@ -46,9 +47,11 @@ Do not expose Downloads, Imports, Wanted/Missing or other admin/operations desti
 Bottom navigation:
 - Home
 - Library
+- Games
 - Calendar
-- Learning
 - Profile
+
+Learning remains available through the approved mobile navigation/overflow pattern where required; do not create a second Games navigation model.
 
 Search remains globally accessible in the top/app bar.
 
@@ -61,17 +64,23 @@ Recommended order:
 
 1. Hero / featured media
 2. Continue Watching / Reading / Listening
-3. Up Next
-4. For You
-5. Because you watched/read/listened to …
-6. New episodes / newly relevant library items
-7. Upcoming releases
-8. Trending
-9. dynamic genre/media-type rows
+3. Continue Playing, when the current profile has resumable/recent Games activity
+4. Up Next
+5. optional Watchlist / Reading List shelf when it adds value
+6. For You
+7. Because you watched/read/listened to/played …
+8. New episodes / newly relevant library items
+9. Upcoming releases
+10. Trending
+10. dynamic genre/media-type rows
 
 Rows are horizontal and can lead to a filtered Discover surface.
 
 The exact set of rows is personalized; not every row must appear for every user.
+
+### Personal list shelf
+
+When shown, Watchlist / Reading List uses normal media cards and opens the normal Library with the corresponding personal-state filter. It is not a separate Home-only list store and not a Collection.
 
 ## Hero / banner system
 
@@ -87,10 +96,10 @@ Do not require AI-generated artwork for normal operation.
 
 ### Hero candidate priority
 
-1. Continue/resume item
+1. Continue/resume item, including a Game when recent/resumable play is the strongest candidate
 2. Up Next
 3. personalized recommendation
-4. newly relevant local-library item
+4. newly relevant local-library item, including Games
 5. Trending/discovery fallback when personal/local context is weak
 
 ### Hero information
@@ -99,9 +108,12 @@ Keep it compact:
 - title
 - useful media metadata
 - short description/subtitle
-- progress when applicable
-- primary action: Continue / Play / Read / Listen
-- small secondary action such as details/add
+- progress when applicable;
+- for Games, do not invent completion percentage: use last-played/save context instead
+- primary action: Continue / Play / Read / Listen when available; Request when the surfaced item is unavailable and requestable
+- small secondary action such as Details or a personal-state action
+
+Do not use a generic `Add` acquisition action. Request/acquisition and Watchlist/Favorite/Collection state are separate concerns.
 
 Do not show library counts, server stats, download state or technical media diagnostics in the normal Home Hero.
 
@@ -173,5 +185,98 @@ The mockups are binding visual references for layout/hierarchy. Agents may adapt
 
 ## Canonical identity on Home rows
 
-Recommendation rows use the same canonical identity resolution as Discover/Search. For Anime/Series, one canonical Work is shown once by default even when AniList or another provider returns separate season/part entries. Opening a provider-derived recommendation resolves to the canonical Work and, when applicable, the matching season/presentation target. Home must not create provider-specific duplicate cards that disagree with Discover or Library.
+Recommendation rows use the same typed canonical identity resolution as Discover/Search. Watch/read/listen media resolve to canonical Work; Games resolve to canonical Game through the isolated Games module. For Anime/Series, one canonical Work is shown once by default even when AniList or another provider returns separate season/part entries. Opening a provider-derived recommendation resolves to the owning domain's canonical target and optional presentation target. Home must not create provider-specific duplicate cards that disagree with Discover or Library/Games.
 
+
+
+## Games on Home
+
+Games is integrated into the existing Home experience. There is no separate Games Home page beyond the dedicated `Games` library destination.
+
+### Continue Playing
+
+Show a dedicated `Continue Playing` row only when the current profile has recent/resumable Game activity.
+
+A Game card may show:
+- artwork;
+- title;
+- platform;
+- last played;
+- concise save-state availability/context;
+- `Continue` when a valid resumable launch path exists.
+
+Do not show a fake percentage-complete value for Games.
+
+`Continue` launches directly when the Games application layer resolves one valid LaunchPlan. If a genuine release/runtime ambiguity remains, use the approved Play Options flow.
+
+Opening the card itself goes to Game Detail.
+
+### Games in mixed Home rows
+
+Games may appear in existing personalized/mixed rows such as:
+- For You;
+- Newly Added / newly relevant items;
+- Trending;
+- Because you played …;
+- dynamic genre/theme rows.
+
+Do not force Games into every mixed row. The Home personalization logic decides whether a Game is relevant.
+
+### Games Hero
+
+A Game may become the Home Hero under the normal Hero candidate rules.
+
+Useful Game Hero information:
+- title;
+- platform;
+- year;
+- short description/tagline;
+- last-played/save context when applicable;
+- primary `Continue` or `Play`;
+- secondary `Details`.
+
+Do not show:
+- runtime name;
+- BIOS/Firmware state;
+- ROM filename;
+- release-region/revision details;
+- controller setup;
+- downloader/import diagnostics.
+
+### Games cards
+
+Home Game cards follow the same clean card grammar as other media.
+
+Compact secondary information may use:
+- platform;
+- year;
+- last played;
+- local/request state when relevant.
+
+Do not add emulator/runtime/BIOS badges to Home cards.
+
+### Requests and acquisition
+
+When Home surfaces a non-local recommended Game, any request action uses the shared Request/Acquisition flow.
+
+No Games-specific Request, Wanted, Downloader or Activity system is created.
+
+### TV
+
+TV Home may include:
+- Game Hero;
+- Continue Playing;
+- Games in normal recommendation rows.
+
+Use the existing TV focus/row model.
+
+Controller pairing/setup is not shown on Home. It belongs at launch/player boundary only when required.
+
+### Mobile and Tablet
+
+Use the existing responsive Home layout:
+- Games cards participate in the same horizontal/swipe rows;
+- Continue Playing uses touch-sized Game cards;
+- no extra Games dashboard or platform-filter controls appear on Home.
+
+Platform filtering remains in Games/Discover, not Home.

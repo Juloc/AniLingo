@@ -25,9 +25,9 @@ The Hero contains:
 - season/structure summary
 - a few important genres/themes only
 - short description
-- primary action: Continue / Play
-- secondary action: Favorite / My List
-- overflow menu for less common actions
+- primary action is state-dependent: `Continue` / `Play` when a usable episode is available; `Request` when the selected Work/scope is unavailable and requestable; otherwise show the existing live Request state
+- secondary personal-state action: Watchlist/Favorite where supported
+- optional Collection action/overflow for less common actions
 
 ### Hero artwork
 
@@ -167,13 +167,15 @@ Per episode, support compact states such as:
 - Available
 - Requested
 - Downloading
-- Importing
+- Preparing
 - Other language only
 - Unavailable / not requested
 
 The normal user page should not expose Sonarr-style candidate/release tables.
 
 Requesting missing content should be possible from the episode or appropriate season/work action when the user has permission.
+
+There is no consumer `Add` acquisition action on this page. Personal Watchlist/Favorite/Collection state is separate from Request.
 
 ## 6. Related vs recommendations
 
