@@ -63,6 +63,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `admin-instance/SPEC.md` — instance module surface + global Admin Detailed/Compact density contract
 - `admin-general-settings/SPEC.md` — instance identity, language/locale/timezone and metadata/regional defaults
 - `admin-appearance/SPEC.md` — instance default visual style, profile override policy, Admin density shortcut and theme preview
+- `admin-notifications/SPEC.md` — instance notification channels, canonical events and delivery diagnostics
 - `setup-wizard/SPEC.md`
 
 ## Planning references
