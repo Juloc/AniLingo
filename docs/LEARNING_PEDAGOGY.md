@@ -5,6 +5,10 @@ Status: **binding product and behavior specification** for structured Learning. 
 Related:
 - `docs/LEARNING_V2.md`
 - `docs/LEARNING_LANGUAGES.md`
+- `docs/LEARNING_EXERCISES.md`
+- `docs/LEARNING_PROGRESS.md`
+- `docs/LEARNING_PRACTICE_REVIEW.md`
+- `docs/LEARNING_GAMIFICATION.md`
 - `docs/mockups/learning-home/SPEC.md`
 - `docs/mockups/course-detail/SPEC.md`
 - `docs/mockups/lesson-review/SPEC.md`
@@ -223,7 +227,7 @@ Rules:
 - avoid introducing many unrelated new lexical items and a new grammar concept at the same time;
 - split overloaded Lessons into sections/Lessons;
 - new material can be revisited inside the same Lesson, but long-term retention is delegated to spaced Review;
-- exact daily new-card limits remain scheduler/user policy, not Lesson layout policy.
+- exact daily new-unit pacing remains scheduler/user policy, not Lesson layout policy.
 
 ## 7. Scaffolding and fading
 
@@ -536,7 +540,7 @@ It must not:
 - create a second scheduler;
 - silently move the FSRS due date merely because the learner opened extra practice.
 
-The exact relationship between optional practice results and scheduler updates is defined by the separate Practice & Review Policy specification.
+The exact relationship between optional practice and scheduling is defined by `docs/LEARNING_PRACTICE_REVIEW.md`; Extra Practice does not change FSRS due dates.
 
 ## 24. Error tolerance and accepted answers
 
@@ -549,7 +553,7 @@ Do not mark semantically equivalent supported answers incorrect because of super
 
 Do not accept overly broad variants that make the exercise meaningless.
 
-Detailed answer schema belongs to the Exercise Content Contract.
+Detailed answer schema belongs to `docs/LEARNING_EXERCISES.md`.
 
 ## 25. Motivation without distortion
 
