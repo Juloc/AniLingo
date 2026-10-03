@@ -2457,6 +2457,10 @@ public static class UiTranslationResources
         M("admin.user.statusPending", "awaiting approval / disabled", "Admin", "Status", "Inline status phrase shown next to a disabled or not-yet-approved account's role.", "compact status", 38, null, null),
         M("admin.user.userNameLabel", "User name", "Admin", "Label", "Form label for a user's account name.", "short form label", 18, null, null),
         M("admin.users.accounts", "Accounts", "Admin", "Heading", "Heading of the account list panel on the Users page.", "concise section heading", 16, null, null),
+        M("admin.users.createdAt", "Created {time}", "Admin", "Value", "Compact account creation date in the Users list.", "compact metadata", 30, new Dictionary<string, string> { ["time"] = "Account creation date." }, null),
+        M("admin.users.lastActivityAt", "Last active {time} UTC", "Admin", "Value", "Compact last activity timestamp in the Users list.", "compact metadata", 34, new Dictionary<string, string> { ["time"] = "Last activity timestamp." }, ["UTC"]),
+        M("admin.users.noAccounts", "No accounts yet", "Admin", "Empty state", "Empty-state title when no accounts can be listed.", "concise empty state", 24, null, null),
+        M("admin.users.noAccountsHint", "Create the first account to get started.", "Admin", "Empty state", "Empty-state hint below the Users account list.", "concise empty state", 54, null, null),
         M("admin.users.activeAt", "active {time} UTC", "Admin", "Value", "Inline fragment showing a user's last activity time in the Users list.", "compact metadata", 26, new Dictionary<string, string> { ["time"] = "Last activity timestamp." }, ["UTC"]),
         M("admin.users.approved", "User approved and enabled.", "Admin", "Status", "Confirmation after approving and enabling a pending user account from the Users list.", "concise confirmation", 36, null, null),
         M("admin.users.createUser", "Create user", "Admin", "Heading", "Heading of the new-user form and its submit button on the Users page.", "concise section heading", 20, null, null),
@@ -2470,7 +2474,7 @@ public static class UiTranslationResources
         M("admin.users.role.user", "User", "Admin", "Value", "Name of the User role: watches, reads and requests media, no admin access.", "role name", 14, null, null),
         M("admin.users.roleSaved", "Role updated.", "Admin", "Status", "Confirmation after the owner changes an account's role.", "concise confirmation", 28, null, null),
         M("admin.users.saveRole", "Save role", "Admin", "Button", "Submit the role picker on a user account's page.", "concise admin action", 16, null, null),
-        M("admin.users.subtitle", "Manage local accounts and review their Jularr progress.", "Admin", "Body", "Subtitle under the Users page heading.", "concise admin copy", 78, null, ["Jularr"]),
+        M("admin.users.subtitle", "Manage accounts, roles and permissions.", "Admin", "Body", "Subtitle under the Users page heading.", "concise admin copy", 64, null, null),
 
         // Per-media-type capability matrix editor (#436): the ordered ladder Hidden < Browse < Request < Instant,
         // configured per role and per person and resolved by the request experience, shell and discovery.
