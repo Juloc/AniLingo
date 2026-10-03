@@ -20,12 +20,23 @@
 
 <p class="muted">@ui["admin.capabilities.ownerNote"]</p>
 
+@if (Model.MediaTypes.Count == 0)
+{
+    <section class="panel">
+        <div class="empty-state">
+            <strong>@ui["admin.capabilities.noMediaModules"]</strong>
+        </div>
+    </section>
+}
+else
+{
 <section class="panel">
     <div class="panel-heading"><h2>@ui["admin.capabilities.roleDefaults"]</h2></div>
     <p class="muted">@ui["admin.capabilities.roleDefaultsHint"]</p>
 
     <form method="post" asp-page-handler="Roles" class="form-stack">
-        <table>
+        <div class="capability-matrix-scroll">
+            <table>
             <thead>
                 <tr>
                     <th>@ui["admin.capabilities.mediaTypeColumn"]</th>
@@ -55,7 +66,8 @@
                     </tr>
                 }
             </tbody>
-        </table>
+            </table>
+        </div>
         <button class="button button-primary" type="submit">@ui["common.save"]</button>
     </form>
 </section>
@@ -86,7 +98,8 @@
 
                 <form method="post" asp-page-handler="User" class="form-stack">
                     <input type="hidden" name="profileId" value="@user.Id" />
-                    <table>
+                    <div class="capability-matrix-scroll">
+                        <table>
                         <thead>
                             <tr>
                                 <th>@ui["admin.capabilities.mediaTypeColumn"]</th>
@@ -113,10 +126,12 @@
                                 </tr>
                             }
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                     <button class="button button-primary" type="submit">@ui["common.save"]</button>
                 </form>
             </article>
         }
     </div>
 </section>
+}
