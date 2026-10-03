@@ -123,6 +123,8 @@ Do not hard-code every integration into the page.
 
 Provider buttons use recognizable icon + provider name. Keep the grid compact.
 
+When many login providers are configured, show a bounded first set plus a compact `More sign-in options` disclosure/sheet rather than growing the Login card indefinitely. Ordering is instance-configurable or stable by provider priority.
+
 A provider may support login, synchronization, both or neither. Login capability and Connection/sync capability are declared separately.
 
 ## 6. External identity behavior
