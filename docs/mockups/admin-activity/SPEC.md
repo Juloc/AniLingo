@@ -22,6 +22,12 @@ The screen must answer:
 - What completed successfully?
 - Which concrete media/file/job is affected?
 
+## Navigation ownership
+
+Activity / To-Do is the permanent Admin operational destination. **History is its third tab**, not a second permanent sidebar destination.
+
+A compatibility/deep-link route such as `/Admin/History` may remain for large-history workflows, but it must render/use the same History contract and canonical event model.
+
 ## Primary tabs
 
 Use three primary tabs:
