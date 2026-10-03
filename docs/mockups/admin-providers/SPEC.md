@@ -142,7 +142,15 @@ Secrets are masked/write-only after save.
 
 ### Fähigkeiten
 
-Choose/confirm capabilities Jularr may use:
+Choose/confirm capabilities Jularr may use.
+
+Identity/Login examples:
+- Account sign-in
+- external identity linking
+- optional account auto-provisioning
+- optional Profile Connection/sync as a separate capability
+
+Media/provider examples:
 - Anime
 - Series
 - Movies
