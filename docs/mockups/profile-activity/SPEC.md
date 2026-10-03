@@ -2,7 +2,7 @@
 
 Status: **planned UX baseline; ready for Light-mode mockup review**.
 
-This is the binding consumer specification for the signed-in user's own Profile, media Activity and personal Devices/Sessions surface.
+This is the binding consumer specification for the signed-in user's own Profile and media Activity surface. Personal Devices/Sessions are owned by Settings > Devices & Sessions and are only linked from Profile.
 
 It is not a social profile, analytics dashboard or Admin session monitor.
 
@@ -13,9 +13,8 @@ The Profile area should answer:
 1. Which Profile am I using, and which Account owns the session?
 2. What have I recently watched, read or listened to?
 3. What am I currently consuming?
-4. Which of my devices/sessions are active?
-5. Where do I reach personal Settings and account actions?
-6. If authorized, where do I enter Admin without mixing Admin data into Profile?
+4. Where do I reach personal Settings, Devices & Sessions and account actions?
+5. If authorized, where do I enter Admin without mixing Admin data into Profile?
 
 Only the signed-in user's own personal state is shown.
 
@@ -47,14 +46,14 @@ If Desktop retains a direct Activity destination, it must render the same canoni
 
 ## Canonical data contract
 
-Use shared personal-state/session concepts:
+Use shared personal-state concepts:
 
 - `Profile`
 - canonical `MediaProgress`
 - canonical consumption / playback / reader history
-- `ActiveSession`
-- registered/recent device identity where supported
-- offline/download state when implemented
+- ratings and profile presentation state where relevant
+
+Devices, authentication sessions and `ActiveSession` are not duplicated into the Activity page. Their owning surfaces remain Settings > Devices & Sessions and playback/continuation UI.
 
 Activity entries reference canonical Work plus optional Episode / Volume / Chapter targets.
 
@@ -178,13 +177,17 @@ Activity may show a rating only when the activity item genuinely includes a rati
 
 Normal Watch/Read/Listen Activity rows must not automatically show rating badges.
 
-## 4. Devices
+## 4. Devices & Sessions handoff
 
-Personal devices/clients only.
+Profile does not render a second device/session manager.
 
-Each device may show friendly name, device/client type, last active, current-session state, offline/download capability where applicable, Rename, and Sign out/Revoke where supported.
+Use a compact link/row to `Settings -> Devices & Sessions` when useful. That page owns:
+- current/recent devices;
+- authentication/account sessions;
+- sign out/revoke;
+- device rename/inactive management.
 
-Current device should be identifiable. Stale devices can move behind Show inactive devices. Never show another user's devices.
+Activity remains only personal media activity.
 
 ## 5. Personal links
 
@@ -238,30 +241,28 @@ Portrait stays close to Mobile. Landscape may use the Desktop two-column layout.
 
 ## TV
 
-TV Profile is deliberately limited to current profile, profile switching, recent/continue activity, current TV session and TV-relevant Settings.
+TV Profile is deliberately limited to current profile, profile switching, recent/continue activity and TV-relevant Settings. Device/session administration hands off to Web/Mobile.
 
 Account-security forms, dense history management, broad device administration and Admin hand off to Web/Mobile.
 
 ## Loading / Empty / Partial / Error
 
-- Use skeletons for identity, active session, several Activity rows and Devices.
+- Use skeletons for identity and several Activity rows.
 - New profile: concise `No activity yet` plus Home/Discover destination.
-- No active session: omit the section.
-- No extra devices: show current device only.
 - Zero-result filter: explain filters are hiding history and offer Reset.
-- Section failures stay local; Profile identity should not block on optional history/device systems.
+- Section failures stay local; Profile identity should not block on optional history systems.
 - Old history may remain visible even when media/storage is currently unavailable.
 
 ## Privacy / permissions
 
-- only own Activity/Sessions/Devices
+- only own Activity on this surface; Devices/Sessions follow their own Settings authorization
 - same restriction enforced server-side
 - Admin link only with capability
 - hidden capabilities disappear rather than rendering disabled clutter
 
 ## Accessibility
 
-Semantic headings, keyboard access, visible focus, accessible full timestamps, textual progress/session state, touch-sized Mobile targets and predictable TV focus order.
+Semantic headings, keyboard access, visible focus, accessible full timestamps, textual progress/activity state, touch-sized Mobile targets and predictable TV focus order.
 
 ## Navigation / back
 
@@ -275,7 +276,7 @@ Opening media from Activity and returning should preserve Activity filter, scrol
 - no storing a user's chosen visual rating scale as the canonical score itself
 - no watch-time statistics wall
 - no Admin operations/jobs/history
-- no other users' sessions/devices
+- no duplicate device/session manager inside Profile Activity
 - no IP/codec/transcode/server-load details
 - no parallel per-media history stores
 - no giant dashboard tiles
