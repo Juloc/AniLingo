@@ -463,33 +463,50 @@ A profile module toggle can only narrow availability. It cannot enable an instan
 
 Appearance supports Visual style (Clean / Original Jularr), Light/Dark/System and configurable accent/color scheme through shared tokens. Visual style changes skin/branding only; it never changes page structure or feature availability.
 
-## 15. Add media flow
+## 15. Request flow
 
-Binding specification: `docs/mockups/add-request-flow/SPEC.md`
+Binding specification: `docs/mockups/add-request-flow/SPEC.md`.
 
-`Add` / `Request` is contextual from Library/Search/Discover/Calendar/detail surfaces and opens one coherent flow rather than permanent import forms on normal pages.
+There is exactly one consumer acquisition action: **Request**.
 
-Flow:
-1. search/identify work
-2. choose desired edition/language where relevant
-3. choose monitoring/request behavior
-4. optional acquisition profile override
-5. confirm
+Request starts from an already selected/resolved canonical Work/target. The Request surface does not contain media search or title selection.
 
-Manual local import is an Admin/advanced path, not dominant user UI.
+Normal Request UI:
+1. compact media identity;
+2. Scope only when structural selection is meaningful;
+3. Included content derived from Scope;
+4. Language / Edition where relevant;
+5. privileged Advanced override only when permitted;
+6. Cancel + Request.
+
+There is no Add/Add & Monitor consumer path and no numbered wizard.
+
+Approval policy is backend behavior:
+- a normal Request may wait for Admin approval;
+- an authorized/policy-matched Request may be auto-approved immediately.
+
+Both still use the same visible `Request` action.
+
+Personal state such as Watchlist/Reading List, Watching/Reading/Listening, progress, completed state, ratings and external sync is separate from acquisition and never embedded into the Request dialog.
+
+Manual local import and release selection remain Admin/advanced workflows.
 
 ## 16. Request / missing media UX
 
-User detail pages show a simple state:
-- Available
-- Request
-- Requested
-- Searching
-- Downloading
-- Importing
-- Failed with understandable retry/details where permitted
+Consumer surfaces project one shared state vocabulary:
+- Available / Partially available;
+- Request;
+- Waiting for approval / Requested;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Monitoring future releases where relevant;
+- Needs attention / Failed;
+- Cancelled where relevant.
 
-Normal users do not need Sonarr-like release tables.
+Do not expose `Wanted`, `Searching`, `Importing`, release candidates, downloader state or importer phases as normal consumer product states.
+
+Status/details behavior is owned by `docs/mockups/request-status-details/SPEC.md`.
 
 ## 17. Admin mode/navigation
 
