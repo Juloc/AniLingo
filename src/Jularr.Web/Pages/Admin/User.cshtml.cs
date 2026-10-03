@@ -18,7 +18,8 @@ public sealed class UserModel(
     AniListAccountStore aniListAccountStore,
     AdminSessionsService sessionsService,
     PlaybackStreamSessionStore sessionStore,
-    KnownDeviceRegistry deviceRegistry) : PageModel
+    KnownDeviceRegistry deviceRegistry,
+    AccountGroupStore groupStore) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -27,6 +28,11 @@ public sealed class UserModel(
     public IReadOnlyList<AdminSessionRow> Sessions { get; private set; } = [];
 
     public IReadOnlyList<KnownDeviceRow> Devices { get; private set; } = [];
+
+    public IReadOnlyList<AccountGroupSummary> Groups { get; private set; } = [];
+
+    public IReadOnlySet<string> GroupMembershipIds { get; private set; } =
+        new HashSet<string>(StringComparer.Ordinal);
 
     public async Task<IActionResult> OnGetAsync(
         string id,
@@ -96,6 +102,29 @@ public sealed class UserModel(
         {
             await authService.SetRoleAsync(id, role, cancellationToken);
             TempData["Status"] = Ui["admin.users.roleSaved"];
+            return RedirectToPage(new { id });
+        }
+        catch (InvalidOperationException exception)
+        {
+            ModelState.AddModelError(string.Empty, exception.Message);
+            return await ReloadOrNotFoundAsync(id, cancellationToken);
+        }
+    }
+
+    public async Task<IActionResult> OnPostSetGroupsAsync(
+        string id,
+        string[]? groupIds,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        try
+        {
+            await groupStore.SetMembershipsAsync(
+                id,
+                groupIds ?? [],
+                cancellationToken);
+            TempData["Status"] = Ui["admin.user.groupsSaved"];
             return RedirectToPage(new { id });
         }
         catch (InvalidOperationException exception)
@@ -240,6 +269,15 @@ public sealed class UserModel(
         Account = account;
         Sessions = await sessionsService.ListForProfileAsync(id, cancellationToken);
         Devices = await deviceRegistry.ListForProfileAsync(id, cancellationToken);
+
+        if (account.Role != AccountRole.Owner)
+        {
+            Groups = await groupStore.ListAsync(cancellationToken);
+            GroupMembershipIds = await groupStore.GetMembershipIdsAsync(
+                id,
+                cancellationToken);
+        }
+
         return true;
     }
 }

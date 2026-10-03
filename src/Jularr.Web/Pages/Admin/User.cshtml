@@ -84,6 +84,35 @@
                 <button class="button" type="submit">@ui["admin.users.saveRole"]</button>
             </form>
 
+            <form method="post" asp-page-handler="SetGroups" class="form-stack admin-user-groups-form">
+                <input type="hidden" name="id" value="@account.Id" />
+                <div class="admin-user-groups-heading">
+                    <span>@ui["admin.user.groups"]</span>
+                    <a asp-page="/Admin/Groups">@ui["admin.user.manageGroups"]</a>
+                </div>
+
+                @if (Model.Groups.Count == 0)
+                {
+                    <p class="muted">@ui["admin.user.noGroups"]</p>
+                }
+                else
+                {
+                    <div class="admin-user-group-options">
+                        @foreach (var group in Model.Groups)
+                        {
+                            <label class="checkbox-row">
+                                <input type="checkbox"
+                                       name="groupIds"
+                                       value="@group.Id"
+                                       checked="@Model.GroupMembershipIds.Contains(group.Id)" />
+                                <span>@group.Name</span>
+                            </label>
+                        }
+                    </div>
+                    <button class="button" type="submit">@ui["admin.user.saveGroups"]</button>
+                }
+            </form>
+
             <div class="admin-user-access-actions">
                 <form method="post" asp-page-handler="SetEnabled">
                     <input type="hidden" name="id" value="@account.Id" />

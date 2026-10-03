@@ -1,0 +1,90 @@
+@page
+@using Jularr.Web.Features.Auth
+@model Jularr.Web.Pages.Admin.GroupsModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.groups.title"];
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.groups.title"]</h1>
+        <p>@ui["admin.groups.subtitle"]</p>
+    </div>
+    <a class="button" asp-page="/Admin/Users">@ui["admin.user.backToUsers"]</a>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+
+<div class="settings-grid admin-groups-layout" data-admin-groups>
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["admin.groups.roles"]</h2></div>
+
+        <div class="status-list">
+            <div>
+                <span>@ui[AccountRoles.LabelKey(AccountRole.Owner)]</span>
+                <strong>@ui["admin.groups.role.owner"]</strong>
+            </div>
+            <div>
+                <span>@ui[AccountRoles.LabelKey(AccountRole.MediaManager)]</span>
+                <strong>@ui["admin.groups.role.mediaManager"]</strong>
+            </div>
+            <div>
+                <span>@ui[AccountRoles.LabelKey(AccountRole.User)]</span>
+                <strong>@ui["admin.groups.role.user"]</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["admin.groups.groups"]</h2>
+            <span>@Model.Groups.Count</span>
+        </div>
+
+        <form method="post" asp-page-handler="Create" class="inline-actions admin-group-create">
+            <input name="name"
+                   maxlength="80"
+                   placeholder="@ui["admin.groups.name"]"
+                   aria-label="@ui["admin.groups.name"]"
+                   required />
+            <button class="button button-primary" type="submit">@ui["admin.groups.create"]</button>
+        </form>
+
+        @if (Model.Groups.Count == 0)
+        {
+            <div class="empty-state admin-groups-empty">
+                <strong>@ui["admin.groups.noGroups"]</strong>
+            </div>
+        }
+        else
+        {
+            <div class="admin-groups-list">
+                @foreach (var group in Model.Groups)
+                {
+                    <article class="admin-group-row">
+                        <form method="post" asp-page-handler="Rename" class="admin-group-rename">
+                            <input type="hidden" name="groupId" value="@group.Id" />
+                            <input name="name"
+                                   value="@group.Name"
+                                   maxlength="80"
+                                   aria-label="@ui["admin.groups.name"]"
+                                   required />
+                            <span class="muted">@ui.Format("admin.groups.members", ("count", group.MemberCount))</span>
+                            <button class="button" type="submit">@ui["common.save"]</button>
+                        </form>
+
+                        <form method="post"
+                              asp-page-handler="Delete"
+                              onsubmit="return confirm('@ui["admin.groups.confirmDelete"]');">
+                            <input type="hidden" name="groupId" value="@group.Id" />
+                            <button class="button" type="submit">@ui["common.remove"]</button>
+                        </form>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
