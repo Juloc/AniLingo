@@ -19,7 +19,8 @@ public enum InstanceModule
     Audiobook = 7,
     Learning = 8,
     Acquisition = 9,
-    Tracking = 10
+    Tracking = 10,
+    Games = 11
 }
 
 public sealed record InstanceModuleSettings(
