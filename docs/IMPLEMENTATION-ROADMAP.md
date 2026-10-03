@@ -16,7 +16,7 @@ Exit gate: migrations can target stable canonical contracts; no unresolved polym
 ## Phase 1 — Canonical persistence foundation
 
 1. PostgreSQL-first module-owned EF configurations/indexes/constraints.
-2. Add missing canonical Asset/File/Track/Profile/Progress/Job schemas.
+2. Add missing canonical Account/LoginIdentity/Profile/ProfileConnection/Asset/File/Track/Progress/Job schemas.
 3. Build reversible backfill/validation tooling and migration audit reports.
 4. Keep legacy bridges read-compatible but migration-only.
 
