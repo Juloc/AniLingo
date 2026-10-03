@@ -2428,6 +2428,7 @@ public static class UiTranslationResources
         M("admin.user.disableUser", "Disable user", "Admin", "Button", "Disable a non-owner user account.", "concise admin action", 20, null, null),
         M("admin.user.disabledPendingLabel", "Disabled / pending", "Admin", "Value", "Value shown for a disabled or not-yet-approved account's status.", "compact status", 26, null, null),
         M("admin.user.disabledSessionsRevoked", "User disabled and existing sessions revoked.", "Admin", "Status", "Confirmation after disabling a user account and revoking its sessions.", "concise confirmation", 60, null, null),
+        M("admin.user.devicesSessions", "Devices & sessions", "Admin", "Heading", "Heading of the selected account's known devices and live playback sessions.", "concise section heading", 24, null, null),
         M("admin.user.enabled", "User enabled.", "Admin", "Status", "Confirmation after enabling a user account.", "concise confirmation", 22, null, null),
         M("admin.user.enabledLabel", "Enabled", "Admin", "Value", "Value shown for an enabled account's status.", "compact status", 16, null, null),
         M("admin.user.episodesSummary", "{started} started · {completed} completed", "Admin", "Value", "Summary of episodes started and completed by a user.", "compact metadata", 56, new Dictionary<string, string> { ["started"] = "Number of episodes started.", ["completed"] = "Number of episodes completed." }, null),
