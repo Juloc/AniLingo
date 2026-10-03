@@ -40,6 +40,8 @@
              data-category="@card.Category"
              data-provider="@card.Provider"
              data-external-id="@card.ExternalId"
+             data-request-id="@card.RequestId"
+             data-request-status="@card.RequestStatus"
              data-title="@card.Title"
              data-native-title="@card.NativeTitle"
              data-cover="@card.PosterUrl"
@@ -110,6 +112,14 @@
                             <partial name="_DiscoverIcon" model='"play"' />
                             <span>@card.PlayLabel</span>
                         </a>
+                    }
+                    else if (card.RequestId is { } requestId)
+                    {
+                        <span class="dc-pv-add"
+                              data-dc-add-slot
+                              data-dc-live-request="@requestId"
+                              data-dc-live-status="@card.RequestStatus">
+                        </span>
                     }
                     else if (card.AddAction.Length > 0)
                     {
