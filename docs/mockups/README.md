@@ -40,6 +40,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `login-profile-selection/SPEC.md` — account login, external identities and Profile selection
 - `continuation-surfaces/SPEC.md` — persistent Now Playing and Continue Reading surfaces
 - `error-permission-states/SPEC.md` — shared 404/403/module/resource/session/500 states
+- `media-preview/SPEC.md` — cinematic Quick View for discovery/recommendations
 
 ## Admin screen contracts
 

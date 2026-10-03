@@ -104,68 +104,32 @@ The visual system may use icon + short code/color, but must remain understandabl
 
 Detailed audio/subtitle/edition language information belongs in the preview/detail surface.
 
-## Desktop preview interaction
+## Media Preview / Quick View
 
-On pointer hover after a short delay:
+Binding shared specification: `docs/mockups/media-preview/SPEC.md`.
 
-- card expands into a larger rich preview
-- trailer plays muted when available
-- if no trailer exists, use backdrop/hero artwork
-- show short description and useful metadata
-- actions:
-  - Play / Continue when available
-  - Request when unavailable
-  - Favorite
-  - Add to Collection
-  - Details
+Desktop:
+- ordinary hover may highlight the card and reveal a Quick View affordance;
+- the card itself does **not** expand/reflow on hover;
+- normal card click opens the canonical Detail page;
+- Quick View opens the cinematic Preview overlay;
+- external trailer players are not instantiated by casual hover.
 
-The expanded preview must not cause chaotic layout shifting.
+Mobile:
+- no hover behavior;
+- normal card tap opens Detail;
+- secondary Quick View action opens the large Preview sheet.
 
-## Mobile interaction
+Tablet:
+- touch-first adaptive Preview sheet/dialog.
 
-No hover behavior.
+TV:
+- stable card focus may populate the larger Preview/hero area;
+- trailer begins only after a deliberate stable-focus delay;
+- rapid D-pad movement must not continuously instantiate/start trailers;
+- Back restores the prior row/focus position.
 
-Tap card -> large bottom sheet / dialog:
-
-- large trailer or backdrop preview
-- title
-- compact metadata
-- short description
-- language/request state
-- actions:
-  - Play / Continue or Request
-  - Favorite
-  - Add to Collection
-  - Details
-
-From the preview the user can open the full canonical detail page.
-
-## Tablet interaction
-
-Touch-first like Mobile, using additional width for a larger preview/dialog and more actions visible at once.
-
-## TV interaction
-
-Remote/focus-first:
-
-- focused card gets the same strong clean selected treatment defined for Library TV
-- slight scale/lift + clear focus border/glow
-- after a short stable focus delay, show trailer/backdrop in a larger preview/hero area
-- do not start a new trailer instantly on every focus movement
-- actions remain remote-friendly
-- Back restores prior row/focus position
-
-## Trailer / artwork fallback
-
-Trailer is optional.
-
-Priority:
-
-1. metadata-provider trailer / known trailer URL or provider ID
-2. local/provider backdrop
-3. cover/poster with derived blur/gradient background
-
-A title must still look complete without a trailer.
+Trailer/artwork source and autoplay rules are owned by the Media Preview spec. Preview reuses canonical Play/Read/Listen/Request state and never creates a second playback/request model.
 
 ## Light / Dark
 
