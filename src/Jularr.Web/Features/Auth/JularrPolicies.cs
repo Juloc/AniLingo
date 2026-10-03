@@ -46,6 +46,19 @@ public static class JularrPolicies
             [SessionsStopOthers] = OwnerAndMediaManager
         };
 
+    public static string LabelKey(string policy) =>
+        policy switch
+        {
+            AdminMedia => "admin.roles.policy.adminMedia",
+            AdminSystem => "admin.roles.policy.adminSystem",
+            MediaDelete => "admin.roles.policy.mediaDelete",
+            MediaRename => "admin.roles.policy.mediaRename",
+            MappingEdit => "admin.roles.policy.mappingEdit",
+            AcquisitionSettings => "admin.roles.policy.acquisitionSettings",
+            SessionsStopOthers => "admin.roles.policy.sessionsStopOthers",
+            _ => throw new ArgumentException($"Unknown authorization policy '{policy}'.", nameof(policy))
+        };
+
     public static void Register(AuthorizationOptions options)
     {
         foreach (var (name, roles) in Roles)
