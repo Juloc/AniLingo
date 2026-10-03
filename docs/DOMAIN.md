@@ -214,7 +214,7 @@ Metadata conflicts must be correctable. Provider evidence never replaces canonic
 Acquisition is media-independent.
 
 Core concepts:
-- `WantedItem`: desired Work/unit/Edition/language/quality
+- `WantedItem`: desired canonical acquisition target/language/quality; for normal media this is Work/unit/Edition. Games remains a separate Games-owned identity and enters shared Acquisition through a typed target/application adapter rather than being modeled as a Work.
 - `ReleaseCandidate`: transient/indexer result
 - `DownloadJob`: accepted candidate handed to a download client
 - `ImportJob`: downloaded material awaiting identification/import
@@ -395,6 +395,8 @@ Cross-media is a normal Collection capability, not a separate kind. Franchise/ad
 
 A `CollectionEntry` references a local Work ID. It never stores provider IDs as canonical media identity or duplicates canonical title/progress/rating metadata as a source of truth.
 
+Games does not enter this Work-based Collection model in V1. Games owns `Game` identity outside MediaCore; future cross-domain Collections require an explicit typed target contract rather than coercing Game into Work.
+
 Linked Collection sync follows:
 
 ```text
@@ -409,9 +411,11 @@ A provider outage must not make an already-synced Linked Collection unreadable.
 
 Ambiguous provider identity is retained as provider evidence/mapping work; Jularr must not silently merge Works from title similarity alone.
 
-Discovery results are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
+Discovery results for normal media are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
 
-Recommendations should also return canonical/resolvable Work references.
+Games is an explicit domain exception: Games discovery resolves to the Games module's canonical Game identity, not Work. Shared Search/Request presentation may carry a typed canonical target so this does not create a second acquisition/search stack.
+
+Recommendations should return canonical/resolvable target references owned by the relevant domain.
 
 ## 17. Storage
 

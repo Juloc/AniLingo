@@ -51,7 +51,7 @@ User state is separate:
 - canonical `MediaProgress`
 - playback history
 - playback preferences
-- favorite/My List/collection state
+- personal Watchlist/Favorite/Collection state
 
 No permanent `AudiobookProgress` store is allowed.
 
@@ -104,8 +104,8 @@ Sections without meaningful data disappear.
 - publication/release year
 - compact genre/theme set
 - short synopsis
-- primary `Listen` / `Continue Listening`
-- `My List`
+- primary action is state-dependent: `Listen` / `Continue Listening` when a playable Edition is available; `Request` when unavailable and requestable; otherwise show the existing live Request state
+- personal Watchlist/Favorite action where supported
 - optional Collection action
 - overflow for secondary consumer actions
 
@@ -386,7 +386,7 @@ Primary:
 
 Secondary:
 
-- My List
+- Watchlist/Favorite where supported
 - Collection
 - Request missing content
 - open related written work
@@ -401,9 +401,9 @@ Consumer states may include:
 - Available
 - Partial
 - Requested
-- Searching
+- Looking for media
 - Downloading
-- Importing
+- Preparing
 - Unavailable
 - Storage offline
 
@@ -465,7 +465,7 @@ Approved Light composition:
 
 - artwork-led compact Hero with integrated cover and title;
 - rating/runtime/narrator as a short fact row;
-- prominent Continue Listening and My List actions;
+- prominent Continue Listening and personal Watchlist/Favorite action where supported;
 - optional compact **section jump bar** such as Parts / Chapters / Details / More;
 - the jump bar scrolls to sections on the same page; it is not a separate tabbed information architecture and must not duplicate page state;
 - swipeable Parts rail when meaningful;
@@ -531,8 +531,10 @@ Still show canonical metadata and relations.
 
 Primary action becomes:
 
-- Request/Add when permitted;
+- `Request` when permitted;
 - concise unavailable state otherwise.
+
+Never show a separate consumer Add acquisition action.
 
 Do not render an empty file table.
 
@@ -556,7 +558,7 @@ Must support independently:
 - audio available while chapter metadata is incomplete
 - some chapters/files missing
 - preferred language unavailable but another edition exists
-- requested/downloading/importing alternate narration
+- requested/downloading/preparing alternate narration
 - storage offline while cached metadata/artwork/progress remains visible
 - recommendation provider unavailable
 - external/provider progress unavailable while local resume remains valid

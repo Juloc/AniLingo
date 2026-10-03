@@ -67,7 +67,7 @@ Consumer Library only projects the canonical Request/availability state.
 
 Examples:
 - Requested;
-- Searching;
+- Looking for media;
 - Downloading;
 - Preparing;
 - Partially available;
@@ -159,6 +159,10 @@ Written:
 Audiobook:
 - spoken language
 
+### Personal state
+- Watchlist / Reading List
+- Favorite where implemented
+
 ### Metadata
 - Genre
 - Year
@@ -182,6 +186,19 @@ Supported baseline:
 - User rating where useful
 
 Manual Collection custom order belongs to Collections, not normal Library.
+
+## 8a. Personal lists
+
+Watchlist/Reading List is profile state over canonical Works, not a separate Library, Collection or acquisition model.
+
+Expose it through the existing Library surface:
+- a Personal state filter such as Watchlist / Reading List / Favorite where those states exist;
+- deep links may open Library with that filter already applied;
+- written media may label the canonical list state `Reading List`;
+- Home/Profile may link to the filtered view;
+- removing an item changes only that personal-list state.
+
+Do not create a separate top-level Watchlist app or duplicate Watchlist as a Manual Collection.
 
 ## 9. Canonical MediaCard
 

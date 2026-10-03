@@ -1,6 +1,6 @@
 # Error / Permission / Availability States
 
-Status: **Original J approved; binding planning specification. Clean visual reference still pending separate approval.**
+Status: **Original J and Clean visual directions approved; binding planning specification.**
 
 This shared surface covers consumer-facing access, availability and error states without creating a separate error implementation per feature.
 
@@ -231,7 +231,7 @@ Required direction:
 - no torii/pagoda/ink scenery;
 - no Original-J decorative motifs.
 
-Clean uses the same state semantics, copy and actions, but its visual mockup is approved separately.
+Clean uses the same state semantics, copy and actions; its approved visual reference remains strictly separate from Original J.
 
 Do not mix Original J art into Clean.
 

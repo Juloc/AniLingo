@@ -88,11 +88,12 @@ Remote-first primary destinations:
 
 - Home;
 - Library;
+- Games when the Games destination is available to the active profile/installation;
 - Calendar where useful;
 - Search;
 - Profile.
 
-Learning appears only where the TV interaction is useful.
+Learning appears only where the TV interaction is useful. Optional module entries disappear when unavailable to the active Profile.
 
 Library uses large remote-friendly media cards and an internal `Library | Collections` switch. Collections is not a second TV top-level destination.
 
@@ -134,6 +135,8 @@ Library media scope:
 Collections is not a media type and not top-level navigation.
 
 Consumer Library has no generic Add/import menu. New media is found through Discover and requested through the shared Request flow. Manual file/folder import and reconciliation belong to Admin.
+
+Watchlist/Reading List is represented as profile-state filtering/deep-linking inside Library rather than another top-level destination or a fake Collection.
 
 ## 2. Media model
 
@@ -411,9 +414,9 @@ policy checks below; the table states the target state, not today's binary Owner
 
 | Area / action | Owner | Media manager | User |
 | --- | --- | --- | --- |
-| Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
+| Consumer pages (Home, Library including Watchlist/Reading List filtered views, Calendar, Discover, playback, reading) | Full | Full | Full |
 | Own account settings, own sessions/history | Full | Full | Full |
-| Request media (Requests queue, own history at `/Requests`) | Full | Full | Allowed per the media-type capability (Request creates a request, Instant adds at once); auto-approval rules can approve a request without the owner |
+| Request media | Full | Full | Allowed per the media-type capability; the consumer action is always `Request`, while Instant capability means the Request may be auto-approved immediately |
 | Per-media-type capability: Hidden/Browse/Request/Instant (`/Admin/Capabilities`, #436) | Unrestricted (always Instant) | Configurable (default Instant) | Configurable (default Request), with per-user overrides |
 | Approve/reject requests | Full | Full | No |
 | View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
@@ -436,19 +439,18 @@ another user's session, storage/settings/integration changes).
 
 Orthogonal to the role/policy table above, each media type (`WorkMediaType`: Movie, Series/TV,
 Anime, Book, Manga, Light Novel) resolves to one ordered capability per profile:
-`Hidden < Browse < Request < Instant`. The owner edits the matrix on `/Admin/Capabilities`
+`Hidden < Browse < Request < Instant`. These are authorization/policy levels, not four different consumer buttons. The owner edits the matrix on `/Admin/Capabilities`
 (owner-only, `admin.system`): a default per configurable role (Media manager, User) plus sparse
 per-user overrides. The policy is the canonical JSON settings store
 `Features/Auth/MediaCapabilityStore` (`/data/auth/media-capabilities.json`) — no EF table.
 Resolution precedence: **Owner is always Instant (unrestricted); otherwise a per-user override
 wins over the role default.** Features consume the resolved capability through
 `IMediaCapabilityService` (`Features/Auth/MediaCapabilityService`) instead of re-deriving rules:
-`GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — Instant vs Request gating),
+`GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — whether Request requires approval or may auto-approve),
 `GetVisibleMediaTypesAsync` (permission-derived shell #598 and discovery categories #595 — Hidden
 removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-media-type guard).
 
-`AcquisitionRequestService` (#597) is the request-side consumer: Request creates a request, Instant
-adds at once, Browse/Hidden cannot add. This replaces the former per-media-type "adding from
+`AcquisitionRequestService` (#597) is the request-side consumer: both Request and Instant capability use the same consumer `Request` action. `Request` capability creates a request subject to approval policy; `Instant` capability permits immediate/auto-approved processing. Browse/Hidden cannot create acquisition requests. This replaces the former per-media-type "adding from
 search" rule (`UserAddMode`), which #597 retired in favour of the capability matrix; its
 `AcquisitionAccessPolicies.UserAddMode` table column was dropped by the Movie/TV schema migration
 (#593/#594). On top of a Request capability the

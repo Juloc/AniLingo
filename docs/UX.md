@@ -18,6 +18,7 @@ Status: planning baseline. This document defines information architecture, navig
 - Clean defaults to the purple Jularr accent/mark; Original Jularr defaults to the established red/pink accent/mark.
 - Accent changes may hue-shift permitted branded/decorative tokens consistently, but must not recolor third-party provider logos or semantic error/success meaning.
 - Clean and Original are skins, not separate page implementations or information architectures.
+- Legacy screen titles that say `Clean Design` describe their visual baseline only; unless a spec explicitly says otherwise, the same behavior/information architecture applies to Original Jularr.
 - Every screen defines loading, empty, partial, error and ready states.
 - Permission-restricted actions disappear from UI but are also enforced server-side.
 - Never expose half-implemented controls.
@@ -54,11 +55,14 @@ Search is globally accessible from the top/app bar. Activity belongs under Profi
 Remote-first primary destinations:
 - Home
 - Library
+- Games when the Games destination is available to the active profile/installation
 - Calendar where useful
 - Search
 - Profile
 
 Learning appears when the TV interaction is meaningful; detailed learning workflows may hand off to phone/tablet.
+
+Optional module destinations disappear when disabled by instance policy, authorization or the active Profile's module preference.
 
 ## 2a. Login and Profile selection
 
@@ -154,6 +158,25 @@ Preview actions reuse canonical Play/Read/Listen/Request contracts. Trailer play
 
 Clean and Original Jularr use identical structure/behavior; only visual skin tokens differ.
 
+## 3b. Consumer acquisition status vocabulary
+
+All consumer surfaces project the same user-facing Request/acquisition vocabulary.
+
+Preferred labels:
+- Waiting for approval;
+- Requested / Approved where needed;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Available / Partially available;
+- Monitoring future releases;
+- Needs attention / Failed;
+- Cancelled.
+
+`Search`, `ImportJob`, importer phases, verification and post-processing are internal/Admin concepts. Consumer pages may show progress, but should use `Looking for media` and `Preparing` instead of exposing `Searching` / `Importing` as separate product states.
+
+This vocabulary is a projection over the canonical Request -> Wanted -> Search -> Download -> Import pipeline; it does not create a second state machine.
+
 ## 4. Home
 
 Home is personalized, not a duplicate library index.
@@ -162,6 +185,7 @@ Priority sections:
 - Continue Watching / Reading / Listening
 - Continue Playing, when the profile has resumable Games activity
 - Up Next
+- optional Watchlist / Reading List shelf when useful
 - Recommendations based on the user's library/progress
 - Recently relevant additions only when useful
 - media-type/genre recommendation rows
@@ -190,6 +214,8 @@ Consumer Library does not expose a generic Add/import menu. New media comes thro
 Cards reuse one shared media grammar: poster/cover, title, one useful progress/status line, preferred-language availability and optional progress bar. Normal card activation opens Detail. Cards do not expand/reflow on hover; optional Quick View uses the shared Media Preview contract.
 
 Library must not become an Admin dashboard: no statistics sidebar, active-genre panel, release/download internals or duplicated Home-style Continue shelf.
+
+Personal Watchlist/Reading List is a profile-state projection of Library, not a separate acquisition model or mandatory top-level destination. Home/profile links may open Library with the personal-list filter already applied. For written media, the same canonical personal-list state may be labeled Reading List.
 
 Mobile uses a two-column poster/cover grid where width permits. TV is remote-first with large posters and strong focus treatment, not a scaled Desktop grid.
 
@@ -222,8 +248,9 @@ All media detail pages share a common skeleton while adapting content.
 - title and useful alternate title where configured
 - concise metadata
 - progress/status
-- primary action: Play / Continue / Read / Listen / Request
-- secondary actions: add/remove library/watchlist, options
+- primary action is state-dependent: Play / Continue / Read / Listen when usable, otherwise Request when acquisition is permitted;
+- secondary actions are personal-state/context actions such as Watchlist/Reading List, Favorite, Collection and options where supported;
+- never expose a separate consumer `Add to Library` acquisition action.
 
 ### Content
 Media-specific sections appear only when relevant.
@@ -413,7 +440,7 @@ Contains:
 - user identity/profile switch where applicable
 - Activity/history
 - watch/read/listen history
-- devices/sessions where appropriate
+- quick link to Devices & Sessions under Settings
 - quick link to Settings
 
 Activity is not a main mobile navigation item.
@@ -429,10 +456,14 @@ Sections:
 - Playback
 - Audio & subtitles
 - Reader
+- Ratings
 - **Modules & Features** — personal On/Off for instance-enabled, permitted optional modules
 - Learning
+- Notifications
 - AI / personal provider
-- Devices
+- Connections
+- Devices & Sessions
+- Profile & Privacy
 - Account/security
 
 Module availability resolves as:
@@ -442,33 +473,50 @@ A profile module toggle can only narrow availability. It cannot enable an instan
 
 Appearance supports Visual style (Clean / Original Jularr), Light/Dark/System and configurable accent/color scheme through shared tokens. Visual style changes skin/branding only; it never changes page structure or feature availability.
 
-## 15. Add media flow
+## 15. Request flow
 
-Binding specification: `docs/mockups/add-request-flow/SPEC.md`
+Binding specification: `docs/mockups/add-request-flow/SPEC.md`.
 
-`Add` / `Request` is contextual from Library/Search/Discover/Calendar/detail surfaces and opens one coherent flow rather than permanent import forms on normal pages.
+There is exactly one consumer acquisition action: **Request**.
 
-Flow:
-1. search/identify work
-2. choose desired edition/language where relevant
-3. choose monitoring/request behavior
-4. optional acquisition profile override
-5. confirm
+Request starts from an already selected/resolved canonical Work/target. The Request surface does not contain media search or title selection.
 
-Manual local import is an Admin/advanced path, not dominant user UI.
+Normal Request UI:
+1. compact media identity;
+2. Scope only when structural selection is meaningful;
+3. Included content derived from Scope;
+4. Language / Edition where relevant;
+5. privileged Advanced override only when permitted;
+6. Cancel + Request.
+
+There is no Add/Add & Monitor consumer path and no numbered wizard.
+
+Approval policy is backend behavior:
+- a normal Request may wait for Admin approval;
+- an authorized/policy-matched Request may be auto-approved immediately.
+
+Both still use the same visible `Request` action.
+
+Personal state such as Watchlist/Reading List, Watching/Reading/Listening, progress, completed state, ratings and external sync is separate from acquisition and never embedded into the Request dialog.
+
+Manual local import and release selection remain Admin/advanced workflows.
 
 ## 16. Request / missing media UX
 
-User detail pages show a simple state:
-- Available
-- Request
-- Requested
-- Searching
-- Downloading
-- Importing
-- Failed with understandable retry/details where permitted
+Consumer surfaces project one shared state vocabulary:
+- Available / Partially available;
+- Request;
+- Waiting for approval / Requested;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Monitoring future releases where relevant;
+- Needs attention / Failed;
+- Cancelled where relevant.
 
-Normal users do not need Sonarr-like release tables.
+Do not expose `Wanted`, `Searching`, `Importing`, release candidates, downloader state or importer phases as normal consumer product states.
+
+Status/details behavior is owned by `docs/mockups/request-status-details/SPEC.md`.
 
 ## 17. Admin mode/navigation
 
