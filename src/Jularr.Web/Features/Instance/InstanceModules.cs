@@ -53,6 +53,18 @@ public static class InstanceModuleMedia
             WorkMediaType.LightNovel => InstanceModule.Novel,
             _ => throw new ArgumentOutOfRangeException(nameof(mediaType))
         };
+
+    /// <summary>
+    /// Whether the capability family represented by a canonical work type still has at least one
+    /// enabled instance module. Audiobooks intentionally share the Book capability family.
+    /// </summary>
+    public static bool IsCapabilityFamilyEnabled(
+        InstanceModuleSettings settings,
+        WorkMediaType mediaType) =>
+        mediaType == WorkMediaType.Book
+            ? settings.IsEnabled(InstanceModule.Book)
+              || settings.IsEnabled(InstanceModule.Audiobook)
+            : settings.IsEnabled(For(mediaType));
 }
 
 public interface IInstanceModuleService

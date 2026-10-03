@@ -121,6 +121,29 @@ public sealed class InstanceModuleTests
     }
 
     [TestMethod]
+    public void BookCapabilityFamilyStaysAvailableForAudiobooks()
+    {
+        var audiobookOnly = InstanceModuleSettings.Default
+            .With(InstanceModule.Book, false)
+            .With(InstanceModule.Audiobook, true);
+        Assert.IsTrue(
+            InstanceModuleMedia.IsCapabilityFamilyEnabled(
+                audiobookOnly,
+                WorkMediaType.Book));
+
+        var neither = audiobookOnly.With(InstanceModule.Audiobook, false);
+        Assert.IsFalse(
+            InstanceModuleMedia.IsCapabilityFamilyEnabled(
+                neither,
+                WorkMediaType.Book));
+
+        Assert.IsTrue(
+            InstanceModuleMedia.IsCapabilityFamilyEnabled(
+                InstanceModuleSettings.Default,
+                WorkMediaType.Anime));
+    }
+
+    [TestMethod]
     public void AdminInstanceExposesEveryCurrentModule()
     {
         CollectionAssert.AreEquivalent(
