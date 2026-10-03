@@ -20,7 +20,8 @@ public enum MediaAcquisitionKind
     Book,
     Movie,
     Tv,
-    Audiobook
+    Audiobook,
+    Game
 }
 
 /// <summary>Who may use the manual add controls (file upload, URL, NZB, inbox import).</summary>
@@ -36,6 +37,7 @@ public static class AcquisitionInstanceModules
             MediaAcquisitionKind.Movie => InstanceModule.Movie,
             MediaAcquisitionKind.Tv => InstanceModule.Tv,
             MediaAcquisitionKind.Audiobook => InstanceModule.Audiobook,
+            MediaAcquisitionKind.Game => InstanceModule.Games,
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 }
@@ -182,6 +184,7 @@ public static class AcquisitionAccessNames
         MediaAcquisitionKind.Movie => "movie",
         MediaAcquisitionKind.Tv => "tv",
         MediaAcquisitionKind.Audiobook => "audiobook",
+        MediaAcquisitionKind.Game => "game",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
@@ -194,23 +197,53 @@ public static class AcquisitionAccessNames
         "movie" => MediaAcquisitionKind.Movie,
         "tv" => MediaAcquisitionKind.Tv,
         "audiobook" => MediaAcquisitionKind.Audiobook,
+        "game" => MediaAcquisitionKind.Game,
         _ => throw new ArgumentException($"Unknown media kind '{value}'.", nameof(value))
     };
 
-    /// <summary>The media type of the capability matrix (#436) this acquisition kind belongs to.</summary>
-    public static WorkMediaType WorkType(MediaAcquisitionKind kind) => kind switch
+    /// <summary>
+    /// The MediaCore capability family used by acquisition kinds that are represented by a Work.
+    /// Games deliberately returns false because its canonical identity lives outside MediaCore.
+    /// </summary>
+    public static bool TryWorkType(MediaAcquisitionKind kind, out WorkMediaType mediaType)
     {
-        MediaAcquisitionKind.Anime => WorkMediaType.Anime,
-        MediaAcquisitionKind.Manga => WorkMediaType.Manga,
-        MediaAcquisitionKind.LightNovel => WorkMediaType.LightNovel,
-        MediaAcquisitionKind.Book => WorkMediaType.Book,
-        MediaAcquisitionKind.Movie => WorkMediaType.Movie,
-        MediaAcquisitionKind.Tv => WorkMediaType.Series,
-        // An audiobook is an audio edition of a book, so it lives on the same Book capability matrix
-        // (#436) and the media core represents it as a Book Work (#440).
-        MediaAcquisitionKind.Audiobook => WorkMediaType.Book,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind))
-    };
+        switch (kind)
+        {
+            case MediaAcquisitionKind.Anime:
+                mediaType = WorkMediaType.Anime;
+                return true;
+            case MediaAcquisitionKind.Manga:
+                mediaType = WorkMediaType.Manga;
+                return true;
+            case MediaAcquisitionKind.LightNovel:
+                mediaType = WorkMediaType.LightNovel;
+                return true;
+            case MediaAcquisitionKind.Book:
+                mediaType = WorkMediaType.Book;
+                return true;
+            case MediaAcquisitionKind.Movie:
+                mediaType = WorkMediaType.Movie;
+                return true;
+            case MediaAcquisitionKind.Tv:
+                mediaType = WorkMediaType.Series;
+                return true;
+            // An audiobook is an audio edition of a book, so it shares the Book capability family.
+            case MediaAcquisitionKind.Audiobook:
+                mediaType = WorkMediaType.Book;
+                return true;
+            case MediaAcquisitionKind.Game:
+                mediaType = default;
+                return false;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+    }
+
+    public static WorkMediaType WorkType(MediaAcquisitionKind kind) =>
+        TryWorkType(kind, out var mediaType)
+            ? mediaType
+            : throw new InvalidOperationException(
+                $"{kind} is not represented by a MediaCore Work and has no WorkMediaType.");
 
     /// <summary>Whether a request in this status still waits for a decision or for its title to arrive.</summary>
     public static bool IsOpen(AcquisitionRequestStatus status) => status is AcquisitionRequestStatus.Pending
