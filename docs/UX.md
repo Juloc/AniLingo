@@ -185,6 +185,7 @@ Priority sections:
 - Continue Watching / Reading / Listening
 - Continue Playing, when the profile has resumable Games activity
 - Up Next
+- optional Watchlist / Reading List shelf when useful
 - Recommendations based on the user's library/progress
 - Recently relevant additions only when useful
 - media-type/genre recommendation rows
@@ -213,6 +214,8 @@ Consumer Library does not expose a generic Add/import menu. New media comes thro
 Cards reuse one shared media grammar: poster/cover, title, one useful progress/status line, preferred-language availability and optional progress bar. Normal card activation opens Detail. Cards do not expand/reflow on hover; optional Quick View uses the shared Media Preview contract.
 
 Library must not become an Admin dashboard: no statistics sidebar, active-genre panel, release/download internals or duplicated Home-style Continue shelf.
+
+Personal Watchlist/Reading List is a profile-state projection of Library, not a separate acquisition model or mandatory top-level destination. Home/profile links may open Library with the personal-list filter already applied. For written media, the same canonical personal-list state may be labeled Reading List.
 
 Mobile uses a two-column poster/cover grid where width permits. TV is remote-first with large posters and strong focus treatment, not a scaled Desktop grid.
 
