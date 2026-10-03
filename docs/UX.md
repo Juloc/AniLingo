@@ -274,6 +274,17 @@ Core:
 
 Mobile controls appear on tap and otherwise disappear. Desktop can expose compact side controls without shrinking the reading column unnecessarily.
 
+## 10a. Continuation surfaces
+
+Binding specification: `docs/mockups/continuation-surfaces/SPEC.md`.
+
+Jularr has two distinct compact continuation surfaces:
+
+- **Now Playing** for active video/audio/audiobook/TTS playback. It projects the existing `ActiveSession` and keeps the main transport centered. Desktop uses thumbnail + Work/unit/time on the left, centered Previous/-10/Play-Pause/+30/Next, direct settings where space permits, and Settings overflow with volume inside it. The top edge is the playback/buffer/chapter timeline and can scrub the active session.
+- **Continue Reading** for Book/LN/Manga Reader progress. It shows cover, Work/chapter/page progress and one Continue Reading action. It is not a playback toolbar, has no `...` overflow and does not expose Reader controls. Its top progress line is informational, not a scrubber.
+
+Only one persistent continuation slot is shown. Active Now Playing wins over Continue Reading. Dismissing Continue Reading never resets reading progress. TV uses normal Continue Watching/Reading browse surfaces instead of requiring a floating bar.
+
 ## 11. Calendar
 
 Unified calendar for:
