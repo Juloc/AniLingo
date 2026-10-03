@@ -18,6 +18,7 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Tv;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Progress;
+using Jularr.Web.Features.Storage.Reconciliation;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Features.Watchlist;
@@ -41,6 +42,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<LibraryReconciliationPlan> LibraryReconciliationPlans => Set<LibraryReconciliationPlan>();
+    public DbSet<LibraryReconciliationPlanItem> LibraryReconciliationPlanItems => Set<LibraryReconciliationPlanItem>();
+    public DbSet<LibraryReconciliationLogicalGroup> LibraryReconciliationLogicalGroups => Set<LibraryReconciliationLogicalGroup>();
+    public DbSet<LibraryReconciliationFileLink> LibraryReconciliationFileLinks => Set<LibraryReconciliationFileLink>();
     public DbSet<MediaAnalysis> MediaAnalyses => Set<MediaAnalysis>();
     public DbSet<MediaAnalysisStream> MediaAnalysisStreams => Set<MediaAnalysisStream>();
     public DbSet<AnimeMetadata> AnimeMetadata => Set<AnimeMetadata>();
@@ -130,6 +135,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Collection> Collections => Set<Collection>();
     public DbSet<CollectionItem> CollectionItems => Set<CollectionItem>();
 
+    /// <summary>Configures relational constraints, conversion rules and query indexes for the application model.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<OwnerAccount>(entity =>
@@ -151,6 +157,69 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.WakeMacAddress).HasMaxLength(32);
             entity.Property(x => x.WakeBroadcastAddress).HasMaxLength(64);
             entity.HasIndex(x => x.Path).IsUnique();
+        });
+
+        modelBuilder.Entity<LibraryReconciliationPlan>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.StartFolder).HasMaxLength(2048);
+            entity.Property(x => x.Status).HasConversion<int>();
+            entity.Property(x => x.OrganizationMode).HasConversion<int>();
+            entity.Property(x => x.Failure).HasMaxLength(1000);
+            entity.HasOne<LibraryRoot>().WithMany().HasForeignKey(x => x.LibraryRootId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<LibraryReconciliationPlanItem>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RelativePath).HasMaxLength(2048);
+            entity.Property(x => x.State).HasConversion<int>();
+            entity.Property(x => x.DetectionSummary).HasMaxLength(1000);
+            entity.Property(x => x.Error).HasMaxLength(1000);
+            entity.Property(x => x.Language).HasMaxLength(32);
+            entity.Property(x => x.AudioLanguage).HasMaxLength(32);
+            entity.Property(x => x.SubtitleLanguage).HasMaxLength(32);
+            entity.Property(x => x.QualitySource).HasMaxLength(240);
+            entity.Property(x => x.ObservedLastWriteTimeUtc).HasConversion(FileTimestampConverter);
+            entity.HasOne<LibraryReconciliationPlan>().WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.AssignedWorkId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkEpisode>().WithMany().HasForeignKey(x => x.AssignedWorkEpisodeId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkVolume>().WithMany().HasForeignKey(x => x.AssignedWorkVolumeId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkChapter>().WithMany().HasForeignKey(x => x.AssignedWorkChapterId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkEdition>().WithMany().HasForeignKey(x => x.AssignedWorkEditionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkVersion>().WithMany().HasForeignKey(x => x.AssignedWorkVersionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<LibraryReconciliationLogicalGroup>().WithMany().HasForeignKey(x => x.LogicalGroupId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => new { x.PlanId, x.RelativePath }).IsUnique();
+        });
+
+        modelBuilder.Entity<LibraryReconciliationLogicalGroup>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.HasOne<LibraryReconciliationPlan>().WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => new { x.PlanId, x.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<LibraryReconciliationFileLink>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OriginalRelativePath).HasMaxLength(2048);
+            entity.Property(x => x.RelativePath).HasMaxLength(2048);
+            entity.Property(x => x.Language).HasMaxLength(32);
+            entity.Property(x => x.AudioLanguage).HasMaxLength(32);
+            entity.Property(x => x.SubtitleLanguage).HasMaxLength(32);
+            entity.Property(x => x.QualitySource).HasMaxLength(240);
+            entity.HasOne<LibraryReconciliationPlan>().WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<LibraryReconciliationPlanItem>().WithMany().HasForeignKey(x => x.PlanItemId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<LibraryRoot>().WithMany().HasForeignKey(x => x.LibraryRootId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkEpisode>().WithMany().HasForeignKey(x => x.WorkEpisodeId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkVolume>().WithMany().HasForeignKey(x => x.WorkVolumeId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkChapter>().WithMany().HasForeignKey(x => x.WorkChapterId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkEdition>().WithMany().HasForeignKey(x => x.WorkEditionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<WorkVersion>().WithMany().HasForeignKey(x => x.WorkVersionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => x.PlanItemId).IsUnique();
+            entity.HasIndex(x => new { x.LibraryRootId, x.RelativePath }).IsUnique();
         });
 
         modelBuilder.Entity<Anime>(entity =>

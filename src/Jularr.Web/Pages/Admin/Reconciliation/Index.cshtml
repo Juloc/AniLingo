@@ -1,0 +1,632 @@
+@page "/Admin/LibraryReconciliation/{planId:guid?}"
+@model Jularr.Web.Pages.Admin.Reconciliation.IndexModel
+@using Jularr.Web.Features.Storage.FolderBrowse
+@using Jularr.Web.Features.Storage.Reconciliation
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.reconciliation.title"];
+    var steps = new[]
+    {
+        ui["admin.reconciliation.step.scan"],
+        ui["admin.reconciliation.step.structure"],
+        ui["admin.reconciliation.step.mapping"],
+        ui["admin.reconciliation.step.organize"],
+        ui["admin.reconciliation.step.preview"]
+    };
+    var activeStep = Model.CurrentStep - 1;
+    var startFolderPathField = new PathFieldModel(
+        "reconciliation-start-folder",
+        "StartFolder",
+        ui["admin.reconciliation.startFolder"],
+        Model.StartFolder,
+        ui)
+    {
+        Placeholder = ui["admin.reconciliation.startFolderHint"]
+    };
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/admin-reconciliation.css" asp-append-version="true" />
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.reconciliation.title"]</h1>
+        <p>@ui["admin.reconciliation.subtitle"]</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+<main class="admrec" data-current-step="@Model.CurrentStep" aria-label="@ui["admin.reconciliation.title"]">
+    <ol class="admrec-steps" aria-label="@ui["admin.reconciliation.title"]">
+        @for (var index = 0; index < steps.Length; index++)
+        {
+            <li class="@(index == activeStep ? "active" : "")" aria-current="@(index == activeStep ? "step" : null)">
+                <span>@(index + 1)</span>@steps[index]
+            </li>
+        }
+    </ol>
+    @if (Model.Plan is { } wizardPlan)
+    {
+        <nav class="admrec-wizard-nav" aria-label="@ui["admin.reconciliation.title"]">
+            @for (var index = 1; index <= steps.Length; index++)
+            {
+                <a class="button" asp-page="/Admin/Reconciliation/Index" asp-route-planId="@wizardPlan.Id" asp-route-step="@index">@index. @steps[index - 1]</a>
+            }
+        </nav>
+    }
+
+    @if (Model.Plan?.ExecutionOperationId is { } executionOperationId)
+    {
+        <p class="admrec-message"><a asp-page="/Admin/Operation" asp-route-id="@executionOperationId">@ui["admin.reconciliation.openOperation"]</a></p>
+    }
+
+    @if (Model.Plan is null)
+    {
+        @if (Model.Roots.Count == 0)
+        {
+            <p class="admrec-message">@ui["admin.reconciliation.rootEmpty"]</p>
+        }
+        else
+        {
+            <section class="admrec-panel" aria-labelledby="admrec-start-title">
+                <h2 id="admrec-start-title">@ui["admin.reconciliation.step.scan"]</h2>
+                <form method="post" asp-page-handler="Create" class="admrec-form">
+                    <label>
+                        <span>@ui["admin.reconciliation.root"]</span>
+                        <select asp-for="LibraryRootId" required>
+                            @foreach (var root in Model.Roots)
+                            {
+                                <option value="@root.Id">@root.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <partial name="_PathField" model="startFolderPathField" />
+                    <fieldset>
+                        <label><input asp-for="IncludeSubfolders" /> @ui["admin.reconciliation.includeSubfolders"]</label>
+                        <label><input asp-for="SkipConfidentAssignments" /> @ui["admin.reconciliation.skipConfident"]</label>
+                        <label><input asp-for="OnlyUnclearItems" /> @ui["admin.reconciliation.onlyUnclear"]</label>
+                        <label><input asp-for="AnalyzeFilenameEvidence" /> @ui["admin.reconciliation.analyzeFilenameEvidence"]</label>
+                    </fieldset>
+                    <div asp-validation-summary="ModelOnly" class="admrec-errors" role="alert"></div>
+                    <button class="button button-primary" type="submit">@ui["admin.reconciliation.create"]</button>
+                </form>
+            </section>
+        }
+    }
+    else
+    {
+        <section class="admrec-panel" aria-labelledby="admrec-inventory-title">
+            <div class="admrec-panel-heading">
+                <div>
+                    <h2 id="admrec-inventory-title">@ui["admin.reconciliation.inventory"]</h2>
+                    <p><strong>@Model.Plan.RootName</strong><span aria-hidden="true"> · </span><code>@Model.Plan.ScopeLabel</code></p>
+                </div>
+                @if (Model.Plan.Status is LibraryReconciliationPlanStatus.Draft or LibraryReconciliationPlanStatus.Failed)
+                {
+                    <form method="post" asp-page-handler="Scan" asp-route-planId="@Model.Plan.Id">
+                        <button class="button button-primary" type="submit">@(Model.Plan.Status == LibraryReconciliationPlanStatus.Failed ? ui["admin.reconciliation.scanAgain"] : ui["admin.reconciliation.scan"])</button>
+                    </form>
+                }
+            </div>
+
+            @if (Model.Plan.Status == LibraryReconciliationPlanStatus.Draft)
+            {
+                <p class="admrec-message">@ui["admin.reconciliation.inventoryPending"]</p>
+            }
+            else if (Model.Plan.Status == LibraryReconciliationPlanStatus.Scanning)
+            {
+                <p class="admrec-message" role="status">@ui["admin.reconciliation.scanRunning"]</p>
+            }
+            else if (Model.Plan.Status == LibraryReconciliationPlanStatus.Executing)
+            {
+                <p class="admrec-message" role="status">@ui["admin.reconciliation.executionRunning"]</p>
+            }
+            else if (Model.Plan.Status == LibraryReconciliationPlanStatus.Failed)
+            {
+                <p class="admrec-message admrec-error" role="alert">@Model.Plan.Failure</p>
+            }
+            else if (Model.Items.Count == 0)
+            {
+                <p class="admrec-message">@ui["admin.reconciliation.noItems"]</p>
+            }
+            else
+            {
+                <dl class="admrec-counts">
+                    <div><dt>@ui["admin.reconciliation.files"]</dt><dd>@Model.FileCount</dd></div>
+                    <div><dt>@ui["admin.reconciliation.recognized"]</dt><dd>@Model.RecognizedCount</dd></div>
+                    <div><dt>@ui["admin.reconciliation.unresolved"]</dt><dd>@Model.UnclearCount</dd></div>
+                    <div><dt>@ui["admin.reconciliation.hardErrors"]</dt><dd>@Model.HardErrorCount</dd></div>
+                    <div><dt>@ui["admin.reconciliation.ignored"]</dt><dd>@Model.IgnoredCount</dd></div>
+                </dl>
+                @if (Model.InventoryItems.Count == 0)
+                {
+                    <p class="admrec-message">@ui["admin.reconciliation.noUnclearItems"]</p>
+                }
+                else
+                {
+                    <div class="admrec-table-wrap">
+                        <table class="admrec-table">
+                            <thead><tr><th>@ui["admin.reconciliation.path"]</th><th>@ui["admin.reconciliation.kind"]</th><th>@ui["admin.reconciliation.state"]</th></tr></thead>
+                            <tbody>
+                                @foreach (var item in Model.InventoryItems.Take(100))
+                                {
+                                    var state = Model.GetStatePresentation(item.State);
+                                    <tr>
+                                        <td><code>@item.RelativePath</code></td>
+                                        <td>@(item.IsDirectory ? ui["admin.reconciliation.folder"] : ui["admin.reconciliation.file"])</td>
+                                        <td><span class="admrec-state @state.CssClass">@state.Text</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                <section class="admrec-structure" data-wizard-stage="2 3" aria-labelledby="admrec-structure-title">
+                    <div>
+                        <h2 id="admrec-structure-title">@ui["admin.reconciliation.structure"]</h2>
+                        <p>@ui["admin.reconciliation.structureHint"]</p>
+                    </div>
+                    <div class="admrec-structure-grid">
+                        <nav class="admrec-tree" aria-label="@ui["admin.reconciliation.structure"]">
+                            <ul>
+                                @foreach (var node in Model.Tree)
+                                {
+                                    <partial name="_ReconciliationTreeNode" model="new Jularr.Web.Pages.Admin.Reconciliation.IndexModel.ReconciliationTreeNodeRender(node, Model.Plan.Id, Model.SelectedItem?.RelativePath)" />
+                                }
+                            </ul>
+                        </nav>
+                        <aside class="admrec-detail" aria-live="polite">
+                            @if (Model.SelectedItem is { } selected)
+                            {
+                                <h3>@ui["admin.reconciliation.selected"]</h3>
+                                <code>@selected.RelativePath</code>
+                                <dl>
+                                    @if (selected.IsDirectory)
+                                    {
+                                        <div><dt>@ui["admin.reconciliation.filesInFolder"]</dt><dd>@selected.FileCount</dd></div>
+                                        <div><dt>@ui["admin.reconciliation.unresolvedInFolder"]</dt><dd>@selected.UnresolvedCount</dd></div>
+                                    }
+                                    <div><dt>@ui["admin.reconciliation.confidence"]</dt><dd>@selected.Confidence%</dd></div>
+                                    <div><dt>@ui["admin.reconciliation.evidence"]</dt><dd>@selected.DetectionSummary</dd></div>
+                                </dl>
+                                @if (Model.SelectedWork is { } assignedWork)
+                                {
+                                    <p><strong>@ui["admin.reconciliation.mappedWork"]</strong><span aria-hidden="true"> · </span>@assignedWork.Title@(assignedWork.Year is { } year ? $" ({year})" : string.Empty)</p>
+                                    @if (assignedWork.IsInherited)
+                                    {
+                                        <p>@ui.Format("admin.reconciliation.inheritedWork", ("path", assignedWork.SourcePath))</p>
+                                    }
+                                    else
+                                    {
+                                        <form method="post" asp-page-handler="ResetWork" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath">
+                                            <input type="hidden" name="itemId" value="@selected.Id" />
+                                            <button class="button" type="submit">@ui["admin.reconciliation.resetWork"]</button>
+                                        </form>
+                                    }
+                                }
+                                @if (!selected.IsDirectory && Model.EpisodeCandidates.Count > 0)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-episode-title">
+                                        <h4 id="admrec-episode-title">@ui["admin.reconciliation.episode"]</h4>
+                                        <form method="post" asp-page-handler="AssignEpisode" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-form">
+                                            <input type="hidden" name="itemId" value="@selected.Id" />
+                                            <label>
+                                                <span>@ui["admin.reconciliation.selectEpisode"]</span>
+                                                <select name="episodeId">
+                                                    <option value="">@ui["admin.reconciliation.unassigned"]</option>
+                                                    @foreach (var episode in Model.EpisodeCandidates)
+                                                    {
+                                                        <option value="@episode.Id" selected="@episode.IsAssigned">S@episode.SeasonNumber.ToString("D2") E@episode.EpisodeNumber.ToString("D2")@(episode.IsSpecial ? " · Special" : string.Empty)@(string.IsNullOrWhiteSpace(episode.Title) ? string.Empty : " · " + episode.Title)</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.selectEpisode"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (!selected.IsDirectory && Model.VolumeCandidates.Count > 0)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-volume-title">
+                                        <h4 id="admrec-volume-title">@ui["admin.reconciliation.volume"]</h4>
+                                        <form method="post" asp-page-handler="AssignVolume" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-form">
+                                            <input type="hidden" name="itemId" value="@selected.Id" />
+                                            <label>
+                                                <span>@ui["admin.reconciliation.selectVolume"]</span>
+                                                <select name="volumeId">
+                                                    <option value="">@ui["admin.reconciliation.unassigned"]</option>
+                                                    @foreach (var volume in Model.VolumeCandidates)
+                                                    {
+                                                        <option value="@volume.Id" selected="@volume.IsAssigned">V@volume.Number.ToString("D2")@(string.IsNullOrWhiteSpace(volume.Title) ? string.Empty : " · " + volume.Title)</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.selectVolume"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (!selected.IsDirectory && Model.ChapterCandidates.Count > 0)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-chapter-title">
+                                        <h4 id="admrec-chapter-title">@ui["admin.reconciliation.chapter"]</h4>
+                                        <form method="post" asp-page-handler="AssignChapter" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-form">
+                                            <input type="hidden" name="itemId" value="@selected.Id" />
+                                            <label>
+                                                <span>@ui["admin.reconciliation.selectChapter"]</span>
+                                                <select name="chapterId">
+                                                    <option value="">@ui["admin.reconciliation.unassigned"]</option>
+                                                    @foreach (var chapter in Model.ChapterCandidates)
+                                                    {
+                                                        <option value="@chapter.Id" selected="@chapter.IsAssigned">C@chapter.Number.ToString("0.##")@(string.IsNullOrWhiteSpace(chapter.Title) ? string.Empty : " · " + chapter.Title)</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.selectChapter"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (Model.SelectedWork is not null)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-release-title">
+                                        <h4 id="admrec-release-title">@ui["admin.reconciliation.releaseMetadata"]</h4>
+                                        @if (Model.ResolvedReleaseMetadata is { } resolved &&
+                                            ((!string.IsNullOrWhiteSpace(resolved.EditionSourcePath) && resolved.EditionSourcePath != selected.RelativePath) ||
+                                             (!string.IsNullOrWhiteSpace(resolved.VersionSourcePath) && resolved.VersionSourcePath != selected.RelativePath) ||
+                                             (!string.IsNullOrWhiteSpace(resolved.LanguageSourcePath) && resolved.LanguageSourcePath != selected.RelativePath) ||
+                                             (!string.IsNullOrWhiteSpace(resolved.AudioLanguageSourcePath) && resolved.AudioLanguageSourcePath != selected.RelativePath) ||
+                                             (!string.IsNullOrWhiteSpace(resolved.SubtitleLanguageSourcePath) && resolved.SubtitleLanguageSourcePath != selected.RelativePath) ||
+                                             (!string.IsNullOrWhiteSpace(resolved.QualitySourcePath) && resolved.QualitySourcePath != selected.RelativePath)))
+                                        {
+                                            <p class="admrec-message">@ui["admin.reconciliation.inherited"]</p>
+                                            <ul class="admrec-group-list">
+                                                @if (resolved.EditionSourcePath is { } editionSource && editionSource != selected.RelativePath) { <li>@ui["admin.reconciliation.edition"] <code>@editionSource</code></li> }
+                                                @if (resolved.VersionSourcePath is { } versionSource && versionSource != selected.RelativePath) { <li>@ui["admin.reconciliation.version"] <code>@versionSource</code></li> }
+                                                @if (resolved.LanguageSourcePath is { } languageSource && languageSource != selected.RelativePath) { <li>@ui["admin.reconciliation.language"] <code>@languageSource</code></li> }
+                                                @if (resolved.AudioLanguageSourcePath is { } audioSource && audioSource != selected.RelativePath) { <li>@ui["admin.reconciliation.audioLanguage"] <code>@audioSource</code></li> }
+                                                @if (resolved.SubtitleLanguageSourcePath is { } subtitleSource && subtitleSource != selected.RelativePath) { <li>@ui["admin.reconciliation.subtitleLanguage"] <code>@subtitleSource</code></li> }
+                                                @if (resolved.QualitySourcePath is { } qualitySource && qualitySource != selected.RelativePath) { <li>@ui["admin.reconciliation.qualitySource"] <code>@qualitySource</code></li> }
+                                            </ul>
+                                        }
+                                        <form method="post" asp-page-handler="AssignReleaseMetadata" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-form">
+                                            <input type="hidden" name="itemId" value="@selected.Id" />
+                                            <label>
+                                                <span>@ui["admin.reconciliation.edition"]</span>
+                                                <select name="editionId"><option value="">@ui["admin.reconciliation.unassigned"]</option>@foreach (var edition in Model.EditionCandidates) { <option value="@edition.Id" selected="@edition.IsAssigned">@edition.EditionKey · @edition.Language@(string.IsNullOrWhiteSpace(edition.Format) ? string.Empty : " · " + edition.Format)</option> }</select>
+                                            </label>
+                                            <label>
+                                                <span>@ui["admin.reconciliation.version"]</span>
+                                                <select name="versionId"><option value="">@ui["admin.reconciliation.unassigned"]</option>@foreach (var version in Model.VersionCandidates) { <option value="@version.Id" selected="@version.IsAssigned">@version.VersionKey@(string.IsNullOrWhiteSpace(version.UnitKey) ? string.Empty : " · " + version.UnitKey)</option> }</select>
+                                            </label>
+                                            <label><span>@ui["admin.reconciliation.language"]</span><input name="language" maxlength="32" value="@selected.Language" /></label>
+                                            <label><span>@ui["admin.reconciliation.audioLanguage"]</span><input name="audioLanguage" maxlength="32" value="@selected.AudioLanguage" /></label>
+                                            <label><span>@ui["admin.reconciliation.subtitleLanguage"]</span><input name="subtitleLanguage" maxlength="32" value="@selected.SubtitleLanguage" /></label>
+                                            <label><span>@ui["admin.reconciliation.qualitySource"]</span><input name="qualitySource" maxlength="240" value="@selected.QualitySource" /></label>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.saveReleaseMetadata"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (Model.Plan.Status == LibraryReconciliationPlanStatus.Ready && Model.MappingItems.Count(x => !x.IsDirectory) > 1)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-batch-release-title">
+                                        <h4 id="admrec-batch-release-title">@ui["admin.reconciliation.batchReleaseMetadata"]</h4>
+                                        <form method="post" asp-page-handler="AssignBatchReleaseMetadata" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                            <label><span>@ui["admin.reconciliation.language"]</span><input name="language" maxlength="32" /></label>
+                                            <label><span>@ui["admin.reconciliation.audioLanguage"]</span><input name="audioLanguage" maxlength="32" /></label>
+                                            <label><span>@ui["admin.reconciliation.subtitleLanguage"]</span><input name="subtitleLanguage" maxlength="32" /></label>
+                                            <label><span>@ui["admin.reconciliation.qualitySource"]</span><input name="qualitySource" maxlength="240" /></label>
+                                            <div class="admrec-table-wrap"><table class="admrec-table"><thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th></tr></thead><tbody>@foreach (var item in Model.MappingItems.Where(x => !x.IsDirectory)) { <tr><td><input type="checkbox" name="itemIds" value="@item.Id" aria-label="@item.RelativePath" /></td><td><code>@item.RelativePath</code></td></tr> }</tbody></table></div>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.applyReleaseDefaults"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (selected.IsDirectory && Model.EpisodeCandidates.Count > 0 && Model.MappingItems.Any(x => !x.IsDirectory))
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-episode-sequence-title">
+                                        <h4 id="admrec-episode-sequence-title">@ui["admin.reconciliation.episodeSequence"]</h4>
+                                        <p>@ui["admin.reconciliation.episodeSequenceHint"]</p>
+                                        <form method="post" asp-page-handler="AssignEpisodeSequence" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                            <label>
+                                                <span>@ui["admin.reconciliation.sequenceStartEpisode"]</span>
+                                                <select name="startEpisodeId" required>
+                                                    @foreach (var episode in Model.EpisodeCandidates)
+                                                    {
+                                                        <option value="@episode.Id">S@episode.SeasonNumber.ToString("D2") E@episode.EpisodeNumber.ToString("D2")@(episode.IsSpecial ? " · Special" : string.Empty)@(string.IsNullOrWhiteSpace(episode.Title) ? string.Empty : " · " + episode.Title)</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <label>
+                                                <span>@ui["admin.reconciliation.sequenceEndEpisode"]</span>
+                                                <select name="endEpisodeId">
+                                                    <option value="">@ui["admin.reconciliation.sequenceEndEpisodeAutomatic"]</option>
+                                                    @foreach (var episode in Model.EpisodeCandidates)
+                                                    {
+                                                        <option value="@episode.Id">S@episode.SeasonNumber.ToString("D2") E@episode.EpisodeNumber.ToString("D2")@(episode.IsSpecial ? " · Special" : string.Empty)@(string.IsNullOrWhiteSpace(episode.Title) ? string.Empty : " · " + episode.Title)</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <div class="admrec-table-wrap">
+                                                <table class="admrec-table">
+                                                    <thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th></tr></thead>
+                                                    <tbody>
+                                                        @foreach (var item in Model.MappingItems.Where(x => !x.IsDirectory))
+                                                        {
+                                                            <tr>
+                                                                <td><input type="checkbox" name="itemIds" value="@item.Id" aria-label="@item.RelativePath" /></td>
+                                                                <td><code>@item.RelativePath</code></td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.assignEpisodeSequence"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (Model.Plan.Status == LibraryReconciliationPlanStatus.Ready && Model.MappingItems.Any(x => !x.IsDirectory))
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-groups-title">
+                                        <h4 id="admrec-groups-title">@ui["admin.reconciliation.logicalGroups"]</h4>
+                                        <p>@ui["admin.reconciliation.logicalGroupsHint"]</p>
+                                        @if (Model.LogicalGroups.Count > 0)
+                                        {
+                                            <ul class="admrec-group-list">
+                                                @foreach (var group in Model.LogicalGroups)
+                                                {
+                                                    <li>@group.Name <span>@group.FileCount @ui["admin.reconciliation.files"]</span></li>
+                                                }
+                                            </ul>
+                                        }
+                                        <form method="post" asp-page-handler="CreateLogicalGroup" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                            <label><span>@ui["admin.reconciliation.groupName"]</span><input name="groupName" maxlength="160" required /></label>
+                                            <div class="admrec-table-wrap">
+                                                <table class="admrec-table">
+                                                    <thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th><th>@ui["admin.reconciliation.logicalGroup"]</th></tr></thead>
+                                                    <tbody>
+                                                        @foreach (var item in Model.MappingItems.Where(x => !x.IsDirectory))
+                                                        {
+                                                            <tr>
+                                                                <td><input type="checkbox" name="itemIds" value="@item.Id" aria-label="@item.RelativePath" /></td>
+                                                                <td><code>@item.RelativePath</code></td>
+                                                                <td>@(Model.LogicalGroups.SingleOrDefault(group => group.Id == item.LogicalGroupId)?.Name ?? "—")</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.createGroup"]</button>
+                                        </form>
+                                        <form method="post" asp-page-handler="ClearLogicalGroup" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                            @foreach (var item in Model.MappingItems.Where(x => !x.IsDirectory && x.LogicalGroupId is not null))
+                                            {
+                                                <input type="hidden" name="itemIds" value="@item.Id" />
+                                            }
+                                            <button class="button" type="submit">@ui["admin.reconciliation.clearGroup"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                @if (Model.Plan.Status == LibraryReconciliationPlanStatus.Ready && selected.IsExplicitlyIgnored)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-restore-title">
+                                        <h4 id="admrec-restore-title">@ui["admin.reconciliation.restoreFile"]</h4>
+                                        <form method="post" asp-page-handler="SetIgnored" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath">
+                                            <input type="hidden" name="itemIds" value="@selected.Id" />
+                                            <input type="hidden" name="isIgnored" value="false" />
+                                            <button class="button" type="submit">@ui["admin.reconciliation.restoreFile"]</button>
+                                        </form>
+                                    </section>
+                                }
+                                else if (Model.Plan.Status == LibraryReconciliationPlanStatus.Ready && selected.State != LibraryReconciliationItemState.Ignored)
+                                {
+                                    <section class="admrec-mapping" aria-labelledby="admrec-mapping-title">
+                                        <h4 id="admrec-mapping-title">@ui["admin.reconciliation.mapWork"]</h4>
+                                        <form method="get" class="admrec-form">
+                                            <input type="hidden" name="planId" value="@Model.Plan.Id" />
+                                            <input type="hidden" name="selected" value="@selected.RelativePath" />
+                                            <label>
+                                                <span>@ui["admin.reconciliation.workSearch"]</span>
+                                                <input asp-for="WorkQuery" maxlength="300" autocomplete="off" />
+                                            </label>
+                                            <button class="button" type="submit">@ui["admin.reconciliation.search"]</button>
+                                        </form>
+                                        @if (!string.IsNullOrWhiteSpace(Model.WorkQuery) && Model.WorkCandidates.Count == 0)
+                                        {
+                                            <p>@ui["admin.reconciliation.noWorks"]</p>
+                                        }
+                                        @if (Model.WorkCandidates.Count > 0)
+                                        {
+                                            <form method="post" asp-page-handler="AssignWork" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                                <label>
+                                                    <span>@ui["admin.reconciliation.selectWork"]</span>
+                                                    <select name="workId" required>
+                                                        @foreach (var candidate in Model.WorkCandidates)
+                                                        {
+                                                            <option value="@candidate.Id">@candidate.Title@(candidate.Year is { } year ? $" ({year})" : string.Empty)</option>
+                                                        }
+                                                    </select>
+                                                </label>
+                                                <div class="admrec-table-wrap">
+                                                    <table class="admrec-table">
+                                                        <thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th><th>@ui["admin.reconciliation.state"]</th></tr></thead>
+                                                        <tbody>
+                                                            @foreach (var item in Model.MappingItems)
+                                                            {
+                                                                var state = Model.GetStatePresentation(item.State);
+                                                                <tr>
+                                                                    <td><input type="checkbox" name="itemIds" value="@item.Id" checked="@(item.Id == selected.Id)" aria-label="@item.RelativePath" /></td>
+                                                                    <td><code>@item.RelativePath</code></td>
+                                                                    <td><span class="admrec-state @state.CssClass">@state.Text</span></td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <button class="button button-primary" type="submit">@ui["admin.reconciliation.mapSelected"]</button>
+                                            </form>
+                                        }
+                                        @if (Model.MappingItems.Any(x => !x.IsDirectory))
+                                        {
+                                            <form method="post" asp-page-handler="ResetWorks" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                                <div class="admrec-table-wrap">
+                                                    <table class="admrec-table">
+                                                        <thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th><th>@ui["admin.reconciliation.state"]</th></tr></thead>
+                                                        <tbody>
+                                                            @foreach (var item in Model.MappingItems)
+                                                            {
+                                                                var state = Model.GetStatePresentation(item.State);
+                                                                <tr>
+                                                                    <td><input type="checkbox" name="itemIds" value="@item.Id" checked="@(item.Id == selected.Id)" aria-label="@item.RelativePath" /></td>
+                                                                    <td><code>@item.RelativePath</code></td>
+                                                                    <td><span class="admrec-state @state.CssClass">@state.Text</span></td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <button class="button" type="submit">@ui["admin.reconciliation.resetSelected"]</button>
+                                            </form>
+                                            <form method="post" asp-page-handler="SetIgnored" asp-route-planId="@Model.Plan.Id" asp-route-selected="@selected.RelativePath" class="admrec-mapping-batch">
+                                                <input type="hidden" name="isIgnored" value="true" />
+                                                <div class="admrec-table-wrap">
+                                                    <table class="admrec-table">
+                                                        <thead><tr><th>@ui["admin.reconciliation.selectEntry"]</th><th>@ui["admin.reconciliation.path"]</th><th>@ui["admin.reconciliation.state"]</th></tr></thead>
+                                                        <tbody>
+                                                            @foreach (var item in Model.MappingItems.Where(x => !x.IsDirectory))
+                                                            {
+                                                                var state = Model.GetStatePresentation(item.State);
+                                                                <tr>
+                                                                    <td><input type="checkbox" name="itemIds" value="@item.Id" checked="@(item.Id == selected.Id)" aria-label="@item.RelativePath" /></td>
+                                                                    <td><code>@item.RelativePath</code></td>
+                                                                    <td><span class="admrec-state @state.CssClass">@state.Text</span></td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <button class="button" type="submit">@ui["admin.reconciliation.skipFiles"]</button>
+                                            </form>
+                                        }
+                                    </section>
+                                }
+                            }
+                            else
+                            {
+                                <p>@ui["admin.reconciliation.selectFolder"]</p>
+                            }
+                        </aside>
+                    </div>
+                </section>
+            }
+        </section>
+        @if (Model.Plan.Status == LibraryReconciliationPlanStatus.Ready)
+        {
+            <section class="admrec-panel" data-wizard-stage="4" aria-labelledby="admrec-organization-title">
+                <h2 id="admrec-organization-title">@ui["admin.reconciliation.organization"]</h2>
+                <form method="post" asp-page-handler="SetOrganizationMode" asp-route-planId="@Model.Plan.Id" class="admrec-form">
+                    <label><input type="radio" name="organizationMode" value="AssignOnly" checked="@(Model.Plan.OrganizationMode == LibraryReconciliationOrganizationMode.AssignOnly)" /> @ui["admin.reconciliation.assignOnly"]</label>
+                    <label><input type="radio" name="organizationMode" value="RenameFiles" checked="@(Model.Plan.OrganizationMode == LibraryReconciliationOrganizationMode.RenameFiles)" /> @ui["admin.reconciliation.renameFiles"]</label>
+                    <label><input type="radio" name="organizationMode" value="RenameFoldersAndFiles" checked="@(Model.Plan.OrganizationMode == LibraryReconciliationOrganizationMode.RenameFoldersAndFiles)" /> @ui["admin.reconciliation.renameFoldersAndFiles"]</label>
+                    <label><input type="radio" name="organizationMode" value="OrganizeCanonical" checked="@(Model.Plan.OrganizationMode == LibraryReconciliationOrganizationMode.OrganizeCanonical)" /> @ui["admin.reconciliation.organizeCanonical"]</label>
+                    <label><input type="checkbox" name="removeEmptySourceFolders" value="true" checked="@Model.Plan.RemoveEmptySourceFolders" /> @ui["admin.reconciliation.removeEmptySourceFolders"]</label>
+                    <label><input type="checkbox" checked disabled /> @ui["admin.reconciliation.verifyDestinationConflicts"]</label>
+                    <label><input type="checkbox" checked disabled /> @ui["admin.reconciliation.reportDuplicateTargets"]</label>
+                    <button class="button" type="submit">@ui["admin.reconciliation.saveOrganization"]</button>
+                </form>
+                @if (Model.OrganizationPreviewItem is { } organizationPreview)
+                {
+                    <p class="admrec-message">@ui["admin.reconciliation.namingPreview"] <code>@organizationPreview.RelativePath</code> → <code>@(organizationPreview.TargetRelativePath ?? organizationPreview.RelativePath)</code></p>
+                }
+                else
+                {
+                    <p class="admrec-message">@ui["admin.reconciliation.namingPreviewUnavailable"]</p>
+                }
+            </section>
+            <section class="admrec-panel" data-wizard-stage="5" aria-labelledby="admrec-preview-title">
+                <div class="admrec-panel-heading">
+                    <div>
+                        <h2 id="admrec-preview-title">@ui["admin.reconciliation.previewHeading"]</h2>
+                        <p>@ui["admin.reconciliation.previewDescription"]</p>
+                    </div>
+                    <a class="button" asp-page="/Admin/Reconciliation/Index" asp-route-planId="@Model.Plan.Id" asp-route-preview="true">@ui["admin.reconciliation.previewButton"]</a>
+                </div>
+                @if (Model.Preview is { } preview)
+                {
+                    @if (preview.Items.Count == 0)
+                    {
+                        <p class="admrec-message">@ui["admin.reconciliation.noItems"]</p>
+                    }
+                    else
+                    {
+                        <dl class="admrec-metrics" aria-label="@ui["admin.reconciliation.previewSummary"]">
+                            <div><dt>@ui["admin.reconciliation.previewAssign"]</dt><dd>@preview.AssignmentsOnly</dd></div>
+                            <div><dt>@ui["admin.reconciliation.previewRename"]</dt><dd>@preview.Renames</dd></div>
+                            <div><dt>@ui["admin.reconciliation.previewMove"]</dt><dd>@preview.Moves</dd></div>
+                            <div><dt>@ui["admin.reconciliation.previewIgnored"]</dt><dd>@preview.Ignored</dd></div>
+                            <div><dt>@ui["admin.reconciliation.previewConflict"]</dt><dd>@preview.Conflicts</dd></div>
+                            <div><dt>@ui["admin.reconciliation.previewBlockers"]</dt><dd>@preview.Blockers</dd></div>
+                        </dl>
+                        @if (preview.Conflicts > 0)
+                        {
+                            <section class="admrec-preview-notice admrec-error" aria-labelledby="admrec-conflicts-title">
+                                <h3 id="admrec-conflicts-title">@ui.Format("admin.reconciliation.previewConflictsHeading", ("count", preview.Conflicts))</h3>
+                                <ul>
+                                    @foreach (var item in preview.Items.Where(x => x.Action == LibraryReconciliationPreviewAction.Conflict).Take(10))
+                                    {
+                                        <li><code>@item.RelativePath</code><span> · </span>@item.Reason</li>
+                                    }
+                                </ul>
+                            </section>
+                        }
+                        @if (preview.Unresolved > 0)
+                        {
+                            <section class="admrec-preview-notice" aria-labelledby="admrec-hints-title">
+                                <h3 id="admrec-hints-title">@ui.Format("admin.reconciliation.previewHintsHeading", ("count", preview.Unresolved))</h3>
+                                <ul>
+                                    @foreach (var item in preview.Items.Where(x => x.Action == LibraryReconciliationPreviewAction.Blocked).Take(10))
+                                    {
+                                        <li><code>@item.RelativePath</code><span> · </span>@item.Reason</li>
+                                    }
+                                </ul>
+                            </section>
+                        }
+                        <div class="admrec-table-wrap">
+                            <table class="admrec-table">
+                                <thead><tr><th>@ui["admin.reconciliation.previewOld"]</th><th>@ui["admin.reconciliation.previewNew"]</th><th>@ui["admin.reconciliation.previewTarget"]</th><th>@ui["admin.reconciliation.previewAction"]</th><th>@ui["admin.reconciliation.state"]</th></tr></thead>
+                                <tbody>
+                                    @foreach (var item in preview.Items)
+                                    {
+                                        var action = Model.GetPreviewActionPresentation(item.Action);
+                                        <tr>
+                                            <td><code>@item.RelativePath</code></td>
+                                            <td><code>@(item.TargetRelativePath ?? "—")</code></td>
+                                            <td>@(item.WorkTitle is null ? "—" : item.WorkTitle + (item.IsInherited ? " · " + ui["admin.reconciliation.inherited"] : string.Empty))</td>
+                                            <td><span class="admrec-state @action.CssClass">@action.Text</span></td>
+                                            <td>@(item.Reason ?? ui["admin.reconciliation.ready"])</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <form method="post" asp-page-handler="Execute" asp-route-planId="@Model.Plan.Id" class="admrec-form">
+                            <input type="hidden" name="previewFingerprint" value="@preview.Fingerprint" />
+                            @if (preview.CanExecute)
+                            {
+                                <button class="button" type="submit">@ui["admin.reconciliation.execute"]</button>
+                            }
+                            else
+                            {
+                                <button class="button" type="submit" disabled>@ui["admin.reconciliation.execute"]</button>
+                            }
+                        </form>
+                    }
+                }
+            </section>
+        }
+        <p class="admrec-next">@ui["admin.reconciliation.nextSteps"]</p>
+    }
+</main>
+
+<partial name="_FolderBrowser" model="ui" />
+
+@section Scripts {
+    <script src="~/js/folder-browser.js" asp-append-version="true" defer></script>
+}
