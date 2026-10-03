@@ -34,6 +34,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `lesson-review/SPEC.md`
 - `vocabulary-sentences/SPEC.md` — shared Vocabulary / Sentences learning library
 - `progress-achievements/SPEC.md` — Learning progress, statistics and achievements
+- `script-trainer/SPEC.md` — generic Script Trainer with Japanese Kana as current toolkit
 - `user-settings/SPEC.md`
 - `profile-activity/SPEC.md`
 - `add-request-flow/SPEC.md`
