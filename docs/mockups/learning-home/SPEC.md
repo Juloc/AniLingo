@@ -76,44 +76,57 @@ The dashboard may be motivational and statistical, but must not become an admin 
 
 ## 4. Desktop V1 hierarchy
 
-Recommended structure:
+The approved Desktop reference is the **Original Jularr Light** mockup. Its information hierarchy is binding; the decorative Original J skin is not.
+
+Wide Desktop uses a main column plus a compact right rail:
 
 ```text
-Learning                                  [Course switcher]
+Learning / themed header                         [active course/language]
 
-[ Today / Daily Goal                                      ]
-[ 42 / 60 XP ] [ 18 min ] [ 7 day streak ] [ Continue ]
+[ Today's Progress / Daily Goal — wide main card              ]
+[ goal progress | XP today | learning time | streak | Continue ]
 
-[ Continue Learning — current course/lesson              ]
-[ Chapter 3 · Lesson 2 · 68%                  Continue   ]
-
-[ Due Reviews ]                [ Daily Plan               ]
-[ 12 · ~5 min ]                [ ✓ Reviews 12/12         ]
-[ Start Reviews ]              [ ○ Continue Lesson 4     ]
-                                [ ○ 5 media words          ]
-
-[ From Your Media                                     ]
-[ context ] [ context ] [ context ]
-
-Your Courses
-[ course ] [ course ] [ course ]
-
-[ Statistics summary ]          [ Achievements summary ]
-
-Tools
-Reviews · Vocabulary · Sentences · Kana · Progress
+MAIN COLUMN                                      RIGHT RAIL
+[ Continue Learning                           ]  [ Learning Tools ]
+[ current course/lesson + progress + Continue ]  [ Reviews         ]
+                                                   [ Vocabulary      ]
+[ Due Reviews ]          [ Daily Plan          ]  [ Sentences       ]
+[ due + ~time + CTA ]    [ deterministic tasks ]  [ Kana / Script   ]
+                                                   [ Progress        ]
+[ From Your Media                            ]
+[ compact media contexts                     ]  [ Statistics       ]
+                                                [ compact metrics   ]
+[ Your Courses                               ]
+[ compact course cards                       ]  [ Achievements     ]
+                                                [ recent/progress   ]
 ```
 
-Disabled/empty modules collapse cleanly. No section exists merely to fill space.
+Layout rules:
+- the **Today's Progress** card spans the content width above the two-column dashboard;
+- **Continue Learning** is the dominant main-column card;
+- **Due Reviews** and **Daily Plan** sit side by side below Continue on wide screens;
+- **From Your Media** follows as one compact row/list;
+- **Your Courses** follows below Media Learning;
+- **Learning Tools**, **Statistics** and **Achievements** form the right rail on wide Desktop;
+- the right rail is secondary and narrower than the learning flow;
+- when width becomes insufficient, right-rail sections reflow below the main column in the same semantic order;
+- disabled/empty modules collapse cleanly; no section exists merely to fill space.
+
+The approved mockup's anime/book titles, thumbnails and character artwork are **sample content only**. They are not fixed product assets or required content.
 
 ## 5. Today / Daily Goal
 
-The top dashboard area combines:
-- Daily Goal progress;
+The approved top card is **Today's Progress** / **Daily Goal**.
+
+It combines:
+- normalized Daily Goal progress;
 - XP today;
 - learning time today;
 - current Streak;
-- primary next action.
+- compact week/day completion state where useful;
+- primary **Continue Learning** action.
+
+The card may use an Original J themed illustration/background in Original Jularr, but the progress data and CTA must remain readable independently of that artwork.
 
 ### Combined Daily Goal
 
@@ -314,29 +327,32 @@ Achievements never gate curriculum.
 
 ## 14. Basic statistics
 
-Dashboard summary may show:
-- XP today/week;
-- learning time;
-- Lessons completed;
-- Reviews completed;
-- accuracy;
-- active/known words;
-- current streak.
+Dashboard summary is deliberately compact and, on wide Desktop, belongs in the right rail.
 
-Detailed Progress/Stats may later show richer charts/heatmaps. Learning Home stays concise.
+It may show a small set such as:
+- current streak;
+- total/weekly learning time;
+- words learned/active;
+- Lessons completed;
+- XP today/week;
+- Review accuracy.
+
+Do not show a full analytics chart on Learning Home. Detailed charts, heatmaps and trends belong to Progress/Stats.
 
 ## 15. Learning tools
 
-Secondary navigation:
+Secondary navigation uses the canonical V1 tool set:
 - Reviews;
 - Vocabulary;
 - Sentences;
 - Script/Kana if supported;
-- Progress;
-- Courses;
-- Achievements.
+- Progress.
 
-Visibility remains capability-driven.
+Courses and Achievements have their own dashboard sections/routes and do not need duplicate tool buttons.
+
+On wide Desktop, Learning Tools forms the top of the right rail. On narrower layouts it reflows below the primary learning sections.
+
+Visibility remains capability-driven. Do not substitute unrelated modules such as generic Flashcards, Grammar, Dictionary or Notes as separate top-level Learning modules unless they are later specified as canonical product modules.
 
 ## 16. New learner
 
@@ -395,32 +411,41 @@ Dictionary/provider unavailable:
 
 ## 19. Mobile
 
+Mobile preserves the same semantic hierarchy while collapsing the Desktop right rail into the normal flow.
+
 Priority:
-1. Today / Daily Goal;
+1. Today's Progress / Daily Goal;
 2. Continue Learning;
 3. Due Reviews;
 4. Daily Plan;
 5. From Your Media;
-6. Courses;
-7. Stats/Achievements;
-8. Tools.
+6. Your Courses;
+7. Learning Tools;
+8. Statistics;
+9. Achievements.
 
 Rules:
 - single column;
 - large Continue/Start Reviews actions;
-- course switcher via sheet;
-- compact statistics;
-- no desktop dashboard grid squeezed onto phone;
-- bottom navigation remains visible.
+- active course/language switcher uses compact control or sheet;
+- media/course rows may scroll horizontally where appropriate;
+- statistics remain compact;
+- no Desktop right rail or dashboard grid squeezed onto phone;
+- bottom navigation remains visible;
+- Original J decoration must not consume meaningful vertical space needed for learning actions.
 
 ## 20. Tablet
 
 Portrait follows Mobile with wider cards.
 
 Landscape may use:
-- Due Reviews + Daily Plan side-by-side;
-- Stats + Achievements side-by-side;
-- two-column Courses.
+- Today's Progress full width;
+- Continue Learning full/main width;
+- Due Reviews + Daily Plan side by side;
+- a compact secondary column for Learning Tools or Stats only when width remains comfortable;
+- two-column/compact Course cards.
+
+Tablet does not blindly copy the full Desktop right rail when that would squeeze primary learning content.
 
 Touch remains primary.
 
@@ -438,9 +463,38 @@ Possible:
 
 Text-entry-heavy tasks hand off to phone/tablet/web.
 
-## 22. Light / Dark
+## 22. Visual skins, Light / Dark
 
-Both first-class.
+Jularr has two visual skins over the **same Learning Home structure**:
+- **Clean** — neutral/minimal Fluent-style surfaces, purple default accent;
+- **Original Jularr** — Japanese ink/watercolor/cherry-blossom surfaces, red/pink default accent.
+
+The approved Learning Home visual reference for this specification is **Original Jularr Light**.
+
+### Original Jularr binding visual direction
+
+Use:
+- warm off-white/paper surfaces;
+- subtle ink/wash texture in page/background regions;
+- Japanese landscape/torii/cherry-blossom decorative artwork in non-content background areas;
+- red/pink semantic accent for primary actions/progress/focus;
+- restrained petal/ink decoration around edges and section boundaries;
+- media artwork inside actual media/course cards.
+
+Do not:
+- place decorative artwork behind dense body text without a controlled readable surface;
+- let petals/ink overlap labels, inputs, progress or buttons;
+- make every card ornamental;
+- encode product state solely through red/pink decoration;
+- hard-code anime characters or a specific franchise as permanent Jularr branding.
+
+### Clean parity
+
+Clean uses the exact same sections, actions, data and responsive hierarchy with neutral surfaces and purple accent. A theme switch must not move modules, change feature availability, alter data contracts or create a second Learning page implementation.
+
+### Brightness
+
+Light and Dark remain first-class for both skins. Dark Original J should reinterpret paper/ink safely rather than simply invert the Light mockup.
 
 Accent is used for:
 - Daily Goal;
@@ -468,15 +522,18 @@ Error:
 
 ## 24. Required mockups
 
-Create in this order:
-1. **Desktop Light — full V1 Learning Dashboard**
-2. **Mobile Light — full V1 Learning Dashboard**
-3. **Desktop Light — new learner**
-4. **Desktop Light — gamification disabled**
+Approved/reference status:
+1. **Desktop Original Jularr Light — full V1 Learning Dashboard** — **approved visual direction**
+2. **Mobile Original Jularr Light — full V1 Learning Dashboard**
+3. **Desktop Original Jularr Light — new learner**
+4. **Desktop Original Jularr Light — gamification disabled**
 5. **Mobile — course switcher / Daily Plan state**
-6. **Desktop Dark — full dashboard**
-7. **Sparse state — no reviews / little media learning**
-8. **Partial provider/TTS failure reference**
+6. **Desktop Original Jularr Dark — full dashboard**
+7. **Clean parity reference** — same layout/data with neutral purple skin
+8. **Sparse state — no reviews / little media learning**
+9. **Partial provider/TTS failure reference**
+
+The approved Desktop image is a visual aid. This text specification remains authoritative for behavior, data and responsive rules.
 
 ## 25. Future-proofing, not V1 scope
 
@@ -515,6 +572,9 @@ Do not implement these merely because they are listed.
 - No provider/model health dashboard in learner UI.
 - No giant analytics wall.
 - No Japanese-only assumptions in generic course architecture.
+- No theme-specific Learning data model, route or page implementation.
+- No fixed anime/franchise artwork baked into Learning Home as required content.
+- No Original J decoration that changes section order or hides functionality available in Clean.
 
 ## 27. Acceptance
 
@@ -528,6 +588,9 @@ V1 Learning Home is complete only when:
 - new user can start without media;
 - gamification can be disabled without breaking Learning;
 - Desktop/Mobile/Tablet are intentionally designed;
-- Light/Dark work;
+- the approved wide Desktop hierarchy uses Today's Progress, main learning column and compact right rail;
+- Original J and Clean expose the same sections/actions/data;
+- Original J decoration never reduces readability or changes product behavior;
+- Light/Dark work for both visual skins;
 - optional service failures degrade locally;
 - future advanced Learning remains possible without being implemented now.
