@@ -207,7 +207,7 @@ When a canonical Games instance module exists and is enabled, or when the setup 
 - allow creation/selection of a Games-capable LibraryRoot;
 - the Games importer owns final Game/platform/release folder organization inside that root;
 - do not route identified Games to Generic Downloads;
-- BIOS/Firmware storage is restricted Games runtime data and is configured later through Games Admin, not as a normal LibraryRoot.
+- BIOS/Firmware is restricted Games runtime data, not a normal LibraryRoot. The restricted storage role/path is owned by Admin Storage; Games Admin later owns BIOS/Firmware requirements, validation and artifact/runtime binding.
 
 ### Optional storage roles
 
