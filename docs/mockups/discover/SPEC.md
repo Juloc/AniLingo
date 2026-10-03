@@ -18,7 +18,7 @@ At the top of Discover on every platform:
 
 - very wide search bar
 - Discover/Compass icon inside or directly attached to it
-- searches Anime, Series, Movies, Books & Light Novels, Manga and Audiobooks
+- searches Anime, Series, Movies, Books & Light Novels, Manga, Audiobooks and Games
 - optional compact Filter icon on the right
 - the control must clearly communicate both **search** and **discover**
 
@@ -33,6 +33,7 @@ Directly below the search bar:
 - Books & Light Novels
 - Manga
 - Audiobooks
+- Games
 
 This is the primary quick scope control.
 
@@ -193,3 +194,109 @@ Search and Discover must use Jularr's canonical media identity rather than expos
 - The same resolution rules apply to Discover shelves, Home recommendations, Requests, Calendar deep links and media details so cards do not disagree about identity.
 - Provider-specific IDs, mapping conflicts and corrective mapping controls stay in Admin. Consumer search only exposes the simple Anime view switch when Anime is selected.
 
+
+
+## Games in Discover
+
+Games is an additional media type inside the existing Discover/Search surface.
+
+There is no separate Games Discover page, Games search engine or Games request catalogue.
+
+When the `Games` media-type filter is active, the existing Discover surface adapts its rows, filters and card metadata to Games.
+
+### Games rows
+
+Useful examples:
+- Trending Games
+- New Releases
+- For You
+- Popular
+- platform-focused rows such as `Beliebt auf Game Boy Advance` or `PlayStation Klassiker`
+- dynamic genre/theme rows where useful
+
+Platform rows are dynamic. Do not create a permanent row for every known console.
+
+### Games filters
+
+When Games is active, the Filter surface may include:
+- platform
+- year
+- genre
+- region/language where useful
+- local/request availability
+- sort
+
+Do not add a permanent chip wall for every platform.
+
+### Games cards
+
+Games Discover cards remain compact.
+
+Show:
+1. artwork/cover
+2. canonical Game title
+3. compact platform + year line
+4. local/request/acquisition state
+
+Examples:
+- In Bibliothek
+- Anfragen
+- requested/downloading/importing progress where the shared request pipeline exposes it
+
+Do not show on Discover cards:
+- emulator/runtime names
+- BIOS/Firmware state
+- ROM filenames
+- raw regions/revisions unless they are genuinely required to distinguish the canonical result
+- controller capability badges
+
+### Games identity
+
+One card represents one canonical Jularr Game.
+
+Provider-specific records, regional releases or ROM variants must not become duplicate canonical Games in Discover merely because providers split them differently.
+
+Opening a local Game goes to Game Detail.
+
+Opening a non-local Game uses the same canonical Game Detail / shared Request behavior as the rest of Jularr.
+
+### Shared request/acquisition
+
+Games Discover uses the existing shared Request flow:
+
+```text
+Request
+ -> Wanted
+ -> Search
+ -> Candidate
+ -> Download
+ -> Games Import
+ -> Ready
+```
+
+No Games-specific Request, Wanted, Downloader or Activity stack is introduced.
+
+### Mobile / Tablet / TV
+
+The same existing responsive Discover behavior applies.
+
+Mobile:
+- Games appears in the existing media-type selector;
+- Games filters open in the existing Filter sheet;
+- no separate Games discovery navigation.
+
+Tablet:
+- same adaptive Discover layout.
+
+TV:
+- Games may appear as a media-type filter and in horizontal Discover rows;
+- use normal remote/focus behavior;
+- no emulator/controller configuration inside Discover.
+
+### Games status vs language status
+
+The general Discover card language/request indicator remains appropriate for watch/read/listen media.
+
+For Games, platform plus local/request state is usually more useful than a language-first badge.
+
+The card component may therefore adapt its compact secondary status by media type while preserving the same overall Discover card grammar.
