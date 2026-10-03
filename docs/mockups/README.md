@@ -56,6 +56,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `admin-migration/SPEC.md`
 - `admin-acquisition-settings/SPEC.md`
 - `admin-system-diagnostics/SPEC.md`
+- `admin-instance/SPEC.md` — instance module surface + global Admin Detailed/Compact density contract
 - `setup-wizard/SPEC.md`
 
 ## Planning references
