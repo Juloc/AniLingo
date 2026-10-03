@@ -4,6 +4,8 @@ using Jularr.Web.Features.Acquisition;
 using Jularr.Web.Features.Acquisition.Health;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
+using Jularr.Web.Features.Acquisition.Release;
 using Jularr.Web.Features.Books;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -125,6 +127,7 @@ public sealed class BookSearchCoordinatorTests
             var coordinator = new BookSearchCoordinator(
                 books,
                 indexers,
+                BookProfiles(root),
                 NullLogger<BookSearchCoordinator>.Instance);
 
             var response = await coordinator.SearchAsync(
@@ -269,6 +272,7 @@ public sealed class BookSearchCoordinatorTests
             var coordinator = new BookSearchCoordinator(
                 books,
                 indexers,
+                BookProfiles(root),
                 NullLogger<BookSearchCoordinator>.Instance);
 
             var response = await coordinator.SearchAsync(
@@ -288,6 +292,13 @@ public sealed class BookSearchCoordinatorTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    private static QualityProfileStore BookProfiles(string root) =>
+        new(
+            new DirectoryInfo(Path.Combine(root, "quality-profiles")),
+            new MediaAcquisitionRegistry([
+                new BookAcquisitionRegistration()
+            ]));
 
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
