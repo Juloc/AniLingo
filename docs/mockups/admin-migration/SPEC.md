@@ -45,7 +45,42 @@ The existing Sonarr integration already has production-relevant safety behavior 
 
 These are implementation inputs, not a requirement to keep Anime-specific models permanently.
 
-**Open product decision:** the final general Migration Center presentation/contract for coexistence is not yet fixed. Until that decision is made, implementation must preserve the existing three Sonarr behaviors and must not silently collapse, rename or generalize them into a new cross-source ownership model.
+## Approved coexistence model
+
+Supported **manager-style integrations** use one common three-mode ownership contract:
+
+1. **Extern verwaltet**
+   - the external manager has mutation authority for that Work/domain;
+   - Jularr may observe, map identities, display state and import non-conflicting metadata/progress evidence;
+   - Jularr must not independently grab/import/rename/delete managed library content for that ownership scope;
+   - if the external manager cannot be observed when safety depends on it, Jularr fails closed.
+
+2. **Gemeinsam**
+   - both systems may perform supported operations, but every mutation is ownership-checked;
+   - active releases/downloads, owned paths and recent external mutations can block Jularr work;
+   - Jularr may mutate only work/files/jobs it can prove are safe under the adapter contract;
+   - conflicts become actionable Migration/To-Do diagnostics rather than being guessed through.
+
+3. **Jularr verwaltet**
+   - Jularr owns acquisition/import/naming for the selected ownership scope;
+   - the external manager remains useful as migration/provenance/observation evidence where configured;
+   - adapters should detect conflicting external monitoring/activity and block unsafe Jularr mutations;
+   - supported handover may explicitly disable external monitoring, but never deletes source media or source library records.
+
+These labels are the user-facing contract. Source adapters map their native concepts into these modes only when they actually support management/coexistence capabilities.
+
+A passive source such as Plex/Jellyfin does not show these modes merely because it is a migration source.
+
+### Sonarr compatibility
+
+Existing Sonarr state migrates directly:
+- `ReadOnlyCoexistence` → **Extern verwaltet**
+- `ParallelAcquisition` → **Gemeinsam**
+- `JularrManaged` → **Jularr verwaltet**
+
+The existing Sonarr safety behavior remains the implementation baseline for the generalized contract.
+
+Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
 
 ## Main flow
 
@@ -279,7 +314,7 @@ Sonarr migration and ongoing Sonarr coexistence are related but distinct:
 - **Migration** translates Sonarr identity, monitoring, profiles/rules and configuration into canonical Jularr state.
 - **Coexistence** controls which system may mutate acquisition/library state while Sonarr remains connected.
 
-Existing safety guarantees remain binding until the general coexistence model is explicitly approved:
+The approved three-mode ownership contract applies to Sonarr. Existing safety guarantees remain binding:
 - no duplicate grab when Sonarr already owns the release/episode;
 - no import/rename/delete of a path Jularr cannot prove it may mutate;
 - no handover while Sonarr has conflicting active work;
@@ -758,6 +793,8 @@ Required:
 - Data migration and instance-configuration migration are separate plan sections.
 - Source users require explicit account mapping before their progress/history is imported.
 - Dry run and validation are required before destructive mutation.
+- Manager-style coexistence uses the approved three modes: Extern verwaltet / Gemeinsam / Jularr verwaltet.
+- The ownership model is capability-driven; passive media-server migration sources do not pretend to support management modes.
 
 ## Must not implement
 
@@ -779,4 +816,4 @@ Required:
 - No duplicate Remote Path Mapping editor outside the adapter that requires the mapping.
 - No source root-folder model competing with Storage LibraryRoots.
 - No silent conversion of extreme negative scores into hard Reject.
-- No generalization of the existing Sonarr coexistence modes until the product-level coexistence decision is approved.
+- No source adapter may expose Extern verwaltet / Gemeinsam / Jularr verwaltet unless it implements the required ownership/safety capabilities.
