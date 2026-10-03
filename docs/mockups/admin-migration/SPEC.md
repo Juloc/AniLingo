@@ -122,6 +122,11 @@ Requirements:
 - adapter health/observation must be visible;
 - ownership checks run before every supported Jularr mutation;
 - unresolved ownership/conflict evidence blocks rather than guesses;
+- if the external manager cannot be observed, **Gemeinsam fails closed** for new Jularr mutations on the affected Work/scope;
+- while observation is unavailable, Jularr may continue read-only display/diagnostics but must not start new grab/import/rename/replace/delete operations that depend on coexistence safety;
+- queued or in-progress operations that reach a safety boundary must pause/block instead of assuming the external system is idle;
+- recovery is automatic once the adapter is healthy again and ownership can be revalidated;
+- the UI must show the blocked reason explicitly, e.g. `Gemeinsam · Sonarr nicht erreichbar · Änderungen pausiert`;
 - the UI may recommend switching to **Extern verwaltet** or **Jularr verwaltet** when repeated conflicts occur, but must not switch automatically;
 - no timer or forced expiry is attached to the mode.
 
