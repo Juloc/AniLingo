@@ -210,6 +210,46 @@ public sealed class MediaCapabilityTests
     }
 
     [TestMethod]
+    public async Task AudiobookModuleKeepsSharedBookCapabilityAvailable()
+    {
+        var directory = NewDirectory();
+        var instanceRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"jularr-instance-audiobook-cap-{Guid.NewGuid():N}");
+        try
+        {
+            var modules = new InstanceModuleStore(instanceRoot);
+            await modules.SetAsync(InstanceModule.Book, false);
+            await modules.SetAsync(InstanceModule.Audiobook, true);
+
+            var service = new MediaCapabilityService(
+                new MediaCapabilityStore(directory),
+                modules);
+            var user = await service.GetViewAsync(
+                Principal(AccountRole.User, "user"));
+
+            Assert.AreEqual(
+                MediaCapability.Request,
+                user.Capability(WorkMediaType.Book));
+
+            await modules.SetAsync(InstanceModule.Audiobook, false);
+            user = await service.GetViewAsync(
+                Principal(AccountRole.User, "user"));
+            Assert.AreEqual(
+                MediaCapability.Hidden,
+                user.Capability(WorkMediaType.Book));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            if (Directory.Exists(instanceRoot))
+            {
+                Directory.Delete(instanceRoot, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task UnauthenticatedPrincipalSeesNothing()
     {
         var directory = NewDirectory();
