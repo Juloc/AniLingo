@@ -5,6 +5,7 @@ using Jularr.Web.Features.Acquisition.Health;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
@@ -69,6 +70,7 @@ public sealed class UsenetModel(
     IndexerStore indexerStore,
     IReadOnlyDictionary<IndexerType, IIndexer> indexers,
     IndexerSearchCoordinator searchCoordinator,
+    QualityProfileStore qualityProfiles,
     DownloadClientStore clientStore,
     IDownloadClient downloadClient,
     ISabnzbdClient sabnzbd,
@@ -186,7 +188,16 @@ public sealed class UsenetModel(
     {
         if (kind == MediaAcquisitionKind.Book)
         {
-            var book = await BookUsenetSearch.SearchAsync(searchCoordinator, title, author, cancellationToken);
+            var profile = await qualityProfiles.ResolveAsync(
+                MediaAcquisitionKind.Book,
+                workId: null,
+                cancellationToken);
+            var book = await BookUsenetSearch.SearchAsync(
+                searchCoordinator,
+                title,
+                author,
+                profile,
+                cancellationToken);
             return new UsenetSearchTest(
                 book.Queries,
                 book.Ranked.Select(ranked => new UsenetTestRelease(ranked.Release, ranked.Score, ranked.RejectedBecause)).ToArray(),

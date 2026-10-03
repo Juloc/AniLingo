@@ -1,5 +1,7 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
 
 namespace Jularr.Web.Features.Books;
 
@@ -31,6 +33,7 @@ public sealed record BookSearchWarning(
 public sealed class BookSearchCoordinator(
     BookCatalogService books,
     IndexerSearchCoordinator indexers,
+    QualityProfileStore qualityProfiles,
     ILogger<BookSearchCoordinator> logger)
 {
     private const int ResultLimit = 24;
@@ -72,12 +75,21 @@ public sealed class BookSearchCoordinator(
             () => books.SearchOpdsAsync(null, normalizedQuery, cancellationToken),
             Array.Empty<BookOpdsCatalogItem>(),
             cancellationToken);
+        var qualityProfileTask = qualityProfiles.ResolveAsync(
+            MediaAcquisitionKind.Book,
+            workId: null,
+            cancellationToken);
 
-        await Task.WhenAll(catalogTask, gutenbergTask, opdsTask);
+        await Task.WhenAll(
+            catalogTask,
+            gutenbergTask,
+            opdsTask,
+            qualityProfileTask);
 
         var catalog = catalogTask.Result.Value;
         var gutenberg = gutenbergTask.Result.Value;
         var opds = opdsTask.Result.Value;
+        var bookProfile = qualityProfileTask.Result;
         var opdsCatalog = opds.Select(ToCatalogItem).ToArray();
 
         // OPDS participates in the exact same title/author work merge as metadata providers. It
@@ -116,7 +128,8 @@ public sealed class BookSearchCoordinator(
             var ranked = BookReleaseSelector.Rank(
                 usenet.Releases,
                 work.Title,
-                work.Author);
+                work.Author,
+                bookProfile);
             var eligible = ranked.Count(candidate =>
                 candidate.Score > 0
                 && candidate.Release.InternalDownloadUri is not null);
@@ -197,15 +210,22 @@ public sealed class BookSearchCoordinator(
         indexers.HasEnabledIndexerAsync(cancellationToken);
 
     /// <summary>Shared automatic/manual Books Usenet search path.</summary>
-    public Task<BookUsenetSearchResult> SearchUsenetAsync(
+    public async Task<BookUsenetSearchResult> SearchUsenetAsync(
         string title,
         string? author,
-        CancellationToken cancellationToken) =>
-        BookUsenetSearch.SearchAsync(
+        CancellationToken cancellationToken)
+    {
+        var profile = await qualityProfiles.ResolveAsync(
+            MediaAcquisitionKind.Book,
+            workId: null,
+            cancellationToken);
+        return await BookUsenetSearch.SearchAsync(
             indexers,
             title,
             author,
+            profile,
             cancellationToken);
+    }
 
     private async Task<SourceResult<UsenetPool>> CaptureUsenetPoolAsync(
         IReadOnlyList<string> queries,
