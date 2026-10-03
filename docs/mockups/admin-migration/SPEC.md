@@ -92,6 +92,18 @@ The existing Sonarr safety behavior remains the implementation baseline for the 
 
 Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
 
+### Monitoring state during handover
+
+When a Work changes from **Extern verwaltet** to **Jularr verwaltet**, Jularr imports the source monitoring state into the canonical Jularr monitoring model where a safe semantic equivalent exists.
+
+Rules:
+- Work/Season/Episode monitoring granularity is preserved where supported;
+- the handover preview shows the exact monitoring changes before commit;
+- unsupported source monitoring semantics are shown as warnings and are not guessed;
+- ownership mode and monitoring state remain separate concepts;
+- changing ownership must not silently broaden monitoring beyond the source state;
+- explicit Jularr monitoring choices made after migration are not later overwritten by read-only source observation.
+
 ### Handover confirmation
 
 For integrations that can change source monitoring, switching to **Jularr verwaltet** shows a concise handover confirmation.
@@ -130,6 +142,18 @@ Requirements:
 - the UI may recommend switching to **Extern verwaltet** or **Jularr verwaltet** when repeated conflicts occur, but must not switch automatically;
 - no timer or forced expiry is attached to the mode.
 
+### Integration lifecycle after handover
+
+Completing migration or switching Works to **Jularr verwaltet** does **not** automatically remove/disconnect the external integration.
+
+Default:
+- keep the integration configured;
+- continue read-only observation where supported;
+- preserve migration provenance and diagnostics;
+- let the admin explicitly disable/remove the integration later.
+
+Removing an integration is a separate deliberate Admin action. It must not be coupled to successful migration completion.
+
 ### Read-only observation after handover
 
 When a Work is **Jularr verwaltet**, a still-configured manager integration should continue observing that Work where the source API supports it.
@@ -149,6 +173,46 @@ Rules:
 - the UI shows observation health separately from ownership mode, e.g. `Jularr verwaltet · Sonarr beobachtet`, `Jularr verwaltet · Sonarr nicht erreichbar`.
 
 This preserves the current Sonarr conflict-detection value after handover without keeping Sonarr as a second canonical authority.
+
+### External manager cardinality
+
+For one Work, Jularr supports at most **one effective external manager plus Jularr**.
+
+Rules:
+- one Work cannot simultaneously be primarily managed by Sonarr and another external acquisition manager;
+- `Gemeinsam` means Jularr + that one external manager, not a three-way or N-way manager mesh;
+- conflicting integration defaults for the same Work are rejected during preview/configuration;
+- migration may still read metadata/progress evidence from passive sources such as Plex/Jellyfin without granting them management authority.
+
+This keeps mutation ownership, path safety and handover deterministic.
+
+### Ownership scope
+
+Management ownership is resolved at **Work level only**.
+
+Examples:
+- one TV series Work → Extern verwaltet / Gemeinsam / Jularr verwaltet;
+- one Anime Work → its own ownership mode;
+- one Movie Work → its own ownership mode.
+
+Do not split manager ownership by Season, Episode, Volume, Chapter or individual file.
+
+Reason:
+- acquisition/import/naming authority stays deterministic;
+- file/path ownership checks stay explainable;
+- handover/revert remains auditable;
+- external-manager conflict detection does not need to reason about mixed managers inside one Work.
+
+This does **not** flatten monitoring granularity.
+
+Monitoring/Wanted may still vary below Work level where the canonical model supports it, for example:
+- one Season monitored, another not;
+- selected Episodes wanted/unwanted;
+- chapter/volume monitoring where applicable.
+
+Ownership answers **who may manage the Work**. Monitoring answers **which units Jularr should want/process**. These are separate concepts.
+
+A Work-level ownership change must not silently rewrite Season/Episode monitoring selections unless the source adapter explicitly maps monitoring as part of the handover preview and the admin confirms it.
 
 ### Default ownership by integration and media type
 
@@ -498,9 +562,11 @@ May import:
 Source users are **never silently created as Jularr accounts**.
 
 For each source profile/user, the wizard must offer:
-- map to existing Jularr user
-- explicitly create a new Jularr user
-- skip this user
+- map to existing Jularr Account/Profile;
+- explicitly create a new Jularr Account/Profile from the migration flow;
+- skip this source user.
+
+Creating a new Account/Profile is always an explicit admin action with normal validation/permission rules.
 
 Progress/history is imported only after that mapping is resolved.
 
@@ -525,9 +591,11 @@ May import:
 Plex libraries must be mapped to Jularr LibraryRoots/content types.
 
 Source users/profiles use the same explicit mapping flow:
-- existing Jularr user
-- create new Jularr user
-- skip
+- map to existing Jularr Account/Profile;
+- explicitly create a new Jularr Account/Profile;
+- skip.
+
+No source user/profile is auto-created.
 
 Plex labels/collections are imported only when semantics are clear.
 
@@ -539,7 +607,7 @@ Same general migration family as Jellyfin:
 - watched/resume/history
 - collections/playlists where compatible
 
-Emby users/profiles must be explicitly mapped to an existing/new Jularr user or skipped.
+Emby users/profiles must be explicitly mapped to an existing Jularr Account/Profile, explicitly created as a new Jularr Account/Profile, or skipped.
 
 Do not treat Emby metadata as a second permanent authority after canonical resolution.
 
@@ -611,6 +679,20 @@ A migration adapter must declare:
 It must output the same normalized migration plan as built-in sources.
 
 No adapter may write directly into legacy/per-source tables as a permanent model.
+
+### Source credentials and secrets
+
+Credentials/API keys from Sonarr/Radarr/Readarr or other manager integrations may be imported **optionally** when the source exposes them and Jularr has a safe semantic equivalent.
+
+Requirements:
+- secret import is opt-in and shown separately from normal data migration;
+- secret values are never displayed in plaintext after capture;
+- values are written through Jularr's canonical protected-secret storage path;
+- imported endpoint/credential configuration must be tested before being marked ready;
+- a failed connection test leaves the configuration present only as an explicit unresolved proposal/review item;
+- migration never silently trusts imported credentials.
+
+If a source does not expose a secret safely, Jularr asks for re-entry instead of attempting recovery tricks.
 
 ## Connection & scan
 
@@ -759,6 +841,34 @@ Optional:
 - import missing metadata after migration
 - store detailed migration report
 - hand off library cleanup to Library Reconciliation after migration
+
+### Progress conflict resolution
+
+When source progress/history conflicts with existing Jularr progress:
+
+Default:
+- the state with the **newer reliable timestamp** wins.
+
+If timestamps are missing, equal, obviously unreliable or the states are otherwise ambiguous:
+- do not guess;
+- surface a manual conflict for review.
+
+Rules:
+- never use "highest progress wins" as the universal rule;
+- preserve both source timestamps/provenance in the migration report where available;
+- completed/uncompleted conflicts are treated as semantic conflicts, not simple numeric positions;
+- source history entries may be imported without overwriting the effective current resume point when the domains can be preserved independently.
+
+### Collections / watchlists / playlists
+
+Import uses **merge semantics by default**.
+
+Rules:
+- source entries are added when not already present;
+- existing Jularr entries are preserved;
+- migration does not delete local collection/watchlist/playlist membership just because the source does not contain it;
+- duplicate identity is resolved through canonical Work/item identity, not title text alone;
+- replacement semantics are only allowed as a separately explicit future operation, never as the default migration behavior.
 
 ## Conflict handling
 
@@ -916,3 +1026,7 @@ Required:
 - No source root-folder model competing with Storage LibraryRoots.
 - No silent conversion of extreme negative scores into hard Reject.
 - No source adapter may expose Extern verwaltet / Gemeinsam / Jularr verwaltet unless it implements the required ownership/safety capabilities.
+- No multi-external-manager ownership for one Work.
+- No silent source-user account creation.
+- No default replacement/delete semantics for collections/watchlists/playlists.
+- No automatic integration removal after migration completion.

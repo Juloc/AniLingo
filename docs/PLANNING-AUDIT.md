@@ -114,7 +114,7 @@ Some Admin specs are approved visual directions while others are planning baseli
 
 There is **no longer a generic missing core consumer page category** from the earlier audit list.
 
-The current cross-spec pass found one remaining direct product decision: Mobile primary navigation still disagrees on whether the fifth primary module slot is Learning or Games. Do not implement that navigation until the owner locks one rule.
+Mobile primary navigation is now locked to `Home · Library · Calendar · Learning · Profile`. Games remains a dedicated route reached contextually on Mobile and does not consume a bottom-navigation slot.
 
 The next work should therefore not invent additional pages merely to continue planning.
 

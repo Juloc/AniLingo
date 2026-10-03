@@ -44,14 +44,21 @@ The Clean design is the canonical UX/layout baseline. Original Jularr is the sup
 Do not expose Downloads, Imports, Wanted/Missing or other admin/operations destinations in normal user navigation.
 
 ### Mobile
-Bottom navigation:
+Bottom navigation is fixed to:
 - Home
 - Library
-- Games
 - Calendar
+- Learning
 - Profile
 
-Learning remains available through the approved mobile navigation/overflow pattern where required; do not create a second Games navigation model.
+Games does **not** occupy a permanent Mobile bottom-navigation slot.
+
+When Games is available, Mobile reaches the dedicated Games destination contextually through:
+- Games/Continue Playing content on Home;
+- Games rows/filter in global Search/Discover;
+- Game Detail/back-navigation/deep links.
+
+If Games is available but the profile has no recent Game activity, Home should still expose a lightweight Games entry/row so the installed Games library is reachable without replacing a bottom-nav item.
 
 Search remains globally accessible in the top/app bar.
 

@@ -1,6 +1,11 @@
 # Learning v2 architecture
 
-Binding V1 teaching/lesson behavior: [LEARNING_PEDAGOGY.md](LEARNING_PEDAGOGY.md). Learning architecture owns data/capability boundaries; pedagogy owns how authored content is introduced, practiced, retrieved, corrected and transferred.
+Binding Learning Phase 1 system contracts:
+- [LEARNING_PEDAGOGY.md](LEARNING_PEDAGOGY.md) — teaching/lesson behavior;
+- [LEARNING_EXERCISES.md](LEARNING_EXERCISES.md) — exercise content and publishing;
+- [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) — course progress and exact resume;
+- [LEARNING_PRACTICE_REVIEW.md](LEARNING_PRACTICE_REVIEW.md) — acquisition practice versus scheduled FSRS Review;
+- [LEARNING_GAMIFICATION.md](LEARNING_GAMIFICATION.md) — activity, learning time, XP, Daily Goal, Streak and Achievements.
 
 GitHub issue #226 is the umbrella backlog. This file describes durable architecture only; it is not a second backlog or AGENDA.
 
@@ -90,10 +95,10 @@ The hub distinguishes three quiet states: Learning fully off, Language Tools onl
 States are Untracked → Saved → Learning → Known, plus Ignored and Suspended. They live on the directional `LearningCard`s of a unit (the Recognition card is the unit anchor shown on the Vocabulary page). `LearningService` (`SetStateAsync` for catalog words, `SetUnitStateAsync` for course units) applies them through `LearningCardTransitions`, the single transition path:
 
 - Saved never schedules a review; it clears `NextReviewAt`, `LearningStartedAt` and the queue position.
-- Learning enqueues the word; it only becomes due when `GetDueAsync` activates it within the "new words per day" and batch limits.
+- Learning queues the unit for scheduled study. Phase 1 pacing is unit-based: the Recognition anchor consumes the daily new-unit budget, while enabled secondary modes are staged by the Practice/Review policy.
 - Known, Ignored and Suspended clear the next review. Ignored also leaves the queue; Suspended keeps its history so Resume continues where it stopped.
 
-Untracked words become Saved from the player, readers or episode pages (the Episode page offers Learn only when Reviews resolves on for the episode and refuses it server-side otherwise); the Vocabulary page lists tracked word cards per course. It offers Start learning, Suspend and Resume only when the Reviews capability resolves on, and refuses those transitions server-side otherwise. FSRS retention, batch size and the daily new-word limit stay under the Advanced section of `/Settings/Learning`.
+Untracked words become Saved from the player, readers or episode pages; the Vocabulary page lists tracked word cards per course. Start learning, Suspend and Resume remain capability-gated. FSRS retention, Review batch size and the daily **new-unit** limit stay under Advanced Learning settings. Existing `NewWordsPerDay` persistence is a migration source for the target `NewUnitsPerDay` semantics defined in `LEARNING_PRACTICE_REVIEW.md`.
 
 ## Language inspector
 
@@ -156,7 +161,7 @@ Profiles that already contained legacy UserTerms, Reviews or LearningPreferences
 
 Profiles without historic learning state have no profile mode row and resolve to Off. This makes Learning opt-in for new users.
 
-LearningPreferences (FSRS retention, batch size, new cards per day) and the per-card review history in LearningCardReviews are canonical for scheduling. Learning v2 scope settings decide visibility/availability; they do not discard scheduling data.
+LearningPreferences (FSRS retention, Review batch size and the migrated new-units-per-day limit) and per-card history in LearningCardReviews remain canonical scheduling inputs. Learning scope settings decide visibility/availability; they do not discard scheduling data.
 
 ## Learning state
 

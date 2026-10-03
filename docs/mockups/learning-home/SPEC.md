@@ -21,6 +21,8 @@ When Learning is unavailable at either hard gate:
 
 A personal Off never disables shared instance Learning data/work needed by other users.
 
+Binding Learning system contracts: `docs/LEARNING_PEDAGOGY.md`, `docs/LEARNING_EXERCISES.md`, `docs/LEARNING_PROGRESS.md`, `docs/LEARNING_PRACTICE_REVIEW.md`, `docs/LEARNING_GAMIFICATION.md`.
+
 V1 includes:
 - Learning Dashboard;
 - structured courses;
@@ -130,18 +132,21 @@ The card may use an Original J themed illustration/background in Original Jularr
 
 ### Combined Daily Goal
 
+Canonical goal, active-time and streak semantics are defined in `docs/LEARNING_GAMIFICATION.md`.
+
 The user may configure a preferred target using combinations of:
 - XP;
-- learning minutes;
-- meaningful task/session completion.
+- active learning minutes;
+- meaningful completed Learning sessions.
 
-Jularr can expose one normalized Daily Goal completion state while retaining the component metrics.
+Jularr exposes one normalized Daily Goal completion state while retaining the component metrics. It reaches 100% only when every configured component target is satisfied.
 
 Example:
 - 42 / 60 XP;
-- 18 / 20 minutes;
-- Reviews complete;
-- Lesson still open.
+- 18 / 20 active minutes;
+- 1 / 2 meaningful sessions.
+
+Specific tasks such as finishing due Reviews or continuing a Lesson belong to the **Daily Plan**, not to the Daily Goal persistence contract.
 
 ### Streak rule
 
@@ -154,7 +159,7 @@ Show:
 - today complete/incomplete;
 - compact weekly/calendar indication where useful.
 
-Streak Freeze may exist only with a clear acquisition/use rule. Do not create a virtual currency/shop merely to support it.
+Streak Freeze is not part of V1. Do not create virtual currency/shop mechanics around Streak.
 
 ## 6. XP
 
@@ -190,7 +195,7 @@ Show:
 - Session Summary XP;
 - progress toward visible global/per-language XP level when enabled.
 
-V1 has no XP store/currency economy.
+XP is persisted only as awarded activity facts under `docs/LEARNING_GAMIFICATION.md`; V1 has no spendable XP balance or currency economy.
 
 ## 7. Levels
 

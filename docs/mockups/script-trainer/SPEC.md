@@ -334,22 +334,18 @@ Do not show the next question before the user can understand the feedback.
 
 ## 15. Review / scheduling semantics
 
-Trainer practice reuses LearningCards and LearningCardReviews.
+Binding policy: `docs/LEARNING_PRACTICE_REVIEW.md`.
 
-Current behavior may map objective group-practice answers to scheduler ratings such as:
-- correct -> Good;
-- incorrect -> Again.
+Trainer acquisition/practice reuses canonical LearningUnits/LearningCards but **does not write a scheduled FSRS Review merely because a group-practice answer was correct/incorrect**.
 
-This mapping must be centralized in the Script/Kana application service and remain consistent.
+Target behavior:
+- the first independent retrieval of a new Script unit can queue its Recognition anchor into Learning;
+- ordinary group practice records practice/session outcome only;
+- Due Script cards are reviewed through the normal Review flow and write LearningCardReviews there;
+- Practice Difficult Symbols is Extra Practice and does not change FSRS due dates;
+- Known remains an explicit canonical state transition.
 
-Rules:
-- practice does not create a second difficulty scale;
-- Due reviews still belong to the canonical Review scheduler;
-- group practice may provide extra practice, but it must not fabricate "due" status;
-- Known state is not automatically inferred merely from one correct practice answer;
-- manually marking Known remains an explicit canonical state transition.
-
-If the general Lesson/Review scheduler semantics change, Script Trainer must follow the shared contract rather than diverge.
+The current implementation path that maps Kana practice directly to Good/Again is a migration target and must not remain alongside the Phase 1 policy.
 
 ## 16. Session composition
 

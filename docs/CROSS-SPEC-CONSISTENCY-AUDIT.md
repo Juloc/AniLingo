@@ -2,7 +2,7 @@
 
 Date: 2026-10-03  
 Branch baseline: `dev`  
-Status: **core consistency pass complete; one explicit mobile-navigation product decision remains open**.
+Status: **core consistency pass complete; no unresolved direct cross-spec contradiction remains**.
 
 This audit compares the current canonical domain/architecture/global UX contracts with the binding screen specs. It is a documentation consistency audit, not an implementation audit.
 
@@ -224,31 +224,19 @@ Calendar retains its explicit final owner-review gate for:
 
 Candidate consumer acquisition labels have been normalized, but that gate remains mandatory.
 
-## 18. Open product decision — Mobile primary navigation
+## 18. Mobile primary navigation — resolved
 
-This is the remaining direct cross-spec conflict.
-
-`UX.md` and `INFORMATION_ARCHITECTURE.md` currently define Mobile bottom navigation as:
+Locked Mobile bottom navigation:
 
 `Home · Library · Calendar · Learning · Profile`
 
-`home/SPEC.md` defines:
+Games does not replace Learning in the Mobile bottom bar.
 
-`Home · Library · Games · Calendar · Profile`
+Games remains a dedicated destination, reached contextually on Mobile through Home Games/Continue Playing surfaces, global Search/Discover Games context, Game Detail/back-navigation and deep links.
 
-`games/SPEC.md` also states that Games is a dedicated top-level consumer destination.
+When Games is available and no recent Game activity exists, Home must still expose a lightweight Games entry so the Games library remains discoverable.
 
-The documents do not yet define a concrete mobile overflow/module-slot behavior that makes both variants simultaneously true.
-
-Do not implement Mobile primary navigation until one rule is locked.
-
-Reasonable choices:
-
-1. Games owns the permanent optional-module bottom slot; Learning moves to an explicit mobile overflow/module entry.
-2. Learning remains permanent; Games is a dedicated route reached outside the permanent bottom bar.
-3. Define one capability-aware/pinnable optional module slot. This is more flexible but adds product/settings complexity.
-
-Desktop is already consistent. TV is aligned so Games appears when the Games destination is actually available.
+Desktop and TV may keep Games as a primary destination where appropriate.
 
 ## 19. Non-blocking planning notes
 
@@ -262,4 +250,4 @@ Core Media, Request, Library, Collections, Discover, Detail, Player, Reader, Pro
 
 No new generic core consumer screen is required by this audit.
 
-The only direct product-level contradiction left is Mobile placement of Games vs Learning.
+The previous Mobile Games-vs-Learning contradiction is resolved.

@@ -62,10 +62,10 @@ This phase resolves the foundation required by #403 and #662.
 
 Planning contracts must be completed before implementation:
 - `docs/LEARNING_PEDAGOGY.md` — teaching sequence and pedagogical rules;
-- Exercise Content Contract — exercise payload/answer/content schema;
-- Lesson/Course Progress Contract — exact resume/completion/prerequisites;
-- Practice & Review Policy — LearningCard creation, due review vs extra practice and FSRS interaction;
-- Gamification/Event Contract — XP, learning time, Daily Goal, Streak and Achievements.
+- `docs/LEARNING_EXERCISES.md` — exercise payload, answer, specialization and publishing contract;
+- `docs/LEARNING_PROGRESS.md` — exact resume, completion, aggregate progress and progression policy;
+- `docs/LEARNING_PRACTICE_REVIEW.md` — LearningCard activation, due Review vs Extra Practice and FSRS interaction;
+- `docs/LEARNING_GAMIFICATION.md` — activity, XP, learning time, Daily Goal, Streak and Achievements.
 
 Implementation order:
 1. Preserve existing Learning bounded-domain data.
@@ -79,6 +79,8 @@ Implementation order:
 9. Optional AI/TTS integrations through shared capability contracts.
 
 Do not implement mockup-only XP/time/Streak/Achievement values before their canonical event/state contracts exist.
+
+Planning exit gate: Phase 1 Learning architecture is planned only while these five contracts and the approved Learning screen specifications remain mutually consistent. Implementation agents may refine code shape inside the existing Learning bounded domain but may not invent parallel curriculum, progress, review, activity or gamification stores.
 
 ## Phase 6 — Acquisition core
 
