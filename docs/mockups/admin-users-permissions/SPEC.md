@@ -9,7 +9,9 @@ Manage accounts/profiles, groups/roles and effective capabilities that derive bo
 User list -> user detail -> groups/roles -> capability matrix -> media/request/learning/AI policies -> login identities/profile policy -> devices/sessions.
 
 ## Data / information
-Internal Account/Profile IDs, linked Login identities, Profile ownership, groups/roles, effective capabilities, media-type visibility, request/instant rights, profile restrictions and active sessions.
+Internal Account/Profile IDs, linked Login identities, Profile ownership, groups/roles, effective capabilities, media-type visibility, Request approval rights, profile restrictions and active sessions.
+
+Where the existing capability model still uses `Request` vs `Instant`, both map to the same consumer `Request` action. `Instant` means the request may be auto-approved immediately; it does not expose a separate Add/Instant button.
 
 Account and Profile are distinct:
 - Account owns authentication/security/roles.
