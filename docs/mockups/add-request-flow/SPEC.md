@@ -239,7 +239,7 @@ Show:
 Possible result states:
 - **Waiting for approval**
 - **Approved / auto-approved**
-- **Searching**, only if search actually started
+- **Looking for media**, only if acquisition search actually started
 - **Monitoring**, only if future acquisition is actually active
 
 Actions:
