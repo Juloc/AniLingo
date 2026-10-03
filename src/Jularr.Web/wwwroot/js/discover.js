@@ -354,7 +354,7 @@
         ring.className = "dc-request-ring";
         ring.style.setProperty("--dc-progress", `${progress}%`);
         const number = document.createElement("span");
-        number.textContent = `${Math.round(progress)}`;
+        number.textContent = `${Math.round(progress)}%`;
         ring.append(number);
 
         const label = document.createElement("span");
@@ -496,8 +496,21 @@
             pollRequest(payload.requestId);
             return payload;
         } catch {
-            button.disabled = false;
-            button.textContent = text("textAddFailed");
+            if (slot) {
+                const retry = document.createElement("button");
+                retry.type = "button";
+                retry.className = "button button-primary dc-card-request";
+                retry.textContent = text("textAddFailed");
+                if (scope.matches(".dc-pv")) {
+                    retry.dataset.dcAdd = "";
+                } else {
+                    retry.dataset.dcCardAdd = "";
+                }
+                slot.replaceChildren(retry);
+            } else {
+                button.disabled = false;
+                button.textContent = text("textAddFailed");
+            }
             return null;
         }
     }
