@@ -334,9 +334,11 @@ User Learning home:
 - progress
 
 Course detail:
-- units/lessons
-- progress
-- resume action
+- binding specification: `docs/mockups/course-detail/SPEC.md`
+- canonical Curriculum -> Level -> Chapter -> Lesson structure
+- curriculum progress separated from FSRS review mastery
+- exact resume/start action
+- compact responsive curriculum navigator rather than a game-map hierarchy
 
 Lesson/review surfaces are distraction-minimized and touch/keyboard friendly.
 
