@@ -1,5 +1,7 @@
 # Information architecture
 
+Target UX sections in this document are authoritative together with `docs/UX.md` and binding screen specs. Historical/current-implementation inventory tables below describe implementation state only; they do **not** override the target navigation or canonical domain model.
+
 ## 0. Account entry and active Profile
 
 Before the consumer shell, Jularr resolves:
@@ -32,69 +34,106 @@ Related docs, not repeated here: [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md),
 
 ## 1. Consumer vs Admin
 
-Rule (#510): a normal user must never need to understand Sonarr/Radarr/Bazarr/Readarr concepts —
-provider IDs, root folders, naming profiles, indexers, download clients, scans, mapping conflicts,
-remux jobs, transcodes or acquisition pipelines. Everything that exposes those concepts is Admin.
-Admin and consumer UI are visually related but structurally separate; no raw technical metadata
-appears on consumer pages unless a user genuinely needs it (dub/sub availability, progress).
+A normal consumer must not need to understand Sonarr/Radarr/Bazarr/Readarr-style internals such as provider IDs, root folders, naming profiles, indexers, download clients, scans, mapping conflicts, remux jobs or acquisition pipelines.
 
-### Desktop/tablet sidebar
+Consumer and Admin use the same design system but remain structurally distinct.
 
-Base navigation stays visible; Admin and Settings expand inline instead of opening a disconnected
-shell:
+### Desktop / wide Tablet
 
-- Home, Library, Watchlist, Calendar, Activity, Admin (permission-gated), Settings, Profile.
-- Selecting **Admin** expands the sidebar section directly under it with the Admin navigation.
-  Selecting **Settings** does the same for personal settings.
-- Only one large contextual section expands at a time on narrower layouts; the last selected
-  child page is remembered.
-- Today's implementation (`UiShellNavigation.Build`, `Features/Localization/UiShellNavigation.cs`)
-  already renders Admin/Settings as an inline expanding `Context` under the app shell rather than a
-  separate shell — the structural piece exists. What #517 must still finish: an explicit
-  **Activity** primary destination (today Activity-equivalent pages sit only under Admin →
-  Operations/Scans/Logs) and the mobile Profile grouping below.
+Persistent consumer navigation:
 
-### Mobile bottom navigation
+- Home;
+- Library;
+- Games;
+- Calendar;
+- Learning;
+- global Search/Discover access.
 
-Netflix-style consumer app, not a management console:
+Bottom/account area:
+- Profile;
+- Settings;
+- Admin only when authorized.
 
-- Bottom bar: Home, Calendar, Watchlist, Profile. Search stays globally accessible at the top.
-- No separate Library tab: Home and Library are one experience with type filters
-  (All/Movies/TV/Anime/Manga/Novels/Books).
-- Activity, Downloads, Devices, Settings and Admin (permission-gated) all live under **Profile**,
-  which drills into dedicated navigation screens rather than permanent nested menus.
-- Today's mobile bar (`UiNavigationCatalog.MobilePrimarySlots`) is
-  `home, library, reading, learn|discover` with no Profile slot and no Calendar slot — this is the
-  concrete gap #517 closes.
+Do not create permanent top-level destinations for:
+- individual media types;
+- Collections;
+- Activity;
+- Downloads.
 
-### TV sidebar
+Collections lives inside `Library -> Collections`.
 
-Aggressively simplified for D-pad use, intentionally different from desktop:
+Activity/history belongs under Profile. Operational jobs/downloads belong in Admin.
 
-- Home, Watchlist, Activity, Profile/Settings. No dedicated Library page (availability is a
-  state/filter inside Home, not a destination) and no separate Search item — Home carries a
-  search field at the top and combines search, discovery and Continue Watching in one surface.
-  No separate Movies/TV/Anime destinations: content filters instead.
-- Trailer preview on focus (no hover, no mouse dependency); strong focus state; Back restores
-  previous view/focus; remembers last focused item per screen.
-- None of this exists yet for Android TV nav; it is entirely #522's scope (the current Android TV
-  contract in [ANDROID_CLIENTS.md](ANDROID_CLIENTS.md) §9 only fixes
-  Library → Anime → Episode → Player browse layering and remote key semantics, not the sidebar
-  itself).
+### Mobile
 
-### Home as Discover entry
+Primary bottom navigation:
 
-Home's Netflix-style rows are dual-purpose: scrolling browses the row, activating the row heading
-opens Discover pre-filtered to that row's facet (media type, genre, "Trending Anime", franchise,
-etc.). Discover/Search must therefore be filter-driven and able to receive a filter from Home,
-Calendar, Watchlist, franchises, genres and tags alike. `/Discover` exists today
-(`Features/Discovery`) but only as an AniList-backed browse/import surface; it does not yet accept
-row-sourced filters or show local availability/watchlist state on cards. That wiring is #520.
-The local half of search exists at `/Search` (#434): one ranked list over everything on the server
-with canonical grouping across media types, franchise results and the Media Facts filters, limited
-to the profile's visible media types (see [PERSISTENCE.md](PERSISTENCE.md#unified-global-search-434-local-half)).
-Merging online provider results into it, and pointing the global search field at it, waits for the
-provider-driven discovery contract (#595).
+- Home;
+- Library;
+- Calendar;
+- Learning;
+- Profile.
+
+Search remains globally accessible from the top/app bar.
+
+Library is a real destination and is not merged into Home.
+
+Collections remains an internal Library subview.
+
+Admin/settings/detail workflows use contextual navigation rather than trying to fit desktop sidebar structures into the bottom bar.
+
+### TV
+
+Remote-first primary destinations:
+
+- Home;
+- Library;
+- Calendar where useful;
+- Search;
+- Profile.
+
+Learning appears only where the TV interaction is useful.
+
+Library uses large remote-friendly media cards and an internal `Library | Collections` switch. Collections is not a second TV top-level destination.
+
+Games/Player-specific TV behavior follows its own binding specs when enabled; normal media Library remains independent.
+
+### Home and Discover
+
+Home is personalized continuation/recommendation context.
+
+Discover/Search is the explicit surface for finding media not already in durable Library context.
+
+Home recommendation/genre/media rows may deep-link into Discover with a pre-applied facet. This does not merge Home and Library or make Library an external discovery surface.
+
+Global search:
+- empty query may show Discover;
+- typed query searches canonical/local/provider-resolvable results according to the Discover contract;
+- selecting provider-native presentation still resolves to canonical Work identity.
+
+Normal Library search stays scoped to durable Library context and does not silently trigger external discovery.
+
+### Library and Collections
+
+Library is one cross-media consumer catalog.
+
+Inside it:
+
+`Library | Collections`
+
+Library media scope:
+- All;
+- Anime;
+- Series;
+- Movies;
+- Manga;
+- Light Novels;
+- Books;
+- Audiobooks.
+
+Collections is not a media type and not top-level navigation.
+
+Consumer Library has no generic Add/import menu. New media is found through Discover and requested through the shared Request flow. Manual file/folder import and reconciliation belong to Admin.
 
 ## 2. Media model
 

@@ -68,7 +68,11 @@ Supported **manager-style integrations** use one common three-mode ownership con
    - observed external state is evidence/diagnostics only and does not regain ownership automatically;
    - adapters should surface conflicting external activity as actionable Migration/To-Do diagnostics and block unsafe Jularr mutations where required;
    - loss of external observation must not silently transfer authority back to the external manager;
-   - supported handover may explicitly disable external monitoring, but never deletes source media or source library records.
+   - supported handover may explicitly disable external monitoring, but never deletes source media or source library records;
+   - when switching to **Jularr verwaltet**, the handover UI offers **Externes Monitoring deaktivieren** as an explicit checkbox;
+   - for manager integrations such as Sonarr/Radarr, that checkbox is enabled by default when the adapter can perform the change safely;
+   - the admin may deselect it and keep external monitoring enabled, but the resulting conflict risk is shown before confirmation;
+   - the adapter records whether Jularr changed the external monitoring state so a later revert can restore only the state Jularr itself changed.
 
 These labels are the user-facing contract. Source adapters map their native concepts into these modes only when they actually support management/coexistence capabilities.
 
@@ -84,6 +88,23 @@ Existing Sonarr state migrates directly:
 The existing Sonarr safety behavior remains the implementation baseline for the generalized contract.
 
 Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
+
+### Handover confirmation
+
+For integrations that can change source monitoring, switching to **Jularr verwaltet** shows a concise handover confirmation.
+
+Default option:
+- **Externes Monitoring deaktivieren** — checked by default.
+
+The preview must show exactly what will change on the source side, for example:
+- Sonarr series monitoring: On → Off;
+- affected Work/series;
+- active queue/conflict blockers;
+- whether the change can later be restored automatically.
+
+If the checkbox is cleared, Jularr keeps read-only observation active and warns that the source manager may still act on the Work. The ownership mode can still become **Jularr verwaltet**, but unsafe Jularr mutations remain blocked whenever the adapter detects conflicting source activity.
+
+A revert may automatically re-enable source monitoring only when Jularr previously disabled it and the adapter can prove that state transition. It must not overwrite unrelated manual changes made in the external system.
 
 ### Read-only observation after handover
 
