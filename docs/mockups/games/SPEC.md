@@ -14,18 +14,29 @@ Shared Jularr infrastructure may search, acquire, download and hand off a comple
 
 ## Consumer navigation
 
+Games is a deliberate exception to the normal shared Library navigation.
+
+Primary consumer navigation includes a dedicated `Games` destination alongside Home and Library. Games is not a type tab inside the normal Library.
+
+This is a UX/navigation boundary only. It does **not** create a second search, request, acquisition, downloader, storage or activity architecture.
+
 Planned game-specific surfaces:
 - `games-library/SPEC.md`
 - `game-detail/SPEC.md`
 - `game-player/SPEC.md`
+- `game-touch-controls/SPEC.md`
 - `game-play-options/SPEC.md`
 
-Games uses existing shared Jularr surfaces where possible:
-- global Search / Discover
-- shared Request flow
-- shared Activity/Operations status
+Games stays integrated into the rest of Jularr:
+- Home may show `Continue Playing` and game recommendations/recently relevant items;
+- global Search / Discover includes Games and can open the Games detail/request flow;
+- shared Request flow is reused;
+- shared Activity/Operations status is reused;
+- Profile/history may include game play activity where useful.
 
 Do not create a second Games-only search/request/acquisition stack.
+
+The dedicated Games destination exists because Games needs platform browsing, saves, runtime/playability and controller-aware presentation that would overload the normal media Library.
 
 ## Admin navigation
 
@@ -57,6 +68,22 @@ Consumer UX may expose:
 - per-profile save state
 
 Do not expose provider-native IDs as product identity.
+
+## TV and controller direction
+
+Games should feel first-class on TV rather than like an Admin-only ROM catalogue.
+
+The long-term interaction model is:
+- open Games on TV;
+- choose a playable game;
+- use one or more connected gamepads where the selected runtime supports them;
+- optionally pair phones as temporary controllers through a Jularr-coordinated session;
+- assign paired inputs to player slots;
+- start/continue the game.
+
+Phone-controller pairing is session-scoped. A paired phone must not gain general Jularr/server access.
+
+This capability is planned architecture, not a V1 implementation blocker. Actual controller count and platform support remain runtime/capability-driven.
 
 ## Play contract
 
@@ -106,6 +133,7 @@ Do not make V1 depend on:
 - server-side gameplay streaming
 - automatic emulator installation for every OS
 - large controller-profile engines
+- phone-as-controller / multi-controller TV pairing as a V1 requirement
 - modern storefront integrations
 
 ## Planning rule

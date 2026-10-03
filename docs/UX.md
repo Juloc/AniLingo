@@ -26,6 +26,7 @@ Status: planning baseline. This document defines information architecture, navig
 Persistent left navigation:
 - Home
 - Library
+- Games
 - Calendar
 - Learning
 - Search/Discover is globally available at the top rather than a redundant permanent destination where possible.
@@ -35,7 +36,7 @@ Bottom/profile area:
 - Settings
 - Admin, only when authorized
 
-Library contains media rather than giving every media type a permanent top-level sidebar entry.
+Library contains normal watch/read/listen media rather than giving every media type a permanent top-level sidebar entry. Games is the deliberate exception because its platform browsing, saves, runtimes and controller/play model require a distinct consumer surface while still reusing shared Jularr infrastructure.
 
 ### Mobile
 Bottom navigation optimized for frequent use:
@@ -104,6 +105,7 @@ Discover rows resemble modern streaming discovery:
 - Movies
 - Books / Light Novels
 - Manga
+- Games
 - genres/themes such as Horror
 
 Rows scroll horizontally. Selecting a row title opens the corresponding filtered Discover view.
@@ -116,6 +118,7 @@ Home is personalized, not a duplicate library index.
 
 Priority sections:
 - Continue Watching / Reading / Listening
+- Continue Playing, when the profile has resumable Games activity
 - Up Next
 - Recommendations based on the user's library/progress
 - Recently relevant additions only when useful
@@ -127,7 +130,9 @@ Cards show only useful glanceable information: artwork, title, progress and a sm
 
 ## 5. Library
 
-One Library supports all media types.
+One Library supports watch/read/listen media types.
+
+Games is intentionally a separate top-level consumer destination. This is a navigation/interaction exception only: Games still reuses global Search/Discover, Request, Acquisition, Storage, Activity/History and profile infrastructure.
 
 Desktop/tablet:
 - title + compact controls
