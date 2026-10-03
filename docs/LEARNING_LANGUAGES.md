@@ -43,7 +43,7 @@ The "state of a term" shown on content surfaces (preparation coverage, subtitle 
 - Listening: source-language audio (on-device TTS) → answer. Exists while the course enables it.
 - Writing: target prompt → typed source answer. Exists while the course enables it and a target variant exists.
 
-Enabling a mode creates the missing cards for every unit already in the course: they copy the anchor's Saved/Ignored/Suspended state, and anchors that are Learning or Known queue the new card as new learning, so the daily new-card limit applies. Disabling a mode (or the whole course) keeps the cards and their review history but removes them from scheduling, due counts and review sessions (`LearningQueries.ScheduledCards`).
+Enabling a mode creates the missing directional cards without multiplying the learner's daily new-unit budget. Recognition is the unit anchor. For a Learning unit, a never-started secondary mode becomes eligible only after the first successful scheduled Recognition recall; a Known unit remains Known instead of receiving new review pressure. Disabling a mode (or the whole course) keeps cards and review history but removes them from scheduling, due counts and Review sessions. See `docs/LEARNING_PRACTICE_REVIEW.md` for the binding pacing/staging policy.
 
 Direction is never inferred from UI locale.
 
