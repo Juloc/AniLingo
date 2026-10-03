@@ -1,82 +1,346 @@
-# Game Browser Player — Planning Scaffold
+# Game Browser Player
 
-Status: scaffold; detailed UX pending review.
+Status: visual direction approved from the current Desktop / Tablet / Mobile Game Boy mockup set. The owner will upload the approved images into this folder.
 
 Shared contract: `docs/mockups/games/SPEC.md`.
+Touch controls: `docs/mockups/game-touch-controls/SPEC.md`.
+Games architecture: #725.
+UX planning: #729.
+Initial browser runtime: #771.
 
 ## Purpose
 
-Focused browser-play surface for a LaunchPlan produced by the Games module.
+Focused play surface for a `LaunchPlan` produced by the Games module.
 
-## Initial responsibilities
+The page must feel like Jularr, not like an unstyled embedded EmulatorJS page.
 
-Plan for:
-- emulator/runtime viewport
-- loading/initialization state
-- fullscreen
-- pause/resume where runtime supports it
-- exit/back to Game Detail
-- minimal runtime/player menu
-- save persistence feedback
-- keyboard/gamepad input where runtime supports it
-- multiple player/input slots where runtime supports local multiplayer
-- clear failure reason when launch cannot continue
+Jularr owns page chrome, navigation/exit, play-session state, save-sync status, quick actions, touch-control presets/editor and responsive behavior. The runtime adapter owns the actual emulation and translates the Jularr player contract to EmulatorJS or another future runtime.
+
+## First implementation target
+
+Game Boy / Game Boy Color first.
+
+The same player shell remains reusable for later platforms.
+
+For EmulatorJS:
+- Game Boy uses the Game Boy control scheme;
+- runtime/core choice stays inside the adapter;
+- the page does not know core names, CDN paths, ROM paths or BIOS paths.
+
+## Header
+
+Desktop/tablet:
+- Back;
+- Game title;
+- compact platform badge;
+- compact runtime badge such as `Web`;
+- save-sync state;
+- Fullscreen;
+- overflow menu;
+- Exit Game.
+
+Mobile:
+- very compact top chrome;
+- back/menu;
+- title only when space allows;
+- save/runtime state moves into the pause sheet when necessary;
+- pause/menu and fullscreen remain easy to reach.
+
+Game chrome may auto-hide while actively playing, but returns immediately on pointer/touch/key interaction.
+
+Touch controls themselves do not auto-hide while touch mode is active.
+
+## Game viewport
+
+Rules:
+- preserve native aspect ratio;
+- never stretch to fill;
+- center inside available play area;
+- crisp/pixel-preserving scaling by default for Game Boy;
+- neutral Jularr player background outside the frame;
+- resize without restarting the emulation session;
+- orientation changes never reload the ROM or lose unsynced state.
+
+For Game Boy portrait, the viewport occupies the upper/main part and leaves a dedicated lower control zone.
+
+For landscape, the viewport may sit behind/among touch controls only when the chosen touch layout intentionally overlays them.
+
+## Desktop
+
+Approved composition:
+1. Jularr shell visible outside fullscreen;
+2. compact player header;
+3. large centered game viewport;
+4. bottom action dock;
+5. compact save-sync status;
+6. overflow menu for secondary actions.
+
+Primary dock:
+- Pause / Resume;
+- Save State;
+- Load State;
+- Screenshot;
+- Controls;
+- More.
+
+More may contain:
+- Restart Game;
+- Cheats when supported;
+- save-file import/export;
+- recording when supported;
+- Audio;
+- Display;
+- cache/runtime diagnostics only when genuinely useful;
+- Exit Game.
+
+Do not expose raw EmulatorJS setting IDs.
+
+## Tablet
+
+Same hierarchy as Desktop, but:
+- narrower header;
+- larger touch targets;
+- action dock below viewport;
+- settings/overflow use a sheet or popover appropriate to width;
+- touch controls may be explicitly enabled.
+
+Portrait and landscape are both supported.
+
+## Mobile — before start
+
+Portrait may show the normal Game Detail / Play state before launch.
+
+Starting a Game enters the dedicated player without forcing landscape.
+
+The UI may recommend landscape when useful, but Game Boy must be playable in portrait.
+
+## Mobile — portrait in play
+
+Portrait is a supported play mode.
+
+Composition:
+- compact top chrome;
+- Game Boy viewport in upper/main area;
+- touch controls below;
+- D-pad left;
+- A/B right;
+- Select/Start centered;
+- no controls in notch/home-indicator unsafe zones.
+
+Portrait and landscape layouts are saved independently.
+
+## Mobile — landscape in play
+
+Composition:
+- game viewport maximized;
+- compact pause/menu control;
+- D-pad left;
+- A/B right;
+- Select/Start lower center;
+- optional minimal fullscreen/audio action;
+- other chrome hidden while actively playing.
+
+Landscape uses its own saved touch layout.
+
+## Mobile quick menu / pause sheet
+
+Opening Pause/Menu pauses the game where supported.
+
+Primary actions:
+- Continue;
+- Create Save State;
+- Load Save State;
+- Screenshot;
+- Adjust Controls;
+- Audio;
+- Display;
+- Exit Game.
+
+Secondary features such as Restart, Cheats, save import/export or recording may live under Advanced/More.
+
+Do not put every runtime feature on the main play screen.
+
+## Save model and status
+
+Jularr distinguishes:
+- normal in-game save/SRAM;
+- manual save states.
+
+Player status:
+- Saving…;
+- Saved;
+- Save failed / retry needed;
+- offline/local-only where relevant.
+
+Never show successful server sync before server acknowledgement.
+
+Normal exit:
+1. request final runtime save flush where supported;
+2. persist changed save data;
+3. complete session/last-played state;
+4. return to Game Detail/Games.
+
+Failed final sync must produce retry/keep-local behavior rather than silently losing data.
+
+## Runtime bridge
+
+EmulatorJS is embedded behind a Jularr-owned runtime page/adapter.
+
+For SPA-style integration, keep the emulator in its own embedded document/iframe.
+
+The outer Player uses a narrow Jularr runtime bridge rather than reading runtime DOM.
+
+Conceptual commands:
+
+```text
+Pause
+Resume
+Restart
+CreateSaveState
+LoadSaveState
+CaptureScreenshot
+SetVolume
+SetFullscreen
+ApplyInputLayout
+Exit
+```
+
+Conceptual events:
+
+```text
+Ready
+Started
+Paused
+Resumed
+SaveChanged
+SaveSyncStateChanged
+StateCreated
+StateLoaded
+ControllerChanged
+Exited
+RuntimeError
+```
+
+The EmulatorJS adapter translates these to the pinned/tested runtime version.
+
+Do not make Jularr's Player contract equal to EmulatorJS internals.
+
+## EmulatorJS feature mapping
+
+Primary Jularr UI:
+- pause/resume;
+- save state;
+- load state;
+- screenshot;
+- fullscreen;
+- controller mapping;
+- normal save synchronization;
+- exit.
+
+Secondary / More:
+- restart;
+- cheats;
+- save-file import/export;
+- screen recording;
+- audio;
+- display/shader options where useful;
+- cache management only if needed;
+- platform-specific disc controls later.
+
+Later/capability-driven:
+- netplay;
+- multi-disc controls;
+- rewind;
+- platform-specific advanced settings.
+
+Show features only when the selected runtime/platform reports support.
+
+## EmulatorJS configuration rules
+
+For the first adapter:
+- production uses a tested/pinned EmulatorJS release from the stable channel;
+- `EJS_gameID` maps to stable Jularr release/session identity suitable for save separation;
+- `EJS_gameName` uses canonical display name;
+- Game Boy uses the documented Game Boy control scheme;
+- Jularr touch layouts are converted to `EJS_VirtualGamepadSettings`;
+- keyboard/gamepad defaults may use `EJS_defaultControls`;
+- save callbacks/events feed the Jularr save service;
+- runtime controls/settings replaced by Jularr are hidden;
+- no advertising surface is configured;
+- cache behavior is adapter-owned, not page-owned.
+
+If a feature has no stable documented programmatic API in the pinned EmulatorJS version, the adapter must not fake it. It may temporarily expose the supported runtime control or defer that feature.
+
+## Physical controllers
+
+Desktop/tablet/mobile may use browser gamepad support through the runtime.
+
+Rules:
+- detect connect/disconnect;
+- brief non-blocking status;
+- mapping through Controls;
+- if a physical controller becomes active on mobile, touch controls may fade/hide;
+- user can explicitly restore touch controls;
+- saved touch layout remains unchanged.
 
 ## TV and controller sessions
 
-TV is a first-class future Games playback surface.
+TV is a first-class future surface.
 
-Input sources may include:
-- gamepads connected to the TV/device;
-- TV remote for shell/navigation, not as a forced gameplay controller;
-- paired phones acting as temporary controllers;
-- other explicitly supported runtime input adapters.
+Input may include:
+- connected gamepads;
+- TV remote for shell/navigation;
+- later paired phones as temporary controllers;
+- other explicit runtime adapters.
 
-For phone-as-controller:
-- TV shows a short-lived pairing flow, for example QR/code;
-- phone joins the specific game session;
-- server coordinates the session and input channel;
-- each phone/gamepad can be assigned to a player slot where supported;
-- disconnect/reconnect is handled without granting general account/server access.
+Phone pairing:
+- short-lived QR/code;
+- session-scoped;
+- player-slot assignment where supported;
+- reconnect handling;
+- no general Jularr/server access.
 
-Pairing is session-scoped and capability-driven. It is not required for V1 Games playback.
+Not required for the first Game Boy browser-player implementation.
 
-## Runtime contract
+## Required states
 
-The page receives a controlled LaunchPlan. It does not browse the filesystem or construct emulator paths itself.
+- loading runtime;
+- loading game;
+- ready to start;
+- playing;
+- paused;
+- saving;
+- save synced;
+- save sync failed;
+- controller connected/disconnected;
+- unsupported browser/runtime;
+- runtime crashed;
+- game asset unavailable;
+- permission denied;
+- exit confirmation only when unsaved work requires it.
 
-The runtime receives only the selected game assets and current-profile save scope exposed through approved Games APIs.
+## Responsive acceptance
+
+Desktop, Tablet, Mobile Portrait and Mobile Landscape are intentional layouts, not scaled copies.
+
+Changing viewport/orientation:
+- keeps the same emulation session;
+- keeps save state;
+- reapplies the correct control layout;
+- never downloads/restarts the ROM solely because orientation changed.
 
 ## Boundaries
 
-- no direct database access
-- no unrestricted library filesystem access
-- no Admin runtime settings
-- no downloader/acquisition controls
-- no universal emulator settings engine
+- no direct DB access;
+- no unrestricted library filesystem access;
+- no Admin runtime settings;
+- no downloader/acquisition controls;
+- no raw BIOS/path/core settings in consumer UI;
+- no runtime-specific DOM scraping;
+- no universal emulator settings engine.
 
-## Platform behavior
+## Visual baseline
 
-Desktop/browser:
-- keyboard and browser Gamepad API where supported.
+The current approved mockups cover Desktop, Tablet, Mobile Landscape, Mobile Portrait, Pause/Quick Menu and Touch Layout Editor.
 
-TV:
-- remote-friendly launch/exit UI;
-- connected controller discovery/assignment;
-- later phone-controller pairing;
-- gameplay chrome should disappear once play starts unless explicitly opened.
-
-Mobile:
-- normal browser-compatible play where supported;
-- later controller-only companion mode for a TV session.
-
-## Open for page review
-
-Decide:
-- viewport/chrome composition
-- desktop/mobile controls
-- fullscreen behavior
-- runtime menu
-- save indication
-- controller mapping UX only if needed by the selected runtime
-- failure/recovery states
+The owner will upload those images into the relevant mockup folders. Text spec wins on conflict.
