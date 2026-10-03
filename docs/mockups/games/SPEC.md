@@ -39,6 +39,18 @@ Do not create a second Games-only search/request/acquisition stack.
 
 The dedicated Games destination exists because Games needs platform browsing, saves, runtime/playability and controller-aware presentation that would overload the normal media Library.
 
+## Games visual-system rule
+
+Games uses Jularr's existing themes and component language.
+
+For player surfaces specifically:
+- do not imitate original console hardware as page chrome;
+- do not wrap emulator screens in fake device/console frames;
+- keep platform-specific UI modern and functional;
+- use the Clean light Jularr skin or Original Jularr skin over the same information architecture.
+
+Platform differentiation comes from behavior, controls, metadata and screen topology, not decorative hardware cosplay.
+
 ## Admin navigation
 
 Planned game-specific Admin surfaces:
