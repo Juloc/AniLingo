@@ -37,7 +37,7 @@ public sealed class MediaCapabilityService(
             var instance = await instanceModules.GetAsync(cancellationToken);
             foreach (var mediaType in WorkMediaTypes.All)
             {
-                if (!instance.IsEnabled(InstanceModuleMedia.For(mediaType)))
+                if (!InstanceModuleMedia.IsCapabilityFamilyEnabled(instance, mediaType))
                 {
                     capabilities[mediaType] = MediaCapability.Hidden;
                 }
