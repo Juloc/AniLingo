@@ -55,11 +55,14 @@ Search is globally accessible from the top/app bar. Activity belongs under Profi
 Remote-first primary destinations:
 - Home
 - Library
+- Games when the Games module is enabled
 - Calendar where useful
 - Search
 - Profile
 
 Learning appears when the TV interaction is meaningful; detailed learning workflows may hand off to phone/tablet.
+
+Optional module destinations disappear when disabled by instance policy, authorization or the active Profile's module preference.
 
 ## 2a. Login and Profile selection
 
