@@ -56,10 +56,13 @@ Supported **manager-style integrations** use one common three-mode ownership con
    - if the external manager cannot be observed when safety depends on it, Jularr fails closed.
 
 2. **Gemeinsam**
+   - this is a **permanently supported advanced mode**, not only a temporary migration state;
    - both systems may perform supported operations, but every mutation is ownership-checked;
    - active releases/downloads, owned paths and recent external mutations can block Jularr work;
    - Jularr may mutate only work/files/jobs it can prove are safe under the adapter contract;
-   - conflicts become actionable Migration/To-Do diagnostics rather than being guessed through.
+   - conflicts become actionable Migration/To-Do diagnostics rather than being guessed through;
+   - the UI labels this mode as advanced and explains that it requires a healthy source connection for reliable conflict detection;
+   - the mode remains available after migration completion as long as the integration stays configured and supports coexistence.
 
 3. **Jularr verwaltet**
    - Jularr owns acquisition/import/naming for the selected ownership scope;
@@ -105,6 +108,27 @@ The preview must show exactly what will change on the source side, for example:
 If the checkbox is cleared, Jularr keeps read-only observation active and warns that the source manager may still act on the Work. The ownership mode can still become **Jularr verwaltet**, but unsafe Jularr mutations remain blocked whenever the adapter detects conflicting source activity.
 
 A revert may automatically re-enable source monitoring only when Jularr previously disabled it and the adapter can prove that state transition. It must not overwrite unrelated manual changes made in the external system.
+
+### Gemeinsamer Betrieb
+
+**Gemeinsam** may be used indefinitely.
+
+It is intended for cases such as:
+- staged migration over a long period;
+- Jularr handling selected acquisitions while Sonarr/Radarr still manage other activity for the same Work;
+- testing Jularr acquisition/import behavior before complete handover.
+
+Requirements:
+- adapter health/observation must be visible;
+- ownership checks run before every supported Jularr mutation;
+- unresolved ownership/conflict evidence blocks rather than guesses;
+- if the external manager cannot be observed, **Gemeinsam fails closed** for new Jularr mutations on the affected Work/scope;
+- while observation is unavailable, Jularr may continue read-only display/diagnostics but must not start new grab/import/rename/replace/delete operations that depend on coexistence safety;
+- queued or in-progress operations that reach a safety boundary must pause/block instead of assuming the external system is idle;
+- recovery is automatic once the adapter is healthy again and ownership can be revalidated;
+- the UI must show the blocked reason explicitly, e.g. `Gemeinsam · Sonarr nicht erreichbar · Änderungen pausiert`;
+- the UI may recommend switching to **Extern verwaltet** or **Jularr verwaltet** when repeated conflicts occur, but must not switch automatically;
+- no timer or forced expiry is attached to the mode.
 
 ### Read-only observation after handover
 
