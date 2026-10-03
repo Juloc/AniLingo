@@ -56,13 +56,14 @@ public sealed class IndexModel(
         Preference = await LoadPreferenceAsync(cancellationToken);
     }
 
-    // Anime is added like in Sonarr. Manga and light novels have no automatic acquisition, so
-    // other profiles request them; the owner keeps the import flows of the card.
+    // Discover has one acquisition action for every supported media kind. Capability policy decides
+    // whether the button means Request or Add; media-specific executors decide how acquisition happens.
     public static string AddAction(MediaAcquisitionKind kind, AcquisitionCapabilities access) =>
-        !access.CanAdd ? ""
-        : kind == MediaAcquisitionKind.Anime ? (access.AddCreatesRequest ? "request" : "add")
-        : access.IsOwner ? ""
-        : "request";
+        !access.CanAdd
+            ? ""
+            : access.AddCreatesRequest
+                ? "request"
+                : "add";
 
     private DiscoverBrowseQuery ParseQuery() =>
         DiscoverBrowseQuery.Parse(key => Request.Query.TryGetValue(key, out var values) ? values.ToString() : null);
@@ -259,9 +260,10 @@ public sealed class IndexModel(
         try
         {
             open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
-                .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
                 .GroupBy(item => (item.Kind, item.ExternalId))
-                .ToDictionary(group => group.Key, group => group.First());
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(item => item.UpdatedAt).First());
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -398,20 +400,37 @@ public sealed class IndexModel(
         return new JsonResult(new { followed = true, franchiseId, franchiseUrl = $"/Franchises/{franchiseId}" });
     }
 
-    /// <summary>Adds (anime, automatic) or requests an AniList title according to its access policy.</summary>
+    /// <summary>
+    /// The one Discover add/request entry point. A profile submits the canonical provider identity shown
+    /// on the card; after policy approval the registered media executor owns search, download and import.
+    /// </summary>
     public async Task<IActionResult> OnPostAddAsync(
         string? category,
+        string? provider,
         string? externalId,
         string? title,
         string? subtitle,
+        string? author,
         string? coverImageUrl,
         CancellationToken cancellationToken)
     {
-        if (category is null ||
-            !Categories.TryGetValue(category, out var kind) ||
-            !int.TryParse(externalId, out var id) ||
-            id <= 0 ||
-            string.IsNullOrWhiteSpace(title))
+        if (category is null
+            || !Categories.TryGetValue(category, out var kind)
+            || string.IsNullOrWhiteSpace(externalId)
+            || string.IsNullOrWhiteSpace(title))
+        {
+            return BadRequest();
+        }
+
+        var canonicalProvider = kind == MediaAcquisitionKind.Book
+            ? Jularr.Web.Features.Books.BookCatalogService.CatalogRequestProvider
+            : AniListMetadataProvider.ProviderKey;
+
+        // AniList-backed media use numeric IDs. Books use the catalog's stable composite identity.
+        if (kind != MediaAcquisitionKind.Book
+            && (!string.Equals(provider, AniListMetadataProvider.ProviderKey, StringComparison.Ordinal)
+                || !int.TryParse(externalId, out var aniListId)
+                || aniListId <= 0))
         {
             return BadRequest();
         }
@@ -421,18 +440,15 @@ public sealed class IndexModel(
             var request = await requests.SubmitAsync(
                 new AcquisitionRequestDraft(
                     kind,
-                    AniListMetadataProvider.ProviderKey,
-                    id.ToString(),
+                    canonicalProvider,
+                    externalId.Trim(),
                     title.Trim(),
-                    string.IsNullOrWhiteSpace(subtitle) ? null : subtitle.Trim(),
+                    kind == MediaAcquisitionKind.Book
+                        ? string.IsNullOrWhiteSpace(author) ? null : author.Trim()
+                        : string.IsNullOrWhiteSpace(subtitle) ? null : subtitle.Trim(),
                     string.IsNullOrWhiteSpace(coverImageUrl) ? null : coverImageUrl.Trim()),
                 cancellationToken);
-            return new JsonResult(new
-            {
-                status = AcquisitionAccessNames.Status(request.Status),
-                message = request.StatusMessage,
-                resultUrl = request.ResultUrl
-            });
+            return new JsonResult(await RequestProgressAsync(request, cancellationToken));
         }
         catch (AcquisitionAccessDeniedException)
         {
@@ -440,12 +456,67 @@ public sealed class IndexModel(
         }
     }
 
+    /// <summary>
+    /// Live acquisition state for a title already visible in Discover. The payload deliberately contains
+    /// no requester identity or approval metadata; requests are title-wide so every viewer sees the same
+    /// download/import progress instead of being offered a duplicate request.
+    /// </summary>
+    public async Task<IActionResult> OnGetRequestStatusAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var request = await requestStore.GetAsync(id, cancellationToken);
+        return request is null
+            ? NotFound()
+            : new JsonResult(await RequestProgressAsync(request, cancellationToken));
+    }
+
+    private async Task<object> RequestProgressAsync(
+        AcquisitionRequest request,
+        CancellationToken cancellationToken)
+    {
+        OperationSnapshot? operation = null;
+        if (request.OperationId is { } operationId)
+        {
+            operation = await new OperationStore(db).GetAsync(operationId, cancellationToken);
+        }
+
+        var status = AcquisitionAccessNames.Status(request.Status);
+        var percent = request.Status switch
+        {
+            AcquisitionRequestStatus.Pending => 0,
+            AcquisitionRequestStatus.Approved => 5,
+            AcquisitionRequestStatus.Searching => 15,
+            AcquisitionRequestStatus.Downloading => operation?.ProgressPercent ?? 35,
+            AcquisitionRequestStatus.Importing => operation?.ProgressPercent is { } importProgress
+                ? Math.Max(80, importProgress)
+                : 90,
+            AcquisitionRequestStatus.Completed => 100,
+            AcquisitionRequestStatus.Rejected => 100,
+            AcquisitionRequestStatus.Failed => 100,
+            _ => 0
+        };
+
+        return new
+        {
+            requestId = request.Id,
+            status,
+            progress = Math.Clamp(percent, 0, 100),
+            message = request.StatusMessage ?? operation?.Message,
+            resultUrl = request.ResultUrl,
+            done = request.Status is AcquisitionRequestStatus.Completed
+                or AcquisitionRequestStatus.Rejected
+                or AcquisitionRequestStatus.Failed
+        };
+    }
+
     private static readonly IReadOnlyDictionary<string, MediaAcquisitionKind> Categories =
         new Dictionary<string, MediaAcquisitionKind>(StringComparer.Ordinal)
         {
             ["anime"] = MediaAcquisitionKind.Anime,
             ["manga"] = MediaAcquisitionKind.Manga,
-            ["light-novel"] = MediaAcquisitionKind.LightNovel
+            ["light-novel"] = MediaAcquisitionKind.LightNovel,
+            ["book"] = MediaAcquisitionKind.Book
         };
 
     public async Task<IActionResult> OnPostImportSourceAsync(

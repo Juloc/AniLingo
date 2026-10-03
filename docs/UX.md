@@ -618,6 +618,20 @@ User detail:
 
 UI is capability-based; avoid scattering hard-coded `IsAdmin` assumptions through pages.
 
+## 26a. Admin Devices & Sessions
+
+Binding specification:
+- `docs/mockups/admin-devices-sessions/SPEC.md`
+
+Devices & Sessions consolidates the current Admin Sessions and Admin Devices surfaces into one cross-user area with:
+- Live Sessions
+- Geräte
+- Anmeldungen & Sicherheit
+
+The Admin Dashboard keeps only the live operational summary. User detail reuses the same data/components filtered to one account/profile, and profile self-service exposes only the current profile's own devices/sessions.
+
+Current device removal is explicitly **not** permanent authentication revocation: the existing KnownDevice registry can forget a device and end matching playback, but a true `Gerät abmelden` requires a revocable per-device authentication/session contract.
+
 ## 27. Admin Requests, Activity and History
 
 Binding screen specifications:

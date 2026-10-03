@@ -262,7 +262,33 @@ public sealed class DiscoverPageTests
         Assert.AreEqual(DiscoverStateKind.Requested, unspecified.State.Kind);
         Assert.AreEqual("Downloading", unspecified.State.Label, "Without a language choice the stage of the request is the state.");
         Assert.AreEqual("downloading", unspecified.RequestStatus);
+        Assert.IsNotNull(unspecified.RequestId);
         Assert.AreEqual("", unspecified.AddAction, "A requested title offers no second request.");
+    }
+
+    [TestMethod]
+    public void BooksUseTheSameDiscoverAcquisitionFlow()
+    {
+        Assert.AreEqual(
+            MediaAcquisitionKind.Book,
+            DiscoverCardFactory.AcquisitionKindOf("book"));
+
+        var context = Context(add: "request") with
+        {
+            AddActions = new Dictionary<string, string>
+            {
+                ["anime"] = "request",
+                ["manga"] = "request",
+                ["light-novel"] = "request",
+                ["book"] = "request"
+            }
+        };
+        var book = DiscoverCardFactory.Create(
+            Item("book", "ol-dune", title: "Dune", details: "/Books/ol-dune"),
+            context);
+
+        Assert.AreEqual("request", book.AddAction);
+        Assert.AreEqual(DiscoverStateKind.NotRequested, book.State.Kind);
     }
 
     [TestMethod]

@@ -57,6 +57,7 @@ public sealed record DiscoverCardView(
     string ExternalId,
     string Title,
     string? NativeTitle,
+    string? Author,
     string Href,
     bool HrefIsExternal,
     string? PosterUrl,
@@ -67,6 +68,7 @@ public sealed record DiscoverCardView(
     bool IsLocal,
     string? RequestStatus,
     string? RequestStatusLabel,
+    Guid? RequestId,
     DiscoverStateView State,
     string? Description,
     IReadOnlyList<string> Genres,
@@ -158,6 +160,7 @@ public static partial class DiscoverCardFactory
             item.ExternalId,
             item.Title,
             string.IsNullOrWhiteSpace(item.NativeTitle) || item.NativeTitle == item.Title ? null : item.NativeTitle,
+            item.Author,
             href,
             IsExternal(href),
             string.IsNullOrWhiteSpace(item.CoverImageUrl) ? null : item.CoverImageUrl,
@@ -168,6 +171,7 @@ public static partial class DiscoverCardFactory
             item.IsLocal,
             open is null ? null : AcquisitionAccessNames.Status(open.Status),
             requestLabel,
+            open?.Id,
             state,
             DiscoverText.Plain(item.Description, DescriptionLimit),
             [.. item.Genres
@@ -200,12 +204,13 @@ public static partial class DiscoverCardFactory
         _ => MediaBannerKind.Book
     };
 
-    /// <summary>The acquisition kind of an AniList category; books have no request flow.</summary>
+    /// <summary>The acquisition kind of a Discover category.</summary>
     public static MediaAcquisitionKind? AcquisitionKindOf(string category) => category switch
     {
         "anime" => MediaAcquisitionKind.Anime,
         "manga" => MediaAcquisitionKind.Manga,
         "light-novel" => MediaAcquisitionKind.LightNovel,
+        "book" => MediaAcquisitionKind.Book,
         _ => null
     };
 
