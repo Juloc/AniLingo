@@ -1,6 +1,8 @@
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
+using Jularr.Web.Features.Acquisition.Release;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.MediaCore;
@@ -213,6 +215,59 @@ public sealed class AcquisitionAccessTests
         CollectionAssert.AreEquivalent(
             new[] { "AZW3, not EPUB or PDF", "not a Usenet release", "title does not match" },
             ranked.Where(release => release.Score == 0).Select(release => release.RejectedBecause).ToArray());
+    }
+
+    [TestMethod]
+    public void BookReleaseSelectorAppliesSharedProfileOnlyAfterIdentityMatch()
+    {
+        ProwlarrReleaseCandidate Release(string title) =>
+            new(
+                title,
+                "idx",
+                1,
+                "usenet",
+                3_000_000,
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                1,
+                1,
+                Guid.NewGuid().ToString(),
+                null,
+                Jularr.Web.Features.Acquisition.Release.ReleaseParser.Parse(title),
+                [],
+                new Uri("https://indexer.example/get/" + Guid.NewGuid()),
+                null);
+
+        var profile = BookQualityProfiles.CreateDefaultBook() with
+        {
+            MustContain = ["retail"]
+        };
+        var ranked = BookReleaseSelector.Rank(
+            [
+                Release("Frank Herbert - Dune EPUB"),
+                Release("Some Other Book retail EPUB"),
+                Release("Frank Herbert - Dune retail EPUB")
+            ],
+            "Dune",
+            "Frank Herbert",
+            profile);
+
+        Assert.AreEqual(
+            "Frank Herbert - Dune retail EPUB",
+            ranked[0].Release.Title);
+        Assert.IsTrue(ranked[0].Score > 0);
+        Assert.AreEqual(
+            "Missing required term 'retail'.",
+            ranked.Single(candidate =>
+                candidate.Release.Title == "Frank Herbert - Dune EPUB")
+                .RejectedBecause);
+        Assert.AreEqual(
+            "title does not match",
+            ranked.Single(candidate =>
+                candidate.Release.Title == "Some Other Book retail EPUB")
+                .RejectedBecause,
+            "A quality-rule match can never override a wrong Book identity.");
     }
 
     [TestMethod]
