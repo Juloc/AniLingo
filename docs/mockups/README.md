@@ -54,6 +54,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `admin-providers/SPEC.md`
 - `admin-ai/SPEC.md`
 - `admin-users-permissions/SPEC.md`
+- `admin-devices-sessions/SPEC.md` — live playback sessions, known devices and authentication/security activity
 - `admin-backup-restore/SPEC.md`
 - `admin-migration/SPEC.md`
 - `admin-acquisition-settings/SPEC.md`
