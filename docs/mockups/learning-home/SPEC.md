@@ -158,7 +158,7 @@ Show:
 - today complete/incomplete;
 - compact weekly/calendar indication where useful.
 
-Streak Freeze may exist only with a clear acquisition/use rule. Do not create a virtual currency/shop merely to support it.
+Streak Freeze is not part of V1. Do not create virtual currency/shop mechanics around Streak.
 
 ## 6. XP
 
@@ -194,7 +194,7 @@ Show:
 - Session Summary XP;
 - progress toward visible global/per-language XP level when enabled.
 
-V1 has no XP store/currency economy.
+XP is persisted only as awarded activity facts under `docs/LEARNING_GAMIFICATION.md`; V1 has no spendable XP balance or currency economy.
 
 ## 7. Levels
 
