@@ -456,24 +456,19 @@ public sealed class IndexModel(
         }
     }
 
-    /// <summary>Live progress for a Discover request. Only its requester or a media manager may read it.</summary>
+    /// <summary>
+    /// Live acquisition state for a title already visible in Discover. The payload deliberately contains
+    /// no requester identity or approval metadata; requests are title-wide so every viewer sees the same
+    /// download/import progress instead of being offered a duplicate request.
+    /// </summary>
     public async Task<IActionResult> OnGetRequestStatusAsync(
         Guid id,
         CancellationToken cancellationToken)
     {
         var request = await requestStore.GetAsync(id, cancellationToken);
-        if (request is null)
-        {
-            return NotFound();
-        }
-
-        if (request.RequestedByProfileId != account.ProfileId
-            && !account.Can(JularrPolicies.AdminMedia))
-        {
-            return Forbid();
-        }
-
-        return new JsonResult(await RequestProgressAsync(request, cancellationToken));
+        return request is null
+            ? NotFound()
+            : new JsonResult(await RequestProgressAsync(request, cancellationToken));
     }
 
     private async Task<object> RequestProgressAsync(
