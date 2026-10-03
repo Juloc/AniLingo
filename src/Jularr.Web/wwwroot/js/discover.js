@@ -466,6 +466,16 @@
 
     async function submitDiscoverRequest(data, button, scope) {
         button.disabled = true;
+        const slot = button.closest("[data-dc-add-slot], [data-dc-card-request-slot]");
+        if (slot) {
+            renderRequestSlot(slot, {
+                status: "searching",
+                progress: 10,
+                done: false
+            });
+        }
+        showRequested(scope, `${statusText("searching")} · 10%`);
+
         try {
             const payload = await postForm(root.dataset.addUrl, {
                 category: data.category,
@@ -477,7 +487,6 @@
                 coverImageUrl: data.cover
             });
 
-            const slot = button.closest("[data-dc-add-slot], [data-dc-card-request-slot]");
             if (slot) {
                 slot.dataset.dcLiveRequest = payload.requestId;
                 slot.dataset.dcLiveStatus = payload.status;
