@@ -82,6 +82,37 @@ The existing Sonarr safety behavior remains the implementation baseline for the 
 
 Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
 
+### Default ownership by integration and media type
+
+Ownership defaults are configured per **integration × media/content type**, not as one coarse switch for the whole integration.
+
+Example:
+- Sonarr + Series/TV → **Extern verwaltet**
+- Sonarr + Anime → **Jularr verwaltet**
+- Jularr may therefore manage Anime while Sonarr remains the default manager for normal TV series.
+
+A manager-style integration may expose only the media/content types it can actually manage.
+
+Resolution precedence:
+1. explicit per-Work ownership override;
+2. integration + media-type default;
+3. Jularr-managed fallback only when no external-manager default applies.
+
+Per-Work override examples:
+- one TV series can be **Jularr verwaltet** even when Series/TV defaults to Sonarr;
+- one Anime Work can be **Gemeinsam** during a staged handover even when Anime defaults to Jularr.
+
+Safety rules:
+- only one external integration may be the effective primary manager for the same Work/scope unless an explicitly supported **Gemeinsam** contract defines the overlap;
+- conflicting defaults are rejected during configuration rather than resolved by arbitrary priority;
+- changing a media-type default shows the number of affected Works and requires preview/confirmation when existing effective ownership would change;
+- existing explicit per-Work overrides are preserved when the default changes unless the admin explicitly resets them.
+
+The UI may present this inside each integration as a compact table such as:
+`Medientyp | Standardverwaltung | Betroffene Works | Overrides`.
+
+Do not force admins to configure thousands of Works individually when a media-type default is sufficient.
+
 ## Main flow
 
 The migration engine uses one normalized plan, but the wizard is **adaptive by source**.
