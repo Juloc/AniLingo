@@ -16,7 +16,7 @@ Exit gate: migrations can target stable canonical contracts; no unresolved polym
 ## Phase 1 — Canonical persistence foundation
 
 1. PostgreSQL-first module-owned EF configurations/indexes/constraints.
-2. Add missing canonical Account/LoginIdentity/Profile/ProfileConnection/Asset/File/Track/Progress/Job schemas.
+2. Add missing canonical Account/LoginIdentity/Profile/ProfileConnection/Asset/File/Track/Progress/Job/Collection schemas plus persistent provider evidence/snapshot storage needed by durable linked features.
 3. Build reversible backfill/validation tooling and migration audit reports.
 4. Keep legacy bridges read-compatible but migration-only.
 
@@ -39,7 +39,7 @@ Exit gate: clients do not need EF/legacy table shapes.
 Implement approved specs using canonical reads only:
 1. Login/Profile Selection and authenticated consumer shell.
 2. Home.
-3. Library + Collections.
+3. Library + approved Manual/Smart/Linked Collections, including local-only Smart evaluation and local Linked rendering.
 4. Discover/Search + Media Preview / Quick View.
 5. Anime/Series, Movie, shared Reading Detail (Book/LN/Manga), and Audiobook detail.
 6. Calendar.
