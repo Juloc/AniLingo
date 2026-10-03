@@ -66,7 +66,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `admin-devices-sessions/SPEC.md` — live playback sessions, known devices and authentication/security activity
 - `admin-backup-restore/SPEC.md`
 - `admin-migration/SPEC.md`
-- `admin-acquisition-settings/SPEC.md`
+- `admin-acquisition-settings/SPEC.md` — integrated Acquisition Profiles, quality/upgrade policy, reusable Release Rules, wait/source policy and score testing
 - `admin-system-diagnostics/SPEC.md`
 - `admin-instance/SPEC.md` — instance module surface + global Admin Detailed/Compact density contract
 - `admin-general-settings/SPEC.md` — instance identity, language/locale/timezone and metadata/regional defaults
