@@ -56,11 +56,6 @@
         </nav>
     }
 
-    @if (TempData["Status"] is string status)
-    {
-        <p class="admrec-status" role="status">@status</p>
-    }
-
     @if (Model.Plan?.ExecutionOperationId is { } executionOperationId)
     {
         <p class="admrec-message"><a asp-page="/Admin/Operation" asp-route-id="@executionOperationId">@ui["admin.reconciliation.openOperation"]</a></p>

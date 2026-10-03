@@ -29,6 +29,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.MediaDetailModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.OperationModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.OperationsModel"] = JularrPolicies.AdminMedia,
+        ["Jularr.Web.Pages.Admin.Reconciliation.IndexModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.RequestsModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.ResourcesModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.ScansModel"] = JularrPolicies.AdminMedia,

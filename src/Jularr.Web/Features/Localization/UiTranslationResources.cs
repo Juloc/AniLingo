@@ -4893,7 +4893,9 @@ public static class UiTranslationResources
             "Hint",
             "Explains that a selected reconciliation entry derives its effective work from an explicitly mapped parent folder.",
             "concise inheritance explanation",
-            56),
+            56,
+            new Dictionary<string, string> { ["path"] = "Root-relative path of the parent entry whose explicit work mapping is inherited." },
+            null),
         M("admin.reconciliation.resetWork", "Remove mapping", "Admin", "Button", "Removes the selected entry's explicit canonical work choice from the reconciliation plan.", "concise admin action", 20),
         M("admin.reconciliation.open", "Reconcile folder", "Admin", "Link", "Starts a safe reconciliation review for the selected configured library root.", "concise admin action", 22),
         M("admin.reconciliation.organization", "Organization", "Admin", "Heading", "Heading for the reconciliation plan's mutually exclusive physical-operation policy.", "clear section heading", 24),
@@ -4928,7 +4930,7 @@ public static class UiTranslationResources
         M("admin.reconciliation.batchReleaseMetadata", "Batch release defaults", "Admin", "Heading", "Heading for applying manual descriptive release values to checked files without changing identity fields.", "clear section heading", 28),
         M("admin.reconciliation.applyReleaseDefaults", "Apply release defaults", "Admin", "Button", "Applies language, audio, subtitle and quality defaults to checked current media files.", "concise admin action", 28),
         M("admin.reconciliation.batchReleaseMetadataSaved", "Release defaults were applied without changing canonical identity fields.", "Admin", "Status", "Confirms batch descriptive release metadata assignment.", "clear non-destructive confirmation", 80),
-        M("admin.reconciliation.openOperation", "Open reconciliation operation", "Admin", "Link", "Opens the Activity detail for the reconciliation execution and its progress or recovery log.", "concise admin action", 28),
+        M("admin.reconciliation.openOperation", "Open reconciliation operation", "Admin", "Link", "Opens the Activity detail for the reconciliation execution and its progress or recovery log.", "concise admin action", 30),
     ];
 
     private static readonly IReadOnlyDictionary<string, UiMessageDefinition> ByKeyMap =
