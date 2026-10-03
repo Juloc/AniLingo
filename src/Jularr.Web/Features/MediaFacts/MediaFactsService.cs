@@ -76,9 +76,9 @@ public sealed class MediaFactsService(AppDbContext db)
             from stream in db.MediaAnalysisStreams.AsNoTracking()
             join media in db.MediaFiles.AsNoTracking() on stream.MediaFileId equals media.Id
             where media.EpisodeId.HasValue &&
-                  episodeIds.Contains(media.EpisodeId.Value) &&
+                  episodeIds.Contains(media.EpisodeId.GetValueOrDefault()) &&
                   stream.Language != null
-            select new { EpisodeId = media.EpisodeId.Value, stream.Kind, stream.Language })
+            select new { EpisodeId = media.EpisodeId.GetValueOrDefault(), stream.Kind, stream.Language })
             .ToListAsync(cancellationToken);
 
         var sidecar = await db.SubtitleTracks

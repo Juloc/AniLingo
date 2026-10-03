@@ -94,7 +94,7 @@ public sealed class AnimeRenameService(
 
         foreach (var mediaFile in mediaFiles)
         {
-            var episode = episodeById[mediaFile.EpisodeId];
+            var episode = episodeById[mediaFile.EpisodeId!.Value];
             var source = Path.GetFullPath(mediaFile.Path);
             if (!roots.TryGetValue(mediaFile.LibraryRootId, out var root))
             {
