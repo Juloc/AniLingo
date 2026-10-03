@@ -88,7 +88,7 @@ Remote-first primary destinations:
 
 - Home;
 - Library;
-- Games when the Games module is enabled;
+- Games when the Games destination is available to the active profile/installation;
 - Calendar where useful;
 - Search;
 - Profile.
