@@ -120,6 +120,8 @@ The next work should therefore not invent additional pages merely to continue pl
 
 The Admin cross-spec consistency pass is now complete at planning-contract level.
 
+Implementation handoff: `docs/implementation/admin-navigation-route-consolidation.md`.
+
 Remaining work is primarily:
 
 - implement the consolidated Admin shell/legacy-route redirects without creating duplicate owners;
