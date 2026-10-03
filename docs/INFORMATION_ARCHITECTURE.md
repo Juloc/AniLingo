@@ -88,11 +88,12 @@ Remote-first primary destinations:
 
 - Home;
 - Library;
+- Games when the Games module is enabled;
 - Calendar where useful;
 - Search;
 - Profile.
 
-Learning appears only where the TV interaction is useful.
+Learning appears only where the TV interaction is useful. Optional module entries disappear when unavailable to the active Profile.
 
 Library uses large remote-friendly media cards and an internal `Library | Collections` switch. Collections is not a second TV top-level destination.
 
