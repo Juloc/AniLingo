@@ -164,7 +164,11 @@ public sealed class IndexModel(
             logger.LogWarning(exception, "The personalized rows could not be loaded for Discover.");
         }
 
-        foreach (var row in board.Rows.Where(row => DiscoverScopes.Includes(Query.Category, row.Category)))
+        var providerRows = Query.Category is DiscoveryCategory.All or DiscoveryCategory.BooksAndLightNovels
+            ? DiscoveryShelfComposer.CombineBooksAndLightNovels(board.Rows)
+            : board.Rows;
+
+        foreach (var row in providerRows.Where(row => DiscoverScopes.Includes(Query.Category, row.Category)))
         {
             rows.Add((row.Id, ShelfHeading(row), row.DeepLinkUrl, row.Items));
         }

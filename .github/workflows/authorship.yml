@@ -4,7 +4,7 @@ name: Authorship
 # so it can be the only required status check on main.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 permissions:

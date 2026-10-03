@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
   push:
-    branches: [main]
+    branches: [main, dev]
     paths-ignore:
       - "clients/android/**"
       - "docs/ANDROID_CLIENTS.md"

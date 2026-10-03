@@ -3,7 +3,10 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReadingAcquisition;
+using Jularr.Web.Features.ReadingDiscovery;
+using Jularr.Web.Features.ReadingSources;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -29,7 +32,9 @@ public sealed class LightNovelAcquisitionExecutorTests
                 var executor = new LightNovelAcquisitionRequestExecutor(
                     null!,
                     null!,
-                    new NovelImportService(db, [source]));
+                    new NovelImportService(db, [source]),
+                    null!,
+                    null!);
 
                 var result = await executor.ExecuteAsync(
                     Request(NcodeNovelSourceProvider.ProviderKey, "n9669bk", payloadJson: null),
@@ -48,6 +53,150 @@ public sealed class LightNovelAcquisitionExecutorTests
     }
 
     [TestMethod]
+    public async Task AniListRequestImportsExactPublicCopyBeforeUsenet()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"jularr-ln-public-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await using var db = new AppDbContext(
+                new DbContextOptionsBuilder<AppDbContext>()
+                    .UseSqlite($"Data Source={Path.Combine(directory, "app.db")};Foreign Keys=True")
+                    .Options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var source = new FakeSyosetu();
+            var catalog = new FakeCatalogProvider(
+                new ReadingCatalogCandidate(
+                    NcodeNovelSourceProvider.ProviderKey,
+                    "n9669bk",
+                    "無職転生",
+                    "無職転生",
+                    "理不尽な孫の手",
+                    null,
+                    2012,
+                    "FINISHED",
+                    null,
+                    26,
+                    "https://ncode.syosetu.com/n9669bk/",
+                    IsPublicWebSource: true));
+            var catalogSearch = new ReadingCatalogSearchService(
+                [catalog],
+                new ReadingSourceHealthTracker(TimeProvider.System),
+                NullLogger<ReadingCatalogSearchService>.Instance);
+            var settings = new ReadingSourceSettingsStore(directory);
+
+            // Null engine proves a matching public source short-circuits Usenet.
+            var executor = new LightNovelAcquisitionRequestExecutor(
+                null!,
+                null!,
+                new NovelImportService(db, [source]),
+                catalogSearch,
+                settings);
+            var payload = new ReadingRequestPayload(
+                "Mushoku Tensei",
+                ["無職転生"],
+                "Rifujin na Magonote")
+            {
+                Searches = 1
+            };
+
+            var result = await executor.ExecuteAsync(
+                Request(
+                    NovelAniListProvider.ProviderKey,
+                    "85470",
+                    JsonSerializer.Serialize(payload, JsonSerializerOptions.Web),
+                    subtitle: "Rifujin na Magonote"),
+                CancellationToken.None);
+
+            Assert.AreEqual(
+                AcquisitionRequestStatus.Completed,
+                result.Status,
+                result.Message);
+            Assert.AreEqual(
+                "https://ncode.syosetu.com/n9669bk/",
+                source.LastUrl);
+            Assert.AreEqual(1, catalog.Calls);
+            var work = await db.NovelWorks.SingleAsync();
+            Assert.AreEqual(
+                $"/Novels/Work/{work.Id}",
+                result.ResultUrl);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void AutomaticPublicImportRequiresExactIdentityAndPublicFullText()
+    {
+        var settings = ReadingSourceSettingsState.Default;
+        var payload = new ReadingRequestPayload(
+            "Mushoku Tensei",
+            ["無職転生"],
+            "Rifujin na Magonote");
+
+        Assert.IsTrue(
+            LightNovelAcquisitionRequestExecutor.CanAutoImport(
+                payload,
+                new ReadingCatalogCandidate(
+                    NcodeNovelSourceProvider.ProviderKey,
+                    "n9669bk",
+                    "無職転生",
+                    null,
+                    "理不尽な孫の手",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "https://ncode.syosetu.com/n9669bk/",
+                    IsPublicWebSource: true),
+                settings));
+
+        Assert.IsFalse(
+            LightNovelAcquisitionRequestExecutor.CanAutoImport(
+                payload,
+                new ReadingCatalogCandidate(
+                    NcodeNovelSourceProvider.ProviderKey,
+                    "n9669bk",
+                    "無職転生 異世界行ったら本気だす",
+                    null,
+                    "理不尽な孫の手",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "https://ncode.syosetu.com/n9669bk/",
+                    IsPublicWebSource: true),
+                settings),
+            "A loose search result may not be imported automatically.");
+
+        Assert.IsFalse(
+            LightNovelAcquisitionRequestExecutor.CanAutoImport(
+                payload,
+                new ReadingCatalogCandidate(
+                    BookWalkerCatalogProvider.ProviderKey,
+                    "bookwalker-id",
+                    "Mushoku Tensei",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "https://bookwalker.jp/",
+                    IsPublicWebSource: false),
+                settings),
+            "Preview/reference sources never become automatic full-text imports.");
+    }
+
+    [TestMethod]
     public async Task SyosetuImportFailureFailsTheRequestWithTheReason()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"jularr-ln-exec-{Guid.NewGuid():N}");
@@ -63,7 +212,9 @@ public sealed class LightNovelAcquisitionExecutorTests
                 var executor = new LightNovelAcquisitionRequestExecutor(
                     null!,
                     null!,
-                    new NovelImportService(db, [new FakeSyosetu(fail: true)]));
+                    new NovelImportService(db, [new FakeSyosetu(fail: true)]),
+                    null!,
+                    null!);
 
                 var result = await executor.ExecuteAsync(
                     Request(NcodeNovelSourceProvider.ProviderKey, "n9669bk", payloadJson: null),
@@ -135,6 +286,24 @@ public sealed class LightNovelAcquisitionExecutorTests
             DateTime.UtcNow,
             "owner",
             DateTime.UtcNow);
+
+    private sealed class FakeCatalogProvider(
+        ReadingCatalogCandidate candidate) : IReadingCatalogProvider
+    {
+        public string Key => candidate.Provider;
+
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<ReadingCatalogCandidate>> SearchAsync(
+            string query,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            IReadOnlyList<ReadingCatalogCandidate> candidates = [candidate];
+            return Task.FromResult(candidates);
+        }
+    }
 
     private sealed class FakeSyosetu(bool fail = false) : INovelSourceProvider
     {
