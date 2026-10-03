@@ -98,18 +98,24 @@ Top chrome:
 - no permanent technical playback details.
 
 Center:
-- large Play/Pause affordance while controls are visible;
-- contextual +/-10 second feedback;
+- large Play/Pause affordance while controls are visible where the platform composition uses an over-video transport;
+- contextual **-10 seconds / +30 seconds** seek feedback;
 - buffering indicator only when buffering is real.
 
 Bottom:
 - current time;
 - timeline / seek bar;
 - duration / remaining time where appropriate;
-- primary transport controls;
-- volume where platform/input supports it;
+- platform-specific transport and settings arrangement as defined below;
+- volume only where the platform/input model calls for a visible volume control;
 - secondary actions for audio, subtitles, quality, speed and display mode;
 - fullscreen where platform supports custom fullscreen.
+
+The global manual seek increments are:
+- **Back: 10 seconds**
+- **Forward: 30 seconds**
+
+Clients must not silently use different default seek increments for the same actions.
 
 Controls auto-hide only during active playback and only when no menu, sheet, learning surface or focused TV control requires them.
 
@@ -137,9 +143,21 @@ Pointer + keyboard first.
 - media fills viewport;
 - top title row is compact;
 - timeline spans most of the bottom width;
-- primary controls sit below/around timeline without a second heavy toolbar;
+- the lower controls are divided into **three independent zones**:
+  1. **left:** volume/mute;
+  2. **center:** Previous, -10 seconds, Play/Pause, +30 seconds, Next;
+  3. **right:** subtitles, audio, quality, speed, chapters, PiP/fullscreen/overflow as supported;
+- the center transport group is geometrically centered in the viewport and does not shift when right-side settings appear/disappear;
+- Play/Pause may be slightly larger than adjacent transport controls, but must not become a giant permanent toolbar centerpiece;
+- volume never moves into the centered transport group;
 - audio/subtitle/quality/speed use compact anchored menus;
 - diagnostics opens as an on-demand side panel or modal, not permanent text.
+
+Preferred Desktop control grammar:
+
+`Volume | Previous · -10 · Play/Pause · +30 · Next | Subtitles · Audio · Quality · Speed · Chapters · PiP · Fullscreen · More`
+
+Timeline sits directly above this control row. Chapter names/thumbnails are not permanently expanded above the timeline; Desktop hover/focus may show the current/hovered chapter preview on demand.
 
 ### Pointer behavior
 - single click on unobstructed video = Play/Pause;
@@ -152,8 +170,9 @@ Pointer + keyboard first.
 
 ### Keyboard baseline
 - Space / K: Play/Pause;
-- Left/Right: short seek;
-- J/L may map to backward/forward seek where supported by the global shortcut policy;
+- Left: -10 seconds;
+- Right: +30 seconds;
+- J/L may map to the same backward/forward increments where supported by the global shortcut policy;
 - Up/Down: volume;
 - M: mute;
 - F: fullscreen;
@@ -174,25 +193,51 @@ Touch-first. Portrait and landscape are intentionally different compositions.
 
 ### Portrait
 - video/media surface occupies the upper available area when not fullscreen;
-- large center Play/Pause;
-- bottom transport uses large touch targets;
-- secondary controls go into a bottom sheet/overflow instead of a dense toolbar;
+- over-video transport centers on **-10 seconds / Play-Pause / +30 seconds**;
+- Previous/Next are not required as permanent portrait controls and may move into the settings/more sheet when width is constrained;
+- secondary controls are consolidated behind a **single Settings gear** rather than a dense icon row;
 - safe areas and browser/PWA chrome are respected;
 - compact title/context at top.
 
 ### Landscape / fullscreen
 - media uses the full safe viewport;
-- controls overlay the media;
+- transport overlays the media and remains centered;
+- preferred narrow layout: **-10 / Play-Pause / +30**;
+- sufficiently wide landscape may add Previous/Next symmetrically around that group;
 - timeline stays reachable without crowding subtitle safe zones;
+- only a Settings gear plus fullscreen/window actions remain outside the transport where possible;
 - learning details use a bottom/side sheet depending on available width.
+
+### Mobile top/window actions
+When the full custom Player owns the screen:
+- **top left: Minimize** — collapse playback into Jularr's bottom mini-player bar and reveal the normal app;
+- **top right: Popout** — move playback into the supported platform popout/PiP/detached-player mode so the app can be hidden/backgrounded where supported;
+- **top right beside Popout: Close** — stop/close the full Player and return to the prior Jularr context.
+
+Minimize, Popout and Close are distinct actions and must not share ambiguous icons/behavior.
+
+### Mobile Settings
+A single Settings gear opens the touch sheet containing supported controls such as:
+- Subtitles;
+- Audio;
+- Quality;
+- Speed;
+- Chapters;
+- Fit / Fill / Zoom;
+- Auto-Skip options;
+- other low-frequency playback settings.
+
+Do not permanently line up all Desktop settings as tiny Mobile buttons.
 
 ### Touch behavior
 - single tap toggles controls only;
 - double tap left = -10 seconds;
-- double tap right = +10 seconds;
+- double tap right = +30 seconds;
 - double tap center must not be overloaded;
 - left vertical gesture may control brightness only where the client can reliably support it;
 - right vertical gesture may control volume only where supported;
+- Mobile has no permanent volume slider when gesture/system volume is available;
+- volume/brightness gestures show brief transient percentage feedback only;
 - pinch controls Fit/Fill/Zoom where supported;
 - screen/control lock disables accidental transport gestures and exposes a clear unlock affordance;
 - interactive subtitle taps take precedence over player gestures.
@@ -210,58 +255,108 @@ No gesture is allowed to silently perform an unsupported platform action.
 
 ## 6. Tablet composition
 
-Tablet keeps the touch interaction model but uses the additional width.
+Tablet keeps the touch interaction model but deliberately does **not** reuse the Desktop control bar.
 
-Portrait:
-- close to Mobile with wider bottom sheets;
-- title and transport may remain visible with more breathing room.
+### Shared Tablet window actions
+- **top left: Minimize** — collapse to the Jularr bottom mini-player and reveal the normal app;
+- **top right: Popout** — use the platform's supported PiP/popout/detached-player mode;
+- **top right beside Popout: Close** — close playback and return to the previous Jularr context.
 
-Landscape:
+### Portrait
+- close to Mobile with wider sheets;
+- over-video transport remains centered;
+- transport baseline: Previous where space allows, -10 seconds, Play/Pause, +30 seconds, Next where space allows;
+- timeline stays below the video-centered transport;
+- low-frequency playback settings live below the timeline or in a touch sheet;
+- no permanent volume slider.
+
+### Landscape
 - full media-first composition;
+- the transport group is centered **on the video**, not in the bottom settings row;
+- preferred transport: **Previous · -10 · Play/Pause · +30 · Next**;
+- below the timeline, show only supported settings such as Subtitles, Audio, Quality, Speed, Chapters and Fullscreen;
+- volume is controlled through system buttons and/or the right-side vertical gesture where supported;
+- brightness may use the left-side vertical gesture where supported;
 - learning details may use a right side sheet while video remains visible;
 - audio/subtitle/quality sheets can be narrower anchored side sheets rather than full-width mobile sheets;
 - no desktop-only hover assumptions.
+
+Tablet controls therefore have two distinct layers:
+1. **video center = transport**;
+2. **below timeline = settings**.
 
 iPadOS Safari/PWA follows the WebKit compatibility rules below.
 
 ## 7. TV composition
 
-Remote-first. TV is not a scaled desktop Player.
+Remote-first. TV is not a scaled Desktop Player and does not use touch/mobile window controls.
 
-### Layout
-- media fills TV safe area;
-- very large center Play/Pause when controls are shown;
-- one clear bottom timeline row;
-- one clear row of primary/secondary actions;
-- title/context is short and readable at distance;
-- no tiny status icons or pointer-only tooltips.
+### TV layout hierarchy
+- media fills the TV safe area;
+- compact title/context at the top only while chrome is visible;
+- contextual **Skip Intro/Recap/Outro/Credits** appears as a large first-class focusable action near the lower-right safe area;
+- one wide timeline row sits above the control rows;
+- played, buffered, remaining, chapter markers and eligible skip segments remain distinguishable at viewing distance;
+- current/duration times remain readable but subordinate;
+- below the timeline, the **primary transport row is geometrically centered**:
+  **Previous · -10 seconds · Play/Pause · +30 seconds · Next**;
+- a second centered row contains supported settings:
+  **Subtitles · Audio · Quality · Speed · Chapters · More**;
+- do not show a volume slider as a primary TV control; TV/system volume remains owned by the device/remote unless the platform specifically exposes in-app volume;
+- no tiny status icons, hover-only affordances or dense Desktop menus.
 
-### Focus
+### TV focus
 Focused controls use the approved TV language:
 - strong accent focus ring/glow;
 - modest scale/lift;
 - high contrast;
-- predictable D-pad path with no traps.
+- clear selected label/state;
+- predictable D-pad path with no traps;
+- focused control remains fully inside TV safe areas.
 
-### Remote behavior
-- Play/Pause key directly toggles playback;
-- media seek keys seek directly where available;
-- Left/Right while timeline/seek mode is focused moves through time with visible feedback;
-- Up/Down moves between control rows/panels;
-- Back closes the deepest open panel first, then player controls/fullscreen context, then exits Player;
-- no action requires a mouse or hover state.
+Default focus when controls first appear should land on Play/Pause unless a contextual action such as Skip Intro was explicitly invoked/focused by policy.
 
-Audio/subtitle/quality/speed open large focusable panels.
+### TV remote behavior
+- hardware/media Play/Pause key directly toggles playback;
+- dedicated seek keys use the canonical increments where applicable: **back 10 seconds / forward 30 seconds**;
+- when the primary transport row is focused, Left/Right moves focus between transport actions rather than unexpectedly seeking;
+- selecting -10/+30 performs one discrete seek with visible feedback;
+- when the timeline enters explicit seek/scrub mode, Left/Right adjusts time with clear on-screen position feedback;
+- Up/Down moves predictably between timeline, transport row and settings row;
+- OK/Select activates the focused action;
+- Back closes the deepest open panel first, then exits seek mode/chrome, then leaves Player according to platform navigation policy;
+- no action requires a mouse, hover state or text cursor.
 
-Learning mode must be usable with D-pad focus. Dense dictionary content should not cover the whole media surface unless the user explicitly opens details.
+### TV settings panels
+Audio, Subtitles, Quality, Speed and Chapters open large remote-focusable panels/lists:
+- current selection is obvious;
+- focus returns to the invoking control when the panel closes;
+- Chapters shows chapter title and start time with the current chapter selected;
+- panels never expose technical codec/transcode details unless Diagnostics is explicitly opened through More.
+
+### TV learning
+Learning mode must be usable with D-pad focus.
+- interactive subtitle focus must not collide with transport focus;
+- opening a word/sentence detail pauses or preserves playback according to the shared learning policy;
+- dense dictionary/explanation content opens in a dedicated remote-safe panel rather than covering the entire media surface by default;
+- Back returns from learning detail to the same playback position/session.
+
+### TV seek feedback
+A discrete remote seek shows a short transient overlay such as:
+- `-10s`
+- `+30s`
+
+Repeated presses may accumulate visually while the seek is being applied, but the canonical single-step increments remain 10 seconds backward / 30 seconds forward.
 
 ### TV mockup states required
 1. playing with controls visible;
-2. strong focused transport action;
-3. seek state;
-4. subtitle/audio panel;
-5. learning overlay;
-6. playback failure/retry state.
+2. focused Play/Pause transport action;
+3. explicit timeline seek/scrub state;
+4. subtitle/audio/quality panel;
+5. Chapters panel;
+6. contextual Skip Intro action focused;
+7. learning overlay;
+8. playback failure/retry state.
 
 ## 8. iOS / iPadOS WebKit path
 
@@ -539,12 +634,18 @@ No recommendation wall should obscure completion controls.
 
 Leaving the full Player through normal Jularr navigation should preserve the ActiveSession where technically feasible.
 
-Desktop/tablet:
-- compact Now Playing bar with thumbnail, title/unit, progress, Play/Pause and return-to-player action.
+Desktop:
+- compact Now Playing bar with thumbnail, title/unit, progress, Play/Pause and return-to-player action where the Desktop app uses continuation.
+
+Tablet:
+- **Minimize** from the full Player reveals the normal Jularr app and collapses playback into a bottom Now Playing bar;
+- bar contains thumbnail, title/unit, progress, Play/Pause and return-to-player/maximize action;
+- Popout remains a separate action and must not be conflated with Minimize.
 
 Phone:
-- compact bar above bottom navigation;
-- thumbnail/title + Play/Pause + close;
+- **Minimize** reveals the normal Jularr app and collapses playback into a compact bar above bottom navigation;
+- thumbnail/title + Play/Pause + close + return-to-player as space permits;
+- Popout remains a separate supported-platform action;
 - never cover navigation, keyboard, sheets or safe areas.
 
 Rules:
@@ -671,7 +772,12 @@ A Player mockup is acceptable only when:
 - normal, subtitle and learning layers are visibly separable;
 - Desktop click behavior can be implemented without ambiguity;
 - Mobile gesture/tap regions do not conflict with learning subtitles;
-- TV has a complete D-pad focus path;
+- Desktop transport remains centered independently from left-side volume and right-side settings;
+- Tablet/Mobile Minimize, Popout and Close are visibly distinct;
+- Tablet transport is centered over the video while settings remain below the timeline;
+- Mobile settings collapse behind a single gear rather than copying the Desktop icon row;
+- all manual seek affordances use -10 seconds backward / +30 seconds forward;
+- TV has a complete D-pad focus path with centered transport and a second settings row;
 - audio/subtitle/quality are accessible without persistent clutter;
 - Light/Dark contrast behavior is defined;
 - played/buffered/remaining timeline states are visually distinct;
