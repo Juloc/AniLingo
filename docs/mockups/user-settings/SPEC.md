@@ -79,6 +79,7 @@ No large dashboard tiles.
 - Ratings
 
 #### Personal features
+- Modules & Features
 - Learning
 - Notifications
 - AI & Personal Providers
@@ -378,9 +379,94 @@ Optional:
 
 Do not add per-media rating systems.
 
-## 12. Learning
+## 12. Modules & Features
 
-Only visible when the instance enables Learning and the profile may use it.
+Purpose: let each user/profile personally enable or disable the optional Jularr modules that the instance owner has made available to them.
+
+This is a **personal preference layer**, not an authorization system.
+
+### Resolution order
+
+Effective user-facing module availability is:
+
+```text
+instance module enabled
+AND user/role/capability permitted
+AND profile module preference enabled
+AND feature-specific settings/capabilities enabled
+```
+
+Rules:
+- the instance switch is the hard upper bound;
+- permissions/capabilities remain authoritative;
+- a user toggle can only **narrow** what is available, never grant access;
+- a module disabled by the instance does not appear as a toggle the user can re-enable;
+- a module forbidden by permissions does not become available through this page;
+- enabling a personal module restores only features the profile is otherwise allowed to use.
+
+### Module list
+
+Show only modules that are:
+- enabled by the instance;
+- meaningful for the current user/profile;
+- permitted for the current user.
+
+Examples can include:
+- Anime;
+- Movies;
+- TV;
+- Manga;
+- Novels / Light Novels;
+- Books;
+- Audiobooks;
+- Learning;
+- Acquisition / Requests where the user has access;
+- Tracking / external progress where the user has access;
+- future optional user-facing modules.
+
+Each row contains:
+- module name;
+- concise description;
+- personal On/Off toggle;
+- optional link to the module's detailed settings when On.
+
+### Personal Off behavior
+
+Turning a module Off for the profile:
+- hides its normal navigation and user-facing surfaces for that profile;
+- stops profile-specific notifications, sync or background work owned by that module where applicable;
+- preserves all stored user/domain data;
+- does not disable shared instance services needed by other users;
+- does not delete media, progress, learning history, connections or configuration.
+
+Turning it back On restores the preserved state subject to current instance policy and permissions.
+
+### Defaults / migration
+
+For compatibility:
+- an instance-enabled, permitted module defaults to personally **On** unless an existing module-specific profile setting already represents an explicit opt-out;
+- existing explicit user choices must be preserved when the generic module preference layer is introduced.
+
+### Relationship to detailed settings
+
+The module toggle answers only **whether this profile uses the module**.
+
+Detailed settings remain owned by their existing pages:
+- Learning modes/capabilities stay under Learning;
+- playback behavior stays under Playback;
+- provider credentials stay under AI/Connections;
+- media-type display/preferences stay in their owning settings.
+
+Do not duplicate detailed feature settings on Modules & Features.
+
+## 13. Learning
+
+Visible only when:
+- the instance enables Learning;
+- the profile is permitted to use Learning;
+- the profile's Learning module preference is On.
+
+If the profile turns Learning Off in Modules & Features, this page is hidden/inactive but its stored Learning configuration is preserved.
 
 ### Personal Learning
 - enable/show Learning for this profile where personal opt-out is supported
@@ -395,9 +481,15 @@ Only visible when the instance enables Learning and the profile may use it.
 - enable media-derived learning interactions
 - subtitle/reader learning interaction preferences
 
-No XP/gamification configuration unless that product direction is explicitly added later.
+### Gamification
+Where V1 Learning gamification is enabled by product/instance policy:
+- enable/disable gamification for this profile;
+- Daily Goal preferences;
+- XP/Streak/Achievement presentation preferences where supported.
 
-## 13. Notifications
+Turning gamification Off must not disable courses, lessons, reviews, vocabulary, sentences or media learning.
+
+## 14. Notifications
 
 This page configures delivery preferences, not release/acquisition logic.
 
@@ -430,7 +522,7 @@ Where supported:
 
 Instance-disabled channels do not appear as broken toggles.
 
-## 14. AI & Personal Providers
+## 15. AI & Personal Providers
 
 Only visible when personal AI/providers are allowed by instance policy.
 
@@ -462,7 +554,7 @@ Server/shared AI configuration remains Admin-only.
 
 Never reveal stored secret values after save.
 
-## 15. Connections
+## 16. Connections
 
 External user-facing account integrations.
 
@@ -485,7 +577,7 @@ For bidirectional sync, define conflict policy explicitly rather than silently o
 
 External IDs never replace canonical Work/Profile identity.
 
-## 16. Devices & Sessions
+## 17. Devices & Sessions
 
 Own devices and own sessions only.
 
@@ -519,7 +611,7 @@ Optional inactive devices can be collapsed.
 
 This page owns device/session management; Activity tab does not duplicate Current Session cards.
 
-## 17. Profile & Privacy
+## 18. Profile & Privacy
 
 ### Profile
 - nickname/display name
@@ -551,7 +643,7 @@ Clearing history must not automatically reset MediaProgress.
 
 Destructive actions require confirmation with explicit scope.
 
-## 18. Account & Security
+## 19. Account & Security
 
 Authentication/account controls only.
 
@@ -580,7 +672,7 @@ Destructive account actions:
 - re-authentication where appropriate
 - explain whether profile data, ratings, history and progress are deleted
 
-## 19. Settings search
+## 20. Settings search
 
 Search indexes:
 - setting page names
@@ -599,7 +691,7 @@ Selecting a result opens the owning setting page and focuses/highlights the row.
 
 Search never creates a second editable copy of the setting.
 
-## 20. Account footer
+## 21. Account footer
 
 At the end of Settings landing:
 
@@ -610,19 +702,24 @@ At the end of Settings landing:
 
 Logout is also available from the Desktop account popover.
 
-## 21. Policy behavior
+## 22. Policy behavior
 
 Instance policy always wins.
 
-If a whole capability is unavailable:
-- hide its setting page.
+Personal module preferences sit below instance policy and authorization:
+- users may switch an available/permitted module On or Off for themselves;
+- users cannot use that switch to bypass an instance-disabled module or missing permission;
+- a personal Off state preserves data and can be reversed later.
+
+If a whole capability/module is unavailable because of instance policy or permission:
+- hide its detailed setting page and do not offer an enable control for it.
 
 If a user can see a feature but cannot change one policy-controlled value:
 - show the effective value with a short explanation.
 
 Do not expose raw policy names, authorization internals or Admin configuration.
 
-## 22. Loading / errors
+## 23. Loading / errors
 
 Settings shell and page navigation should load independently.
 
@@ -632,7 +729,7 @@ Settings shell and page navigation should load independently.
 - one failed optional integration does not break all Settings
 - invalid data never silently resets to defaults
 
-## 23. Navigation / Back
+## 24. Navigation / Back
 
 - Settings landing preserves search and scroll state
 - setting-page Back returns to Settings landing
@@ -640,7 +737,7 @@ Settings shell and page navigation should load independently.
 - Mobile uses normal contextual Back
 - browser/system Back matches visible Back behavior
 
-## 24. Light / Dark
+## 25. Light / Dark
 
 Every standard setting component must work in Light and Dark through shared tokens.
 
@@ -648,7 +745,7 @@ Appearance changes can apply immediately.
 
 No setting page requires its own bespoke theme styling.
 
-## 25. Mockup policy
+## 26. Mockup policy
 
 **No dedicated Settings mockup is required before implementation.**
 
@@ -662,7 +759,7 @@ Create a mockup later only when:
 
 This exception does not waive final UX review before merging a materially different Settings implementation.
 
-## 26. Must not implement
+## 27. Must not implement
 
 - no disconnected Settings shell
 - no second profile/account navigation system
@@ -679,5 +776,8 @@ This exception does not waive final UX review before merging a materially differ
 - no provider secret readback
 - no giant dashboard tiles
 - no bespoke control design for each page
+- no user module toggle that can override instance policy or authorization
+- no per-module ad-hoc personal enable/disable stores when the generic profile module preference can own that concern
+- no data deletion when a user merely turns a module Off
 
 Text specification wins over implementation interpretation if a conflict appears.

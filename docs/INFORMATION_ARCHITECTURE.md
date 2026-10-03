@@ -193,9 +193,27 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 
 
 **Admin → Instance** is the owner-only server-wide module surface. A module appears there only when
-its full runtime gate is implemented. The instance switch has higher precedence than per-user media
-capabilities and per-profile feature settings; disabled modules are hidden rather than shown as
-unavailable. All current instance modules are exposed: Anime, Movies, TV, Manga, Novel, Books, Audiobooks, Learning, Acquisition and Tracking.
+its full runtime gate is implemented. The instance switch is the hard upper bound.
+
+**User Settings → Modules & Features** is the personal module surface. For modules that the instance
+has enabled and the current user is permitted to use, the profile may independently turn the module
+On or Off. A personal toggle can only narrow availability; it never bypasses instance policy,
+role/permission checks or media capabilities.
+
+Effective user-facing resolution is:
+
+```text
+instance module -> authorization/capability -> profile module preference -> detailed feature setting
+```
+
+Instance-disabled or forbidden modules are hidden rather than shown as switches the user could
+re-enable. Personal Off preserves data and detailed settings, hides the module for that profile and
+stops profile-specific work where applicable; it does not disable shared instance work for other
+users. Re-enabling restores the preserved profile state subject to current policy.
+
+All current instance modules are exposed in Admin → Instance: Anime, Movies, TV, Manga, Novel, Books,
+Audiobooks, Learning, Acquisition and Tracking. Their personal toggles appear only where the module is
+meaningful and permitted for that profile.
 
 ## 5. Parity matrices
 

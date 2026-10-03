@@ -6,9 +6,18 @@ GitHub issue #226 is the umbrella backlog. This file describes durable architect
 
 Jularr is a Watch / Read / Discover application first. Learning is optional and must not leak into normal media UX when it is disabled.
 
-Learning assistance and active study are separate:
+Learning has two hard availability gates before its detailed scope modes:
+1. the **instance Learning module** must be enabled;
+2. the **profile Learning module preference** must be On and the user must be permitted to use Learning.
 
-- Off: no learning surfaces unless a lower scope explicitly opts in.
+A profile may turn Learning Off/On for itself only when the instance makes Learning available. This
+personal module preference is stronger than the Learning scope hierarchy below: when personally Off,
+no lower media/work/content scope may re-enable Learning until the profile turns the module back On.
+Stored courses, cards, progress and detailed Learning settings are preserved.
+
+Once the hard gates pass, Learning assistance and active study are separate:
+
+- Off: no Learning surfaces at this scope unless a lower scope explicitly opts in.
 - Language Tools: lookup, readings, translation and optional explanations without review obligations.
 - Study: vocabulary, reviews, sentence practice and progress in addition to language tools.
 - Custom: no capabilities enabled by default; the user explicitly selects them.
@@ -28,10 +37,12 @@ Each lower scope can override the Learning mode. No mode row means Inherit.
 
 Capabilities are independently tri-state in the UI: Inherit, On or Off. In persistence, Inherit is represented by the absence of an override row.
 
-Resolution works in two phases:
+Resolution works after the instance/profile module gates:
 
-1. The nearest mode override in the hierarchy chooses the base capability set.
-2. Explicit capability overrides are applied broad-to-specific.
+1. Resolve instance Learning enabled.
+2. Resolve authorization and the profile Learning module preference.
+3. The nearest Learning mode override in the hierarchy chooses the base capability set.
+4. Explicit Learning capability overrides are applied broad-to-specific.
 
 This permits examples such as global Off with Study enabled for one Japanese book, or Study globally with sentence practice disabled only for Anime.
 

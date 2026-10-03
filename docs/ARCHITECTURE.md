@@ -200,13 +200,35 @@ runtime contract is `IInstanceModuleService` / `InstanceModuleStore`, persisted 
 Resolution order is:
 
 ```text
-instance module -> profile/media capability -> feature/profile setting
+instance module
+-> authorization / media capability
+-> profile module preference
+-> feature/media-scope setting
 ```
+
+The instance module is the hard upper bound. Authorization/capability can further restrict access.
+The **profile module preference** is a generic personal opt-in/opt-out layer: a user may turn an
+instance-enabled, permitted module Off or back On for their own profile, but can never use that
+preference to grant themselves a module disabled by the instance or forbidden by authorization.
+
+Profile module preferences must be durable and generic rather than reimplemented as a different
+boolean store for every module. Existing module-specific settings (for example Learning modes and
+media-scope overrides) remain the source of detailed behavior and are resolved only after the generic
+profile module preference is On.
+
+A personal module Off:
+- hides that module's user-facing navigation/surfaces for the profile;
+- stops only profile-specific work/sync/notifications owned by that module where applicable;
+- preserves all existing user/domain data and detailed settings;
+- does **not** stop shared instance work needed by other profiles.
+
+Re-enabling restores preserved state subject to current instance policy and authorization.
 
 A module switch is exposed in **Admin → Instance** only after that module's complete vertical slice
 uses the same gate for navigation, routes/API, application services and background work. Disabling a
-module preserves its stored data; re-enabling restores access. Queued/retryable jobs must re-check
-the module before doing work rather than relying only on the state at enqueue time.
+module at instance level preserves its stored data; re-enabling restores access. Queued/retryable jobs
+must re-check the instance module before doing work rather than relying only on the state at enqueue
+time.
 
 Implemented verticals currently include:
 - **Learning** — hides Learning navigation/routes and stops learning assistance, vocabulary/text preparation and Learning client capabilities.
