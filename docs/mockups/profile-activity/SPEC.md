@@ -10,7 +10,7 @@ It is not a social profile, analytics dashboard or Admin session monitor.
 
 The Profile area should answer:
 
-1. Which profile/account am I using?
+1. Which Profile am I using, and which Account owns the session?
 2. What have I recently watched, read or listened to?
 3. What am I currently consuming?
 4. Which of my devices/sessions are active?
@@ -77,11 +77,21 @@ Show:
 
 Optional role/restriction information appears only when useful for navigation. Do not show permission dumps, database IDs, server information or giant statistics.
 
+### Account vs Profile
+
+The authenticated Account and active Profile are distinct.
+
+- Account owns authentication/security, linked login identities and account-level authorization.
+- Profile owns personal media state/preferences.
+- Account identifier/email appears only where genuinely useful and must not be confused with the Profile display name.
+
 ### Profile switching
 
-If several local profiles are available, the current profile is obvious and switching uses a compact dialog/sheet. Switching changes all profile-scoped progress, activity and preferences. Histories are never merged between profiles.
+If several Profiles are available, `Switch profile` opens the shared picker defined in `docs/mockups/login-profile-selection/SPEC.md`.
 
-TV may prioritize profile switching more strongly than Desktop.
+Switching keeps the Account session but changes all Profile-scoped progress, activity, ratings, preferences, Learning state and personal Connections. Histories are never merged between Profiles.
+
+Desktop/Mobile may direct-start when exactly one Profile is usable. TV prioritizes the picker on shared screens.
 
 ## 2. Activity / History
 
@@ -193,9 +203,14 @@ Entering Admin changes to the Admin information architecture. Admin widgets neve
 
 Deleting Activity does not automatically reset Progress. Reset Progress is an explicit separate confirmed action.
 
-## Light / Dark
+## Visual style / Light / Dark
 
-Both are first-class. Light uses white/soft-gray surfaces and restrained Jularr accent. Dark keeps the same hierarchy on deep neutral surfaces. Media artwork provides most visual color.
+This page uses the global visual-style contract:
+- Clean and Original Jularr share the same layout/components;
+- Light/Dark/System are supported in both;
+- accent uses shared semantic tokens.
+
+Clean remains neutral and decoration-free. Original Jularr may apply its approved Japanese decorative skin where it does not compete with media/profile content.
 
 ## Desktop
 
