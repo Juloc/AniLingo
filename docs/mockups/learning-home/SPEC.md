@@ -136,16 +136,17 @@ Canonical goal, active-time and streak semantics are defined in `docs/LEARNING_G
 
 The user may configure a preferred target using combinations of:
 - XP;
-- learning minutes;
-- meaningful task/session completion.
+- active learning minutes;
+- meaningful completed Learning sessions.
 
-Jularr can expose one normalized Daily Goal completion state while retaining the component metrics.
+Jularr exposes one normalized Daily Goal completion state while retaining the component metrics. It reaches 100% only when every configured component target is satisfied.
 
 Example:
 - 42 / 60 XP;
-- 18 / 20 minutes;
-- Reviews complete;
-- Lesson still open.
+- 18 / 20 active minutes;
+- 1 / 2 meaningful sessions.
+
+Specific tasks such as finishing due Reviews or continuing a Lesson belong to the **Daily Plan**, not to the Daily Goal persistence contract.
 
 ### Streak rule
 
