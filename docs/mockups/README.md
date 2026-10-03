@@ -29,6 +29,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `language-edition-selector/SPEC.md` — shared language/Edition dialog/sheet
 - `person-creator/SPEC.md` — secondary Person/Creator view
 - `login-profile-selection/SPEC.md` — account login, external identities and Profile selection
+- `continuation-surfaces/SPEC.md` — persistent Now Playing and Continue Reading surfaces
 
 ## Admin screen contracts
 

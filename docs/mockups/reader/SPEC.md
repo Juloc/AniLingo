@@ -737,27 +737,70 @@ Use small contextual empty states inside the relevant sheet/panel rather than re
 
 ## 23. Continuation surface
 
-Leaving the full Reader through normal navigation should retain a compact Continue Reading surface where technically feasible.
+Binding shared specification: `docs/mockups/continuation-surfaces/SPEC.md`.
 
-Desktop/Tablet:
+Leaving the full Reader may expose a compact **Continue Reading** surface derived from canonical `MediaProgress` and the exact Reader locator.
+
+Continue Reading is not an active-player toolbar.
+
+### Desktop / wide Tablet
+
+Show:
+
+- thin informational reading-progress line at the top;
+- subtle chapter/section markers where meaningful;
 - cover;
-- Work title;
-- chapter/section;
-- progress;
-- Continue.
+- bold Work title;
+- current structure, e.g. `Vol. 4 · Ch. 28 — The Ruined Shrine`;
+- exact useful position, e.g. `Page 5 / 29 · 17%`;
+- one primary `Continue Reading` action;
+- explicit Dismiss `×`.
 
-Mobile:
-- compact bar above bottom navigation;
-- title + current chapter/page;
-- Continue;
-- explicit close/dismiss.
+Hover/focus over the cover may expose **Open Reader**.
 
-Rules:
-- return restores the exact canonical locator;
-- no second progress store;
-- continuation derives from canonical Reader/MediaProgress state.
+Cover, title, Open Reader and Continue Reading all restore the same exact canonical locator.
 
-TV may expose Continue Reading as a browse card rather than a persistent mini surface.
+Do **not** add:
+- Previous/Next chapter controls;
+- page backward/forward;
+- typography controls;
+- bookmarks;
+- TOC;
+- Reader settings;
+- a generic `...` overflow.
+
+The progress line is informational here and is not directly scrubbable.
+
+### Mobile
+
+Use one compact row above bottom navigation:
+
+- cover;
+- title;
+- concise chapter/section;
+- page/position + percentage where useful;
+- compact Continue Reading action/icon;
+- Dismiss `×`.
+
+At narrow width the Continue action may be icon-only with an accessible `Continue Reading` label.
+
+Do not create a second row of Reader controls.
+
+### Dismiss behavior
+
+Dismiss hides only this continuation surface.
+
+It must not:
+- reset/delete `MediaProgress`;
+- remove bookmarks/history;
+- mark the content complete;
+- forget the exact resume locator.
+
+### TTS
+
+When TTS is actively playing, it is an active audio session and uses **Now Playing** instead. Do not stack Continue Reading below/above active Now Playing.
+
+TV may expose Continue Reading as a normal browse card rather than a persistent bottom surface.
 
 ## 24. Accessibility
 

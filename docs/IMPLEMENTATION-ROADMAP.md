@@ -54,7 +54,7 @@ Do not add acquisition internals to consumer pages.
 3. Web/Desktop/Mobile/Tablet/TV/iOS-WebKit Player compositions from the Player spec.
 4. Reader document/locator contract and exact autosave/restore.
 5. Edition/language switching and Translation integration.
-6. Persistent mini-player/reader only after canonical session state works.
+6. Implement the approved `continuation-surfaces/SPEC.md` only after canonical ActiveSession and Reader/MediaProgress state work; no separate mini-player/reading state store.
 
 This phase resolves the foundation required by #403 and #662.
 

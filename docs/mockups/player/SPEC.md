@@ -695,30 +695,54 @@ No recommendation wall should obscure completion controls.
 
 ## 18. Continuation / mini-player
 
-Leaving the full Player through normal Jularr navigation should preserve the ActiveSession where technically feasible.
+Binding shared specification: `docs/mockups/continuation-surfaces/SPEC.md`.
 
-Desktop:
-- compact Now Playing bar with thumbnail, title/unit, progress, Play/Pause and return-to-player action where the Desktop app uses continuation.
+Leaving the full Player through Minimize or normal Jularr navigation may preserve the same `ActiveSession` in the persistent **Now Playing** surface.
 
-Tablet:
-- **Minimize** from the full Player reveals the normal Jularr app and collapses playback into a bottom Now Playing bar;
-- bar contains thumbnail, title/unit, progress, Play/Pause and return-to-player/maximize action;
-- Popout remains a separate action and must not be conflated with Minimize.
+### Desktop
 
-Phone:
-- **Minimize** reveals the normal Jularr app and collapses playback into a compact bar above bottom navigation;
-- thumbnail/title + Play/Pause + close + return-to-player as space permits;
-- Popout remains a separate supported-platform action;
-- never cover navigation, keyboard, sheets or safe areas.
+The compact Now Playing bar uses:
 
-Rules:
-- return opens the same ActiveSession;
+- a full-width top progress line with played, buffered and remaining state;
+- chapter/segment markers where available;
+- hover-revealed scrub handle with seek/time/chapter preview;
+- thumbnail first;
+- bold Work title;
+- structural unit line such as `S1 · E4 — Episode name`;
+- current / duration such as `5:29 / 25:25`;
+- geometrically centered transport: **Previous · -10 · Play/Pause · +30 · Next**;
+- right-side direct settings icons while space permits;
+- one Settings gear/menu for overflow/low-frequency actions;
+- **volume slider inside Settings in this compact state**, not as a permanent bar control.
+
+Hover/focus on the thumbnail exposes **Open full Player**. Opening it returns to the exact same `ActiveSession`.
+
+The centered transport must not move when left metadata or right settings width changes.
+
+### Mobile / narrow Tablet
+
+Use a compact two-level composition when necessary:
+
+1. identity/action row with thumbnail, title/unit, open-player and Close/Stop;
+2. centered transport.
+
+Prefer **Previous · -10 · Play/Pause · +30 · Next**. If width cannot preserve touch-target size, keep **-10 · Play/Pause · +30** centered and move Previous/Next into the action/settings sheet.
+
+The progress line remains at the top. Settings use a touch sheet. No permanent volume slider.
+
+### Session rules
+
+- return opens the same `ActiveSession`;
 - progress updates live;
-- Close/Stop is explicit;
-- selected audio/subtitle/quality state is preserved;
-- no separate mini-player progress/session store.
+- selected audio/subtitle/quality/speed/Learning state remains session-owned;
+- Close/Stop explicitly ends this playback session but does not delete progress or mark completion by itself;
+- no separate mini-player progress/session store;
+- navigation/refresh can restore the bar only from a still-valid server-authoritative ActiveSession;
+- Minimize, Popout/PiP and Close/Stop remain distinct actions.
 
-TV baseline does not require a floating mini-player overlay across browse screens; any continuation behavior must still use the same ActiveSession contract.
+Audiobook and actively playing TTS use the same Now Playing transport semantics.
+
+TV does not require a persistent floating mini-player across browse screens.
 
 ## 19. Light / Dark
 
