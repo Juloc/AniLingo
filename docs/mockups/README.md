@@ -25,6 +25,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `user-settings/SPEC.md`
 - `profile-activity/SPEC.md`
 - `add-request-flow/SPEC.md`
+- `request-status-details/SPEC.md` — consumer Request status/detail sheet
 - `language-edition-selector/SPEC.md` — shared language/Edition dialog/sheet
 - `person-creator/SPEC.md` — secondary Person/Creator view
 
