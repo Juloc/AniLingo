@@ -177,7 +177,18 @@ A discovery result is not automatically a library item.
 Owns static/smart collections of canonical Work references.
 
 ### Accounts
-Owns authentication, profiles, authorization and user/group policy.
+Owns authentication, Accounts, Profiles, linked login identities, profile selection, authorization and user/group policy.
+
+Boundary rules:
+- Jularr Account ID is always internal/provider-independent.
+- External login adapters authenticate/link `AccountLoginIdentity`; they do not become Account IDs.
+- Login establishes an Account session; the selected Profile is a separate server-authoritative context.
+- Profile-scoped progress/history/ratings/preferences/connections resolve through the active Profile.
+- Account roles/capabilities and security remain Account-level unless a policy explicitly restricts a Profile.
+- Switching Profile does not create a new Account session and must never merge personal state.
+- Login-provider capability and personal sync/Connection capability are separate adapter capabilities.
+- Auto-provisioned external-login Accounts receive only configured conservative defaults; external auth can never imply Owner/Admin authority.
+- Passkeys authenticate Accounts; Profile PINs only guard Profile activation.
 
 ### Devices
 Owns registered clients, capabilities and cross-device targeting/handoff metadata.
@@ -337,6 +348,8 @@ Do not create a different ad-hoc hosted service + status table for every feature
 Use capability-specific provider ports rather than one enormous universal provider interface.
 
 Examples:
+- `IIdentityLoginProvider`
+- `IProfileConnectionProvider`
 - `IMetadataProvider`
 - `IReleaseSearchProvider`
 - `IDownloadClient`
@@ -346,7 +359,7 @@ Examples:
 
 Provider registration includes:
 - stable provider key
-- capabilities
+- capabilities (including Login/Identity and Profile Connection/sync where applicable)
 - configuration schema
 - health/test operation
 - optional rate-limit information
