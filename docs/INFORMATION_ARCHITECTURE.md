@@ -1,3 +1,21 @@
+# Jularr information architecture
+
+## 0. Account entry and active Profile
+
+Before the consumer shell, Jularr resolves:
+
+```text
+Account authentication -> active Profile -> permission-derived shell
+```
+
+- Account login and Profile selection are separate.
+- Multiple Profiles use the shared picker defined in `docs/mockups/login-profile-selection/SPEC.md`.
+- Exactly one usable Profile may direct-start on Desktop/Mobile.
+- TV should show the picker whenever multiple Profiles are available because it is commonly shared.
+- `Switch profile` returns to the picker without logout.
+- The selected Profile determines personal progress/history/ratings/settings and the media capabilities used to derive navigation.
+- External login providers authenticate a local Jularr Account; personal provider Connections/sync remain Profile-scoped and separate.
+
 # Information architecture
 
 Canonical reference for the consumer/admin split, the media model, provider mapping, admin
