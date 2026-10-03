@@ -260,8 +260,14 @@ public sealed class DiscoverPartialRenderTests
 
         Assert.IsFalse(css.Contains("border-left", StringComparison.Ordinal));
         Assert.IsFalse(css.Contains("border-inline-start", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains(".dc-card:hover .dc-art img", StringComparison.Ordinal), "Hover must not grow Discover artwork.");
         StringAssert.Contains(css, "@media (max-width: 760px)");
         StringAssert.Contains(css, "(hover: none), (pointer: coarse)");
+
+        var js = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "js", "discover.js"));
+        Assert.IsFalse(js.Contains("pointerover", StringComparison.Ordinal), "Discover preview is explicit, never an automatic hover popover.");
+        StringAssert.Contains(js, "data-dc-live-request");
     }
 
     private static string RepositoryRoot()
