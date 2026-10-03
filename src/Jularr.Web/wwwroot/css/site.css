@@ -371,6 +371,22 @@ button, input { font: inherit; }
 .inline-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .inline-actions form { margin: 0; }
 
+.admin-user-heading-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.admin-user-detail-grid { align-items: start; }
+.admin-user-detail-grid > .panel { min-width: 0; }
+.admin-user-detail-grid .admin-user-security { grid-column: 1 / -1; }
+.admin-user-access-actions {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 16px;
+}
+.admin-user-access-actions form { margin: 0; }
+.admin-user-session-action {
+    margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.admin-user-session-action p { margin: 0; }
+.admin-user-danger { margin-top: 16px; }
+.admin-user-delete-form { max-width: 520px; }
+
 .admin-users-layout { align-items: start; }
 .admin-users-directory { min-width: 0; }
 .admin-users-create { position: sticky; top: 20px; }

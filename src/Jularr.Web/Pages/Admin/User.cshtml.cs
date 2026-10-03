@@ -1,5 +1,4 @@
 using Jularr.Web.Data;
-using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Tracking;
@@ -13,12 +12,11 @@ namespace Jularr.Web.Pages.Admin;
 public sealed class UserModel(
     AppDbContext db,
     OwnerAuthService authService,
-    AdminUserProgressService progressService,
     AniListAccountStore aniListAccountStore) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
-    public AdminUserProgressSummary Account { get; private set; } = null!;
+    public LocalAccountSummary Account { get; private set; } = null!;
 
     public async Task<IActionResult> OnGetAsync(
         string id,
@@ -186,8 +184,7 @@ public sealed class UserModel(
         string id,
         CancellationToken cancellationToken)
     {
-        var users = await progressService.GetAsync(cancellationToken);
-        var account = users.SingleOrDefault(x => x.Account.Id == id);
+        var account = await authService.GetAsync(id, cancellationToken);
         if (account is null)
         {
             return false;
