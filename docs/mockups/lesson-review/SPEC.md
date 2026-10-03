@@ -2,7 +2,14 @@
 
 Status: **binding V1 planning specification for Lesson and Review mockups**. This defines the focused learning-session surfaces that pair with the V1 Learning Dashboard. It intentionally does not pull future Speaking/Writing/AI-Tutor/exam systems into the first delivery.
 
-Binding pedagogy and Lesson sequencing: `docs/LEARNING_PEDAGOGY.md`. This screen spec defines presentation/interaction; pedagogy defines when content is introduced, guided, retrieved, corrected, transferred and summarized.
+Binding system contracts:
+- pedagogy/sequence: `docs/LEARNING_PEDAGOGY.md`;
+- exercise data/evaluation: `docs/LEARNING_EXERCISES.md`;
+- exact progress/resume: `docs/LEARNING_PROGRESS.md`;
+- scheduled Review vs Learning/Extra Practice: `docs/LEARNING_PRACTICE_REVIEW.md`;
+- activity/XP/Daily Goal/Streak: `docs/LEARNING_GAMIFICATION.md`.
+
+This screen spec owns presentation/interaction only.
 
 ## 1. Product role
 
@@ -70,7 +77,7 @@ Rules:
 
 ## 4. V1 Lesson step types
 
-V1 should support a bounded generic exercise contract rather than many custom page types.
+V1 should support a bounded generic exercise contract rather than many custom page types. The learner-facing task labels below map to the small typed renderer set defined in `docs/LEARNING_EXERCISES.md`; Listening/Reading/Translation are stimuli/skills where possible, not permission to create duplicate execution engines.
 
 Required types:
 - explanation / introduction;
