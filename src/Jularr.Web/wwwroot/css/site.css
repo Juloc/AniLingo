@@ -400,6 +400,30 @@ button, input { font: inherit; }
 .admin-user-danger { margin-top: 16px; }
 .admin-user-delete-form { max-width: 520px; }
 
+.admin-user-groups-form {
+    margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.admin-user-groups-heading {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    font-size: 12px; font-weight: 700;
+}
+.admin-user-group-options { display: grid; gap: 8px; }
+.admin-groups-layout { align-items: start; }
+.admin-group-create { margin-bottom: 14px; }
+.admin-group-create input { min-width: 0; flex: 1 1 220px; }
+.admin-groups-list { display: grid; gap: 8px; }
+.admin-group-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--row-bg);
+}
+.admin-group-rename {
+    min-width: 0; flex: 1; display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto auto; align-items: center; gap: 10px;
+}
+.admin-group-rename input { min-width: 0; }
+.admin-groups-empty { min-height: 110px; }
+
 .admin-users-layout { align-items: start; }
 .admin-users-directory { min-width: 0; }
 .admin-users-create { position: sticky; top: 20px; }
@@ -493,6 +517,8 @@ button, input { font: inherit; }
     .metric-hint { display: none; }
     .settings-grid { grid-template-columns: 1fr; }
     .admin-users-create { position: static; }
+    .admin-group-row { align-items: stretch; flex-direction: column; }
+    .admin-group-rename { grid-template-columns: 1fr; align-items: stretch; }
     .user-directory-row { align-items: stretch; flex-direction: column; }
     .user-directory-actions { justify-content: flex-start; }
     .user-progress-grid { grid-template-columns: 1fr; }
