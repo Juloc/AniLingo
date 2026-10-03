@@ -66,7 +66,7 @@ public sealed class AnimeRenameService(
         var episodes = await db.Episodes.AsNoTracking().Where(x => x.AnimeId == animeId).ToListAsync(cancellationToken);
         var episodeIds = episodes.Select(x => x.Id).ToArray();
         var mediaFiles = await db.MediaFiles.AsNoTracking()
-            .Where(x => episodeIds.Contains(x.EpisodeId))
+            .Where(x => x.EpisodeId.HasValue && episodeIds.Contains(x.EpisodeId.Value))
             .ToListAsync(cancellationToken);
         mediaFiles.Sort((left, right) => string.CompareOrdinal(left.Path, right.Path));
         var rootIds = mediaFiles.Select(x => x.LibraryRootId).Distinct().ToArray();

@@ -513,7 +513,8 @@ public sealed class LibraryScanner(
         if (removed > 0 || relinkedFromEpisodeIds.Count > 0)
         {
             var staleEpisodeIds = staleMediaFiles
-                .Select(x => x.EpisodeId)
+                .Where(x => x.EpisodeId.HasValue)
+                .Select(x => x.EpisodeId!.Value)
                 .Concat(relinkedFromEpisodeIds)
                 .Distinct()
                 .ToArray();
