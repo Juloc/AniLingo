@@ -149,3 +149,58 @@ public sealed class GameReleaseFile
     public string? Sha256 { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+
+public enum GameImportState
+{
+    Pending = 0,
+    NeedsReview = 1,
+    Completed = 2,
+    Failed = 3,
+    Discarded = 4
+}
+
+[Flags]
+public enum GameImportUnresolvedField
+{
+    None = 0,
+    Game = 1,
+    Platform = 2,
+    Region = 4,
+    Revision = 8
+}
+
+/// <summary>
+/// Durable manifest of one Games import attempt. SourcePath is internal staging evidence only and
+/// must not be copied into normal consumer/Admin DTOs.
+/// </summary>
+public sealed class GameImport
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? OperationId { get; set; }
+    public Guid? AcquisitionRequestId { get; set; }
+    public string SourcePath { get; set; } = "";
+    public string SourceDisplayName { get; set; } = "";
+    public string SourceFingerprint { get; set; } = "";
+    public GameImportState State { get; set; }
+    public GameImportUnresolvedField UnresolvedFields { get; set; }
+    public Guid? GameId { get; set; }
+    public Guid? GamePlatformId { get; set; }
+    public Guid? GameReleaseId { get; set; }
+    public string? Region { get; set; }
+    public string? Revision { get; set; }
+    public string? EvidenceJson { get; set; }
+    public string? Failure { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class GameImportFileEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid GameImportId { get; set; }
+    public string RelativePath { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string Sha256 { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
