@@ -40,7 +40,7 @@ Implement approved specs using canonical reads only:
 1. Login/Profile Selection and authenticated consumer shell.
 2. Home.
 3. Library + Collections.
-4. Discover/Search.
+4. Discover/Search + Media Preview / Quick View.
 5. Anime/Series, Movie, shared Reading Detail (Book/LN/Manga), and Audiobook detail.
 6. Calendar.
 7. Profile/Activity and User Settings.
