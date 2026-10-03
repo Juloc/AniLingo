@@ -31,32 +31,51 @@ A user preference may later allow Series + Movies or Books + Light Novels to be 
 
 ## Collections
 
-Collections are a dedicated Library subview, not a media type filter.
+Binding detail/edit specification: `../collection-detail-edit/SPEC.md`.
 
-### Collection kinds
-- **Manual**: user-curated lists
-- **Smart**: rule-driven dynamic collections
-- **Built-in**: Favorites, Watchlist / Readlist and saved views where appropriate
-- **Cross-media**: one collection can contain Anime, Series, Movies, Books, Light Novels, Manga and Audiobooks
-- **Franchise / adaptation**: optional grouped views based on canonical Work relations, e.g. one franchise containing Anime + Manga + Light Novel
+Collections are a dedicated `Library -> Collections` subview, not a media type and not a top-level sidebar destination.
+
+V1 persisted modes:
+- **Manual** — explicit profile-owned Work membership/order;
+- **Smart** — rule-driven membership over local/cached canonical Media Facts and profile state;
+- **Linked** — locally persisted Collection synchronized from an external list/provider connection.
+
+Cross-media is normal behavior, not a Collection kind. A Collection can mix Anime, Series, Movies, Books, Light Novels, Manga and Audiobooks.
+
+Franchise/adaptation grouping does not require another Collection persistence type; use canonical Work relations through Smart/derived views where appropriate.
+
+Existing system views such as Watchlist/Favorites should not be duplicated into fake editable Collections by default.
 
 ### Collections landing page
-- first row may show built-in collections
-- then user collections
-- then smart/franchise collections when available
-- each collection card uses a 2x2 artwork mosaic or representative artwork
-- card shows title and item count
-- optional compact marker: Manual / Smart / Franchise
-- no admin rule syntax in normal user UI
+
+Keep it simple:
+- title;
+- Search;
+- Filter;
+- Sort;
+- `New Collection`;
+- Collection cards with 2x2 mosaic/representative artwork, title, count and compact mode/source marker only where useful.
+
+Do not require a permanent Manual/Smart/Linked chip row. Mode belongs in Filter.
 
 ### Collection detail
-- same media-card grammar as normal Library
-- supports Filter, Sort and Grid/List
-- collection title + optional description
-- manual collections allow reorder/remove where permitted
-- smart collections explain why an item matches only on demand, not as permanent card clutter
 
-Collections must remain useful on TV: entering Collections shows large mosaic cards first, then the selected collection opens as a normal remote-friendly media grid.
+All modes reuse:
+- compact Collection header;
+- Search within Collection;
+- Filter;
+- Sort;
+- Grid/List where useful;
+- normal Library MediaCard/ListRow.
+
+Mode-specific primary management:
+- Manual -> Add media / Reorder / Edit;
+- Smart -> Edit rules;
+- Linked -> Sync now + last-sync/source state.
+
+Linked rendering always comes from local Jularr state; opening the page does not require a live provider call.
+
+TV is browse-first and does not expose Smart-rule editing, drag reorder or Linked connection management.
 
 ## Filter model
 
