@@ -5,7 +5,7 @@ Status: planning roadmap. This does not authorize skipping screen/spec approval 
 ## Phase 0 — Freeze and contracts
 
 1. Freeze new dependencies on legacy Anime/Novel/Movie/TV/Audiobook identity and per-type progress/acquisition models.
-2. Finalize explicit Account/Profile identity and capability contracts.
+2. Finalize explicit Account/Profile identity, linked login identity, active-Profile selection and capability contracts.
 3. Finalize canonical MediaCore semantics: Work, Structure, Edition, Version and canonical target references.
 4. Finalize Library layer: Asset, Stored File, Track, technical analysis and LibraryRoot association.
 5. Finalize unified Progress envelope: current target, exact resume locator/time, completed-through and history.
@@ -16,7 +16,7 @@ Exit gate: migrations can target stable canonical contracts; no unresolved polym
 ## Phase 1 — Canonical persistence foundation
 
 1. PostgreSQL-first module-owned EF configurations/indexes/constraints.
-2. Add missing canonical Asset/File/Track/Profile/Progress/Job schemas.
+2. Add missing canonical Account/LoginIdentity/Profile/ProfileConnection/Asset/File/Track/Progress/Job schemas.
 3. Build reversible backfill/validation tooling and migration audit reports.
 4. Keep legacy bridges read-compatible but migration-only.
 
@@ -29,19 +29,21 @@ Exit gate: canonical records can represent all existing media/files/tracks/progr
 3. Progress/session contracts.
 4. Provider health/configuration contracts.
 5. Permission-derived navigation/API capability evaluation.
-6. Shared UI design tokens/components/state views.
+6. Shared UI design tokens/components/state views, including Clean/Original Jularr skins, Light/Dark/System and semantic accent hue shifting.
+7. Account login/external-identity/Passkey contract and server-authoritative active-Profile selection.
 
 Exit gate: clients do not need EF/legacy table shapes.
 
 ## Phase 3 — Consumer read/browse verticals
 
 Implement approved specs using canonical reads only:
-1. Home.
-2. Library + Collections.
-3. Discover/Search.
-4. Anime/Series, Movie, shared Reading Detail (Book/LN/Manga), and Audiobook detail.
-5. Calendar.
-6. Profile/Activity and User Settings.
+1. Login/Profile Selection and authenticated consumer shell.
+2. Home.
+3. Library + Collections.
+4. Discover/Search.
+5. Anime/Series, Movie, shared Reading Detail (Book/LN/Manga), and Audiobook detail.
+6. Calendar.
+7. Profile/Activity and User Settings.
 
 Do not add acquisition internals to consumer pages.
 
@@ -120,7 +122,9 @@ After canonical schemas are stable, implement preview/dry-run adapters for suppo
 
 ## Phase 11 — Deferred enhancements
 
-Only after foundations are stable: automatic upgrades/multi-version retention, Continue Anywhere, advanced playback/casting/watch-together, smart offline prefetch, storage cleanup/retention automation, typography/theme skins and deferred provider-framework polish.
+Only after foundations are stable: automatic upgrades/multi-version retention, Continue Anywhere, advanced playback/casting/watch-together, smart offline prefetch, storage cleanup/retention automation, advanced typography customization and deferred provider-framework polish.
+
+Clean/Original Jularr skins and accent tokenization are **not** deferred enhancements; they belong to the shared design-system foundation.
 
 ## Global completion rules
 
