@@ -271,9 +271,13 @@ Media Learning is first-class V1 but not required for structured course use.
 Sources:
 - Player subtitle learning interactions;
 - Reader selections;
-- saved vocabulary;
-- saved sentences;
+- saved/tracked vocabulary;
+- sentence practice/context candidates derived from canonical LearningContext;
 - canonical LearningContext entries.
+
+Binding Vocabulary & Sentences specification: `docs/mockups/vocabulary-sentences/SPEC.md`.
+
+V1 does not assume a separate SavedSentence persistence model.
 
 Each compact context can show:
 - artwork/cover;
