@@ -32,6 +32,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `course-detail/SPEC.md` — Learning curriculum / Chapter / Lesson navigator
 - `lesson-review/SPEC.md`
 - `vocabulary-sentences/SPEC.md` — shared Vocabulary / Sentences learning library
+- `progress-achievements/SPEC.md` — Learning progress, statistics and achievements
 - `user-settings/SPEC.md`
 - `profile-activity/SPEC.md`
 - `add-request-flow/SPEC.md`
