@@ -60,12 +60,25 @@ This phase resolves the foundation required by #403 and #662.
 
 ## Phase 5 — Learning user flows
 
+Planning contracts must be completed before implementation:
+- `docs/LEARNING_PEDAGOGY.md` — teaching sequence and pedagogical rules;
+- Exercise Content Contract — exercise payload/answer/content schema;
+- Lesson/Course Progress Contract — exact resume/completion/prerequisites;
+- Practice & Review Policy — LearningCard creation, due review vs extra practice and FSRS interaction;
+- Gamification/Event Contract — XP, learning time, Daily Goal, Streak and Achievements.
+
+Implementation order:
 1. Preserve existing Learning bounded-domain data.
 2. Course/enrollment/progress contracts.
-3. Learning Home.
-4. Lesson/Review.
-5. Media-context links to canonical Work/Episode/Chapter.
-6. Optional AI/TTS integrations through shared capability contracts.
+3. Exercise/content and pedagogy contracts.
+4. Learning Home.
+5. Course Detail and Lesson/Review.
+6. Vocabulary/Sentences and Script Trainer.
+7. Progress/Achievements only for metrics with canonical sources.
+8. Media-context links to canonical Work/Episode/Chapter.
+9. Optional AI/TTS integrations through shared capability contracts.
+
+Do not implement mockup-only XP/time/Streak/Achievement values before their canonical event/state contracts exist.
 
 ## Phase 6 — Acquisition core
 
