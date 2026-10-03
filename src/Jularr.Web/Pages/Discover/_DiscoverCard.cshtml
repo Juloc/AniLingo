@@ -11,7 +11,16 @@
     var linkTarget = card.HrefIsExternal ? "_blank" : null;
     var linkRel = card.HrefIsExternal ? "noopener noreferrer" : null;
 }
-<article class="dc-card@(card.IsLocal ? " is-local" : "")" data-dc-card>
+<article class="dc-card@(card.IsLocal ? " is-local" : "")"
+         data-dc-card
+         data-dc-category="@card.Category"
+         data-dc-provider="@card.Provider"
+         data-dc-external-id="@card.ExternalId"
+         data-dc-title="@card.Title"
+         data-dc-subtitle="@card.NativeTitle"
+         data-dc-cover="@card.PosterUrl"
+         data-dc-request-id="@card.RequestId"
+         data-dc-request-status="@card.RequestStatus">
     @* The whole card opens the title through the stretched title link; the artwork link is only for pointers. *@
     <a class="dc-art" href="@card.Href" target="@linkTarget" rel="@linkRel" tabindex="-1" aria-hidden="true">
         @if (card.PosterUrl is { } poster)
@@ -28,6 +37,23 @@
         <h3 class="dc-card-title"><a href="@card.Href" target="@linkTarget" rel="@linkRel" data-dc-title-link>@card.Title</a></h3>
         <p class="dc-card-meta">@card.Meta</p>
         <partial name="_DiscoverState" model="card.State" />
+
+        @if (!card.IsLocal && card.RequestId is { } cardRequestId)
+        {
+            <span class="dc-card-action"
+                  data-dc-card-request-slot
+                  data-dc-live-request="@cardRequestId"
+                  data-dc-live-status="@card.RequestStatus">
+            </span>
+        }
+        else if (!card.IsLocal && card.AddAction.Length > 0)
+        {
+            <span class="dc-card-action" data-dc-card-request-slot>
+                <button type="button" class="button button-primary dc-card-request" data-dc-card-add>
+                    @ui[card.AddAction == "add" ? "discover.card.add" : "discover.card.request"]
+                </button>
+            </span>
+        }
     </div>
 
     <button type="button" class="dc-card-preview" data-dc-preview
