@@ -19,7 +19,27 @@ Plan for:
 - minimal runtime/player menu
 - save persistence feedback
 - keyboard/gamepad input where runtime supports it
+- multiple player/input slots where runtime supports local multiplayer
 - clear failure reason when launch cannot continue
+
+## TV and controller sessions
+
+TV is a first-class future Games playback surface.
+
+Input sources may include:
+- gamepads connected to the TV/device;
+- TV remote for shell/navigation, not as a forced gameplay controller;
+- paired phones acting as temporary controllers;
+- other explicitly supported runtime input adapters.
+
+For phone-as-controller:
+- TV shows a short-lived pairing flow, for example QR/code;
+- phone joins the specific game session;
+- server coordinates the session and input channel;
+- each phone/gamepad can be assigned to a player slot where supported;
+- disconnect/reconnect is handled without granting general account/server access.
+
+Pairing is session-scoped and capability-driven. It is not required for V1 Games playback.
 
 ## Runtime contract
 
@@ -34,6 +54,21 @@ The runtime receives only the selected game assets and current-profile save scop
 - no Admin runtime settings
 - no downloader/acquisition controls
 - no universal emulator settings engine
+
+## Platform behavior
+
+Desktop/browser:
+- keyboard and browser Gamepad API where supported.
+
+TV:
+- remote-friendly launch/exit UI;
+- connected controller discovery/assignment;
+- later phone-controller pairing;
+- gameplay chrome should disappear once play starts unless explicitly opened.
+
+Mobile:
+- normal browser-compatible play where supported;
+- later controller-only companion mode for a TV session.
 
 ## Open for page review
 
