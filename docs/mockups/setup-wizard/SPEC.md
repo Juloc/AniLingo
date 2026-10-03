@@ -141,7 +141,7 @@ Examples:
 - Manga
 - Books
 - Audiobooks
-- Games/Software where supported
+- Games
 - Requests
 - Learning
 - Native Downloader
@@ -149,6 +149,8 @@ Examples:
 - Generic Downloads
 
 Rules:
+- Software is not a separate module in the current architecture; software/installers remain admin-only Generic Downloads unless a later approved requirement changes that.
+- Games is its own specialized module/library and does not use Generic Downloads as its final library.
 - module state controls feature availability and navigation;
 - disabled modules hide their later setup steps;
 - module switches remain editable later in Instance Settings;
@@ -182,8 +184,18 @@ Examples:
 - Movies
 - Manga
 - Books
+- Audiobooks
+- Games
 
 One physical mount may contain multiple LibraryRoots.
+
+### Games storage
+
+When Games is enabled:
+- allow creation/selection of a Games-capable LibraryRoot;
+- the Games importer owns final Game/platform/release folder organization inside that root;
+- do not route identified Games to Generic Downloads;
+- BIOS/Firmware storage is restricted Games runtime data and is configured later through Games Admin, not as a normal LibraryRoot.
 
 ### Optional storage roles
 
@@ -261,6 +273,19 @@ The wizard should clearly distinguish:
 Identity/Login providers selected here define which configured external sign-in methods may be offered after setup. Login auto-provisioning, when enabled, must use conservative explicit default roles/capabilities.
 
 Advanced priorities, capability matrices, rate limits and provider-specific tuning remain in Admin Provider settings.
+
+### Games provider requirements
+
+When Games is enabled, the Provider step may offer/recommend configured Metadata providers that declare Games capabilities.
+
+Use the normal Metadata provider family. Do not create a separate Games-provider setup model.
+
+At minimum the setup summary should make it clear whether Games metadata is:
+- Ready;
+- Optional/degraded;
+- Not configured.
+
+Game runtime/emulator and BIOS/Firmware configuration remain owned by Admin Games and are not duplicated into generic Provider configuration.
 
 Secrets are masked/write-only.
 
