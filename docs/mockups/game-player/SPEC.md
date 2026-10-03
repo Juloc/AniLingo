@@ -4,6 +4,7 @@ Status: visual direction approved from the current Desktop / Tablet / Mobile Gam
 
 Shared contract: `docs/mockups/games/SPEC.md`.
 Touch controls: `docs/mockups/game-touch-controls/SPEC.md`.
+Nintendo DS extension: `docs/mockups/game-player-nintendo-ds/SPEC.md`.
 Games architecture: #725.
 UX planning: #729.
 Initial browser runtime: #771.
