@@ -297,7 +297,9 @@ Course cards show:
 - compact progress;
 - Continue/Start.
 
-A separate Course Detail page owns the complete `Level -> Chapter -> Lesson` tree.
+Binding Course Detail specification: `docs/mockups/course-detail/SPEC.md`.
+
+Course Detail owns navigation over the canonical `Curriculum -> Level -> Chapter -> Lesson -> Exercise` hierarchy; Exercise remains inside Lesson.
 
 Switching active course changes the dashboard context but never deletes another course's progress.
 
