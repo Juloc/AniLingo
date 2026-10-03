@@ -280,6 +280,10 @@ public sealed partial class BookCatalogService
         CancellationToken cancellationToken)
     {
         var sourceKey = CleanSourceKey("pdf-" + contentHash[..48]);
+        var content = sizeBytes <= PdfDocumentReader.MaxReadBytes
+            ? PdfDocumentReader.Read(await File.ReadAllBytesAsync(storedPath, cancellationToken))
+            : PdfDocumentContent.Empty;
+
         NovelWork? work;
         if (hint?.ExistingWorkId is Guid targetWorkId)
         {
@@ -302,10 +306,8 @@ public sealed partial class BookCatalogService
                 return work.Id;
             }
 
-            var title = FirstNonEmpty(hint?.Title, UsablePdfTitle(
-                sizeBytes <= PdfDocumentReader.MaxReadBytes
-                    ? PdfDocumentReader.Read(await File.ReadAllBytesAsync(storedPath, cancellationToken)).Title
-                    : null)) ?? TitleFromFileName(fileName);
+            var title = FirstNonEmpty(hint?.Title, UsablePdfTitle(content.Title))
+                ?? TitleFromFileName(fileName);
             work = new NovelWork
             {
                 SourceProvider = ImportedBookProvider,
@@ -320,10 +322,6 @@ public sealed partial class BookCatalogService
             };
             db.NovelWorks.Add(work);
         }
-
-        var content = sizeBytes <= PdfDocumentReader.MaxReadBytes
-            ? PdfDocumentReader.Read(await File.ReadAllBytesAsync(storedPath, cancellationToken))
-            : PdfDocumentContent.Empty;
         if (string.IsNullOrWhiteSpace(work.Author))
         {
             work.Author = TruncateNullable(FirstNonEmpty(hint?.Author, content.Author), 300);
