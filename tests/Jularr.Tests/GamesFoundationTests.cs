@@ -106,8 +106,9 @@ public sealed class GamesFoundationTests
         var release = new GameRelease { GameId = game.Id, GamePlatformId = platform.Id, Kind = GameReleaseKind.Clean };
         db.AddRange(game, platform, release);
         await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
-        db.Games.Remove(game);
+        db.Entry(new Game { Id = game.Id, CanonicalTitle = game.CanonicalTitle }).State = EntityState.Deleted;
         await Assert.ThrowsExactlyAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
