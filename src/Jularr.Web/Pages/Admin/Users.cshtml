@@ -16,31 +16,44 @@
 
 <partial name="_AdminNavigation" model="Model.Ui" />
 
-<div class="settings-grid">
-    <section class="panel">
+<div class="settings-grid admin-users-layout" data-admin-users>
+    <section class="panel admin-users-directory">
         <div class="panel-heading">
             <h2>@ui["admin.users.accounts"]</h2>
             <span>@Model.Users.Count</span>
         </div>
 
-        <div class="user-admin-list">
-            @foreach (var user in Model.Users)
-            {
-                var account = user.Account;
-                <article class="user-admin-card">
-                    <div class="user-admin-header">
-                        <div>
-                            <strong>@account.UserName</strong>
-                            <small>
-                                @ui[AccountRoles.LabelKey(account.Role)] · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])
-                                @if (user.LastActivityAt is { } lastActivity)
-                                {
-                                    <text> · @ui.Format("admin.users.activeAt", ("time", lastActivity.ToString("yyyy-MM-dd HH:mm")))</text>
-                                }
-                            </small>
+        @if (Model.Users.Count == 0)
+        {
+            <div class="empty-state admin-users-empty">
+                <strong>@ui["admin.users.noAccounts"]</strong>
+                <span>@ui["admin.users.noAccountsHint"]</span>
+            </div>
+        }
+        else
+        {
+            <div class="user-directory-list">
+                @foreach (var account in Model.Users)
+                {
+                    var roleLabel = ui[AccountRoles.LabelKey(account.Role)];
+                    <article class="user-directory-row" data-admin-user="@account.Id">
+                        <div class="user-directory-main">
+                            <div class="user-directory-heading">
+                                <strong>@account.UserName</strong>
+                                <div class="user-directory-badges">
+                                    <span class="status-pill">@roleLabel</span>
+                                    <span class="status-pill @(account.IsEnabled ? "status-ok" : "status-warn")">
+                                        @(account.IsEnabled ? ui["admin.user.enabledLabel"] : ui["admin.user.disabledPendingLabel"])
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="user-directory-meta">
+                                <span>@ui.Format("admin.users.createdAt", ("time", account.CreatedAt.ToString("yyyy-MM-dd")))</span>
+                            </div>
                         </div>
 
-                        <div class="inline-actions">
+                        <div class="inline-actions user-directory-actions">
                             @if (account.Role != AccountRole.Owner)
                             {
                                 @if (account.IsEnabled)
@@ -58,70 +71,22 @@
                                     </form>
                                 }
                             }
+
                             <a class="button"
                                asp-page="/Admin/User"
                                asp-route-id="@account.Id">@ui["admin.users.manage"]</a>
                         </div>
-                    </div>
-
-                    <div class="user-progress-grid">
-                        <div class="user-progress-item">
-                            <span>@ui["admin.operation.anime"]</span>
-                            @if (user.CurrentAnime is { } anime)
-                            {
-                                <strong>@anime.AnimeTitle</strong>
-                                <small>
-                                    S@(anime.SeasonNumber.ToString("00")) E@(anime.EpisodeNumber.ToString("00"))
-                                    · @(anime.IsCompleted ? ui["admin.user.completed"] : $"{anime.Percent}%")
-                                </small>
-                            }
-                            else
-                            {
-                                <strong>@ui["admin.user.noProgress"]</strong>
-                                <small>@ui["admin.user.noEpisodeStarted"]</small>
-                            }
-                            <em>@ui.Format("admin.user.episodesSummary", ("started", user.EpisodesStarted), ("completed", user.EpisodesCompleted))</em>
-                        </div>
-
-                        <div class="user-progress-item">
-                            <span>@ui["admin.user.novels"]</span>
-                            @if (user.CurrentNovel is { } novel)
-                            {
-                                <strong>@novel.WorkTitle</strong>
-                                <small>@ui.Format("admin.user.chapterPercent", ("chapter", novel.ChapterNumber), ("percent", novel.Percent))</small>
-                            }
-                            else
-                            {
-                                <strong>@ui["admin.user.noProgress"]</strong>
-                                <small>@ui["admin.user.noNovelStarted"]</small>
-                            }
-                            <em>@ui.Format("admin.user.novelsStarted", ("count", user.NovelsStarted))</em>
-                        </div>
-
-                        <div class="user-progress-item">
-                            <span>@ui["admin.user.learning"]</span>
-                            <strong>@ui.Format("admin.user.knownTerms", ("count", user.Learning.KnownTerms))</strong>
-                            <small>@ui.Format("admin.user.learningSummary", ("learning", user.Learning.LearningTerms), ("reviews", user.Learning.Reviews))</small>
-                            <em>
-                                @if (user.Learning.LastReviewAt is { } lastReview)
-                                {
-                                    @ui.Format("admin.user.lastReviewAt", ("time", lastReview.ToString("yyyy-MM-dd HH:mm")))
-                                }
-                                else
-                                {
-                                    @ui["admin.user.noReviewsYet"]
-                                }
-                            </em>
-                        </div>
-                    </div>
-
-                </article>
-            }
-        </div>
+                    </article>
+                }
+            </div>
+        }
     </section>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>@ui["admin.users.createUser"]</h2></div>
+    <section class="panel admin-users-create">
+        <div class="panel-heading">
+            <h2>@ui["admin.users.createUser"]</h2>
+        </div>
+
         <form method="post" asp-page-handler="Create" class="form-stack">
             <div asp-validation-summary="ModelOnly" class="validation"></div>
             <label>

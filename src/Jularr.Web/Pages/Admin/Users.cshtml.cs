@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using Jularr.Web.Data;
-using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
@@ -13,12 +12,11 @@ namespace Jularr.Web.Pages.Admin;
 public sealed class UsersModel(
     AppDbContext db,
     OwnerAuthService authService,
-    AdminUserProgressService progressService,
     ILogger<UsersModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
-    public IReadOnlyList<AdminUserProgressSummary> Users { get; private set; } = [];
+    public IReadOnlyList<LocalAccountSummary> Users { get; private set; } = [];
 
     [BindProperty]
     [Required]
@@ -103,5 +101,5 @@ public sealed class UsersModel(
     }
 
     private async Task LoadAsync(CancellationToken cancellationToken) =>
-        Users = await progressService.GetAsync(cancellationToken);
+        Users = await authService.ListAsync(cancellationToken);
 }
