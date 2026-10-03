@@ -2,6 +2,9 @@
 
 Status: **binding V1 planning specification**. The approved Original Jularr Desktop + Mobile mockup is the visual reference. Text wins over imagery where metrics, persistence or behavior differ.
 
+Binding data/activity contract: `docs/LEARNING_GAMIFICATION.md`.
+Binding course-progress contract: `docs/LEARNING_PROGRESS.md`.
+
 Global UX: `docs/UX.md`  
 Learning Home: `docs/mockups/learning-home/SPEC.md`  
 Course Detail: `docs/mockups/course-detail/SPEC.md`  
@@ -50,10 +53,10 @@ Examples:
 - Review counts/ratings/accuracy -> LearningCardReviews;
 - Course completion -> learner curriculum/Lesson progress;
 - media-derived context counts -> LearningContext;
-- XP -> canonical Learning XP/activity ledger once implemented;
-- learning time -> canonical Learning session/activity duration once implemented;
-- Streak -> Daily Goal completion history once implemented;
-- Achievements -> canonical achievement definitions + profile unlock/progress state once implemented.
+- XP -> `LearningActivityEvent.XpAwarded` once the planned activity contract is implemented;
+- learning time -> `LearningActivitySession` / `LearningSessionTimeSlice` once implemented;
+- Streak -> completed `LearningDailyGoal` history once implemented;
+- Achievements -> deterministic definitions + `LearningAchievementUnlock`; progress is derived rather than copied.
 
 ### Current implementation bridge
 
@@ -66,12 +69,10 @@ The existing `LearningStatisticsService` / `LearningStatisticsSnapshot` is an in
 
 The approved mockup is the **target UX**, not permission to invent missing values in the UI.
 
-Until XP, learning-time, Streak, Course statistics and Achievements have canonical durable contracts:
+The target durable contracts are now defined in `docs/LEARNING_PROGRESS.md` and `docs/LEARNING_GAMIFICATION.md`, but they are not automatically implemented by this mockup spec. Until each source exists in production:
 - omit unavailable cards/sections;
-- or show an explicit not-yet-available product state during implementation;
+- or show an explicit unavailable/not-yet-implemented state during implementation;
 - never generate fake/demo values in production.
-
-Extend the Learning domain/application contracts before implementing metrics that do not yet have a source of truth.
 
 ## 4. Language/course scope
 
@@ -271,11 +272,12 @@ Each Achievement definition needs:
 - visual asset/icon;
 - whether progress is countable before unlock.
 
-Profile achievement state needs at minimum:
+Profile achievement persistence stores only:
 - profile ID;
-- achievement ID/version;
-- unlocked timestamp;
-- optional durable progress only when it cannot be cheaply/reliably recomputed.
+- achievement definition key/version;
+- unlocked timestamp.
+
+Achievement progress is derived from canonical Learning activity/state in V1; do not create a mutable badge-progress store.
 
 ### Rules
 
@@ -360,7 +362,7 @@ Count only explicitly defined activity/session intervals such as:
 Rules:
 - ignore background/hidden idle time after a bounded inactivity threshold;
 - avoid double-counting overlapping session surfaces;
-- define one canonical activity/session contract before implementation;
+- use the canonical activity/session contract in `docs/LEARNING_GAMIFICATION.md`;
 - Player/Reader consumption time is not automatically Learning time merely because Learning is enabled.
 
 ## 19. Original J visual direction
