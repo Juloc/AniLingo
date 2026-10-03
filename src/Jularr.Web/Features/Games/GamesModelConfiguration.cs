@@ -17,6 +17,8 @@ public static class GamesModelConfiguration
         modelBuilder.ApplyConfiguration(new GameReleaseConfiguration());
         modelBuilder.ApplyConfiguration(new GameReleaseHashConfiguration());
         modelBuilder.ApplyConfiguration(new GameReleaseFileConfiguration());
+        modelBuilder.ApplyConfiguration(new GameImportConfiguration());
+        modelBuilder.ApplyConfiguration(new GameImportFileEvidenceConfiguration());
     }
 
     private sealed class GameConfiguration : IEntityTypeConfiguration<Game>
@@ -137,6 +139,42 @@ public static class GamesModelConfiguration
             entity.HasOne<LibraryRoot>().WithMany().HasForeignKey(x => x.LibraryRootId).OnDelete(DeleteBehavior.NoAction);
             entity.HasIndex(x => new { x.LibraryRootId, x.RelativePath }).IsUnique();
             entity.HasIndex(x => new { x.GameReleaseId, x.Sequence });
+        }
+    }
+
+    private sealed class GameImportConfiguration : IEntityTypeConfiguration<GameImport>
+    {
+        public void Configure(EntityTypeBuilder<GameImport> entity)
+        {
+            entity.ToTable("GameImports");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourcePath).HasMaxLength(4096);
+            entity.Property(x => x.SourceDisplayName).HasMaxLength(500);
+            entity.Property(x => x.SourceFingerprint).HasMaxLength(64);
+            entity.Property(x => x.State).HasConversion<int>();
+            entity.Property(x => x.UnresolvedFields).HasConversion<int>();
+            entity.Property(x => x.Region).HasMaxLength(32);
+            entity.Property(x => x.Revision).HasMaxLength(80);
+            entity.Property(x => x.EvidenceJson).HasColumnType("jsonb");
+            entity.Property(x => x.Failure).HasMaxLength(2000);
+            entity.HasIndex(x => x.SourceFingerprint).IsUnique();
+            entity.HasIndex(x => x.OperationId);
+            entity.HasOne<Game>().WithMany().HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<GamePlatform>().WithMany().HasForeignKey(x => x.GamePlatformId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<GameRelease>().WithMany().HasForeignKey(x => x.GameReleaseId).OnDelete(DeleteBehavior.NoAction);
+        }
+    }
+
+    private sealed class GameImportFileEvidenceConfiguration : IEntityTypeConfiguration<GameImportFileEvidence>
+    {
+        public void Configure(EntityTypeBuilder<GameImportFileEvidence> entity)
+        {
+            entity.ToTable("GameImportFileEvidence");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RelativePath).HasMaxLength(2048);
+            entity.Property(x => x.Sha256).HasMaxLength(64);
+            entity.HasOne<GameImport>().WithMany().HasForeignKey(x => x.GameImportId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => new { x.GameImportId, x.RelativePath }).IsUnique();
         }
     }
 }
