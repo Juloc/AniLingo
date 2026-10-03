@@ -14,16 +14,7 @@ Define the Nintendo DS-specific behavior of the shared Jularr Game Player.
 
 This is not a second player implementation.
 
-The normal Game Player shell still owns:
-- session lifecycle;
-- header/chrome;
-- save synchronization;
-- Save States;
-- screenshots;
-- fullscreen;
-- controller handling;
-- pause/exit;
-- responsive shell behavior.
+The normal Game Player shell still owns session lifecycle, header/chrome, save synchronization, Save States, screenshots, fullscreen, controller handling, pause/exit and responsive shell behavior.
 
 Nintendo DS adds only the capabilities that differ materially from Game Boy:
 - two displays;
@@ -74,7 +65,7 @@ TopScreen
 BottomScreen (touch-capable)
 ```
 
-The bottom/touch screen identity must remain known even when screens are visually swapped.
+The bottom/touch screen identity remains known even when screens are visually swapped.
 
 Touch coordinates are always translated to the actual DS touch screen, not simply whichever visual rectangle is lowest.
 
@@ -85,6 +76,7 @@ Jularr owns a platform-neutral DS layout preference.
 Initial modes:
 
 ### Stacked
+
 Default DS-like layout.
 
 ```text
@@ -92,10 +84,7 @@ Top
 Bottom
 ```
 
-Best default for:
-- Mobile Portrait;
-- Tablet Portrait;
-- Desktop when vertical space is sufficient.
+Best default for Mobile Portrait, Tablet Portrait and Desktop when vertical space is sufficient.
 
 ### Side by side
 
@@ -103,22 +92,11 @@ Best default for:
 Top | Bottom
 ```
 
-Useful for:
-- Desktop widescreen;
-- Tablet Landscape;
-- Mobile Landscape.
+Useful for Desktop widescreen, Tablet Landscape and Mobile Landscape.
 
 ### Focus + secondary
 
 One screen is large, the other remains visible smaller.
-
-Examples:
-
-```text
-[ Main screen large ] [ secondary ]
-```
-
-or stacked picture-in-picture style where practical.
 
 Useful for games where one screen carries most gameplay.
 
@@ -153,27 +131,27 @@ Default:
 - Stacked or Side-by-side chosen from available aspect/space;
 - normal bottom player action dock.
 
-For games using touch heavily:
+For touch-heavy games:
 - mouse/pointer acts as stylus over BottomScreen;
 - cursor feedback appears only over the active touch surface;
-- click/touch press maps to stylus down;
+- press maps to stylus down;
 - release/cancel maps to stylus up.
 
 Desktop controls:
 - keyboard/gamepad for physical buttons;
 - mouse/pointer for stylus.
 
-A Screen Layout quick action belongs in the primary/secondary player controls because it is a common DS need.
+A Screen Layout action belongs in player controls because it is a common DS need.
 
 ## Tablet layout
 
 Tablet supports:
 - Stacked in portrait;
 - Side-by-side or Focus + secondary in landscape;
-- touch directly on BottomScreen;
+- direct touch on BottomScreen;
 - optional on-screen physical controls when no gamepad is connected.
 
-Tablet must not require a separate virtual stylus tool; direct touch on the DS touch screen is the primary input.
+Tablet does not require a separate virtual stylus tool; direct touch is primary.
 
 ## Mobile Portrait
 
@@ -197,11 +175,11 @@ physical touch controls below / around screens
 Rules:
 - both screens remain readable;
 - BottomScreen receives direct finger/stylus input;
-- D-pad + A/B/X/Y must not cover the BottomScreen touch area by default;
+- D-pad + A/B/X/Y do not cover BottomScreen by default;
 - L/R may use edge/shoulder touch targets;
 - Start/Select remain compact.
 
-The player may allow custom control positioning, but DS screen rectangles themselves are edited separately from button layout.
+Button layout and DS screen layout are edited separately.
 
 ## Mobile Landscape
 
@@ -211,7 +189,7 @@ Default:
 - touch screen remains directly interactive;
 - user can swap which screen is larger.
 
-Because space is constrained, the player may automatically suggest Focus + secondary, but must not switch modes during play without user action.
+The player may suggest Focus + secondary when space is constrained, but must not switch layout during play without user action.
 
 ## DS touch behavior
 
@@ -220,22 +198,22 @@ Required:
 - letterboxing/padding is excluded from touch-coordinate calculation;
 - touch remains correct after resize/orientation/layout change;
 - pointer cancel releases stylus input;
-- no browser page scroll/zoom inside the active touch surface;
-- visual touch feedback can be optionally shown;
-- multi-touch gestures from the browser must not corrupt stylus input.
+- no browser page scroll/zoom inside active touch surface;
+- optional visual touch indicator;
+- browser multi-touch gestures must not corrupt stylus input.
 
-The DS itself is fundamentally single-stylus input. Additional fingers used on virtual buttons must coexist with one active stylus contact.
+The DS is single-stylus input. Additional fingers on virtual buttons must coexist with one active stylus contact.
 
 ## Virtual physical controls
 
-DS-specific mobile preset includes:
+DS-specific mobile preset:
 - D-pad;
 - A/B/X/Y;
 - L/R;
 - Start;
 - Select.
 
-Controls are movable through the existing Jularr touch-control editor.
+Controls use the existing Jularr touch-control editor.
 
 Persist separately from screen-layout preferences.
 
@@ -244,60 +222,57 @@ Initial presets:
 - DS Left-handed;
 - DS Compact.
 
-Portrait and Landscape remain separately editable.
+Portrait and Landscape are separately editable.
 
 ## Screen-layout editor
 
 Do not overload the button editor with screen sizing.
 
-Add a small DS-specific Screen Layout sheet/editor.
+Add a DS-specific Screen Layout sheet/editor.
 
 Capabilities:
-- choose Stacked / Side-by-side / Focus + secondary / Single-screen focus;
+- Stacked / Side-by-side / Focus + secondary / Single-screen focus;
 - swap Top/Bottom visual position;
 - choose focused screen;
-- adjust relative screen size in Focus mode;
+- adjust relative size in Focus mode;
 - reset to platform default;
 - live preview;
 - Save / Cancel.
 
-The editor must never let the touch-screen transform become ambiguous.
+The editor never lets touch-screen identity become ambiguous.
 
 ## Microphone
 
 Nintendo DS games may use microphone input.
 
-Treat microphone as a runtime/browser capability, not an unconditional control.
+Treat microphone as a runtime/browser capability.
 
-When supported and required:
-- request browser microphone permission only when the user activates the feature or the game needs it;
-- show a compact microphone action/status;
+When supported and needed:
+- request permission only when activated/needed;
+- show compact microphone action/status;
 - allow temporary mute;
-- no background recording outside the active game session;
-- no audio storage unless a separate approved feature explicitly requires it.
+- no background recording outside active session;
+- no audio storage unless separately approved.
 
-If the runtime lacks stable microphone support, do not fake it.
+If runtime support is not stable, do not fake it.
 
 ## Saves
 
-Reuse the normal Game Player save model:
-- in-game save;
+Reuse the common Game Player model:
+- normal in-game save;
 - manual Save States;
 - server sync;
 - final sync on exit.
 
-DS-specific screen layout/control preferences are profile preferences, not Save State data.
+DS screen/control preferences are profile preferences, not Save State data.
 
 ## Screenshots
 
-Default screenshot behavior should capture the complete current DS presentation when supported.
+Default screenshot behavior captures the complete current DS presentation when supported.
 
-A later option may allow:
-- both screens;
-- Top only;
-- Bottom only.
+Later options may allow both screens / Top only / Bottom only.
 
-Do not block initial DS support on advanced screenshot selection.
+Do not block initial DS support on this.
 
 ## Fullscreen
 
@@ -305,34 +280,32 @@ Fullscreen includes both screens and active controls.
 
 Changing fullscreen:
 - does not restart emulation;
-- preserves the selected DS screen layout;
-- recalculates touch coordinates after layout.
+- preserves screen layout;
+- recalculates touch coordinates.
 
 ## TV
 
-DS is playable on TV only when the selected runtime/device combination is practical.
+DS TV play is capability-dependent because TV has no direct touchscreen.
 
-TV has no direct touchscreen.
-
-Therefore DS TV play requires one of:
+DS on TV requires one of:
 - pointer-capable controller/input supported by runtime;
 - later paired phone acting as DS touch surface/controller;
 - a game that does not require touch for the intended play path.
 
 Do not claim universal DS TV playability.
 
-TV detail/player should show a concise compatibility reason when touch input cannot be provided.
+TV shows a concise compatibility reason when touch input cannot be supplied.
 
-Later phone companion concept:
-- phone can represent BottomScreen/touch input;
-- TV can show TopScreen large and optionally BottomScreen preview;
-- session remains coordinated by Jularr.
+Later phone-companion concept:
+- phone represents BottomScreen/touch input;
+- TV shows TopScreen large and optionally BottomScreen preview;
+- Jularr coordinates the session.
 
-This is later capability, not DS V1.
+This is later, not DS V1.
 
 ## Runtime bridge additions
 
-The generic player bridge needs DS capabilities conceptually equivalent to:
+Conceptual DS bridge capabilities:
 
 ```text
 SetDualScreenLayout
@@ -344,7 +317,7 @@ PointerUpOnTouchScreen
 SetMicrophoneEnabled?   // only when supported
 ```
 
-Runtime events may include:
+Events may include:
 
 ```text
 DualScreenLayoutChanged
@@ -352,13 +325,11 @@ TouchCapabilityChanged
 MicrophoneCapabilityChanged
 ```
 
-Names are conceptual contracts, not EmulatorJS API names.
+These are Jularr contracts, not EmulatorJS API names.
 
-The EmulatorJS adapter translates them only through stable supported runtime APIs.
+The adapter translates only through stable supported runtime APIs. No DOM scraping.
 
-No DOM scraping.
-
-## Read/config model
+## Preferences
 
 Conceptually:
 
@@ -375,33 +346,33 @@ NintendoDsPlayerPreferences
 - ShowTouchIndicator
 ```
 
-Do not persist EmulatorJS core configuration as consumer preferences.
+Do not persist runtime-specific core configuration as consumer preferences.
 
 ## Required states
 
-In addition to generic Game Player states:
+In addition to generic player states:
 - both screens ready;
 - touch unavailable;
 - microphone permission needed;
 - microphone unavailable;
-- selected screen layout restored;
-- invalid layout preference reset to default;
+- restored screen layout;
+- invalid preference reset to default;
 - TV lacks required touch/pointer input.
 
 ## V1 acceptance
 
-Nintendo DS browser play is complete enough for first scope when:
+Nintendo DS browser play is complete enough when:
 - Top and Bottom screens render correctly;
 - BottomScreen touch coordinates remain correct across resize/orientation;
 - Desktop mouse/pointer works as stylus;
 - Tablet/mobile direct touch works;
 - D-pad/A/B/X/Y/L/R/Start/Select are usable;
-- Stacked and Side-by-side layouts work;
+- Stacked and Side-by-side work;
 - Swap Screens works;
 - Portrait and Landscape are supported;
-- screen layout persists per profile/form factor/orientation;
-- normal saves and Save States reuse the common player;
-- no game restart occurs from layout/orientation changes;
+- layout persists per profile/form factor/orientation;
+- normal saves and Save States reuse common player;
+- layout/orientation changes do not restart the game;
 - BIOS/runtime failures surface through normal PlayCapability;
 - no runtime-specific DOM hacks are required.
 
@@ -409,7 +380,7 @@ Nintendo DS browser play is complete enough for first scope when:
 
 Do not block initial DS support on:
 - phone-as-TV-touchscreen;
-- microphone if the runtime API is not stable;
+- microphone if runtime API is unstable;
 - lid sensor emulation;
 - per-game automatic screen-layout profiles;
 - advanced screenshot composition;
