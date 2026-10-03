@@ -358,7 +358,9 @@ Courses and Achievements have their own dashboard sections/routes and do not nee
 
 On wide Desktop, Learning Tools forms the top of the right rail. On narrower layouts it reflows below the primary learning sections.
 
-Visibility remains capability-driven. Do not substitute unrelated modules such as generic Flashcards, Grammar, Dictionary or Notes as separate top-level Learning modules unless they are later specified as canonical product modules.
+Visibility remains capability-driven. Script/Kana opens the binding Script Trainer surface: `docs/mockups/script-trainer/SPEC.md`.
+
+Do not substitute unrelated modules such as generic Flashcards, Grammar, Dictionary or Notes as separate top-level Learning modules unless they are later specified as canonical product modules.
 
 ## 16. New learner
 
