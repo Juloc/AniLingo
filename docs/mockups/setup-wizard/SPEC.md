@@ -125,7 +125,11 @@ Fields:
 - default language
 - region
 - timezone
-- optional appearance baseline
+- optional appearance baseline:
+  - visual style: Clean / Original Jularr
+  - brightness: System / Light / Dark
+  - accent/default theme color
+  - instance logo/name override where supported
 
 ### Module activation
 
@@ -235,6 +239,7 @@ Native downloader remains the normal first-class Jularr path.
 Configure only providers needed to make the enabled instance usable.
 
 Families may include:
+- Identity/Login
 - Metadata
 - Indexer/Search
 - Subtitles
@@ -252,6 +257,8 @@ The wizard should clearly distinguish:
 - required for the enabled feature set
 - recommended
 - optional
+
+Identity/Login providers selected here define which configured external sign-in methods may be offered after setup. Login auto-provisioning, when enabled, must use conservative explicit default roles/capabilities.
 
 Advanced priorities, capability matrices, rate limits and provider-specific tuning remain in Admin Provider settings.
 
@@ -409,11 +416,15 @@ Ownership remains:
 - Migration -> external/legacy migration
 - Library Reconciliation -> ambiguous filesystem mapping
 
-## Light / Dark
+## Appearance
 
-Both first-class.
+Clean / Original Jularr and Light / Dark / System are first-class.
 
-Theme may be selectable during setup, but setup must remain usable without choosing a theme.
+Clean uses no decorative background artwork and defaults to the purple Jularr accent.
+Original Jularr uses the Japanese decorative skin and defaults to the established red/pink accent.
+Accent variants use shared semantic tokens/hue shifting.
+
+Appearance may be selected during setup, but setup must remain usable with defaults.
 
 ## Platforms
 
