@@ -18,6 +18,7 @@ Status: planning baseline. This document defines information architecture, navig
 - Clean defaults to the purple Jularr accent/mark; Original Jularr defaults to the established red/pink accent/mark.
 - Accent changes may hue-shift permitted branded/decorative tokens consistently, but must not recolor third-party provider logos or semantic error/success meaning.
 - Clean and Original are skins, not separate page implementations or information architectures.
+- Legacy screen titles that say `Clean Design` describe their visual baseline only; unless a spec explicitly says otherwise, the same behavior/information architecture applies to Original Jularr.
 - Every screen defines loading, empty, partial, error and ready states.
 - Permission-restricted actions disappear from UI but are also enforced server-side.
 - Never expose half-implemented controls.
@@ -154,6 +155,25 @@ Preview actions reuse canonical Play/Read/Listen/Request contracts. Trailer play
 
 Clean and Original Jularr use identical structure/behavior; only visual skin tokens differ.
 
+## 3b. Consumer acquisition status vocabulary
+
+All consumer surfaces project the same user-facing Request/acquisition vocabulary.
+
+Preferred labels:
+- Waiting for approval;
+- Requested / Approved where needed;
+- Looking for media;
+- Downloading;
+- Preparing;
+- Available / Partially available;
+- Monitoring future releases;
+- Needs attention / Failed;
+- Cancelled.
+
+`Search`, `ImportJob`, importer phases, verification and post-processing are internal/Admin concepts. Consumer pages may show progress, but should use `Looking for media` and `Preparing` instead of exposing `Searching` / `Importing` as separate product states.
+
+This vocabulary is a projection over the canonical Request -> Wanted -> Search -> Download -> Import pipeline; it does not create a second state machine.
+
 ## 4. Home
 
 Home is personalized, not a duplicate library index.
@@ -222,8 +242,9 @@ All media detail pages share a common skeleton while adapting content.
 - title and useful alternate title where configured
 - concise metadata
 - progress/status
-- primary action: Play / Continue / Read / Listen / Request
-- secondary actions: add/remove library/watchlist, options
+- primary action is state-dependent: Play / Continue / Read / Listen when usable, otherwise Request when acquisition is permitted;
+- secondary actions are personal-state/context actions such as Watchlist/Reading List, Favorite, Collection and options where supported;
+- never expose a separate consumer `Add to Library` acquisition action.
 
 ### Content
 Media-specific sections appear only when relevant.
