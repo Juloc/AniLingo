@@ -7,6 +7,8 @@ Status: planning baseline. This document defines information architecture, navig
 - One shared Jularr UX/layout system with two visual skins: **Clean** and **Original Jularr**.
 - Clean is the compact Fluent 2 / Windows 11-inspired neutral baseline and never uses decorative Japanese/anime background artwork.
 - Original Jularr applies the established Japanese ink/watercolor/cherry-blossom visual treatment over the same layout/components.
+- When an Original Jularr screen intentionally uses the Jularr mascot/anime character, it uses the canonical reference at `docs/assets/original-j/jularr-mascot-reference.png`. The mascot is optional; screens do not invent replacement characters. Pose/expression/props may vary while identity stays canonical.
+- Clean does not use the Original J mascot by default. Mascot presence never changes information architecture, feature availability or behavior.
 - No unnecessary explanatory text, duplicated headings or nested pages when a direct interaction works.
 - Media is the visual focus; administration is information-dense but structured.
 - User UI and Admin UI are distinct modes.
