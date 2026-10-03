@@ -145,8 +145,7 @@
     position: relative; display: block; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 12px;
     background: var(--surface-2); box-shadow: var(--shadow-card);
 }
-.dc-art img { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform .25s ease; }
-.dc-card:hover .dc-art img { transform: scale(1.03); }
+.dc-art img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .dc-initial {
     display: grid; place-items: center; width: 100%; height: 100%;
     background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); color: var(--accent-text);
@@ -161,6 +160,27 @@
 .dc-card-title a::after { content: ""; position: absolute; inset: 0; z-index: 1; }
 .dc-card:hover .dc-card-title a, .dc-card-title a:focus-visible { color: var(--accent-text); }
 .dc-card-meta { margin: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.dc-card-action {
+    position: relative; z-index: 2; display: flex; width: 100%; min-height: 36px; margin-top: 2px;
+}
+.dc-card-action > :is(.button, .dc-request-live) { width: 100%; justify-content: center; }
+.dc-card-request { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+.dc-request-live {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 36px; cursor: default; pointer-events: none;
+}
+.dc-request-ring {
+    --dc-progress: 0%;
+    position: relative; display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 auto;
+    border-radius: 50%; background: conic-gradient(currentColor var(--dc-progress), rgb(255 255 255 / .22) 0);
+    font-size: 8px; font-weight: 800; line-height: 1;
+}
+.dc-request-ring::before {
+    content: ""; position: absolute; inset: 3px; border-radius: inherit; background: var(--accent);
+}
+.dc-request-ring > span { position: relative; z-index: 1; }
+.dc-request-live-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-request-open { justify-content: center; min-height: 36px; }
 .dc-card-preview {
     position: absolute; z-index: 2; top: 8px; inset-inline-end: 8px; display: grid; place-items: center;
     width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%;
@@ -217,6 +237,7 @@
 .dc-pv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; padding-top: 4px; }
 .dc-pv-actions .button { display: inline-flex; align-items: center; gap: 6px; }
 .dc-pv-add { display: inline-flex; align-items: center; gap: 8px; }
+.dc-pv-add .dc-request-live { width: auto; min-width: 140px; }
 .dc-pv-status {
     padding: 6px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text);
     font-size: 13px; font-weight: 700;
@@ -286,7 +307,6 @@
 
 @media (prefers-reduced-motion: reduce) {
     .dc-art img { transition: none; }
-    .dc-card:hover .dc-art img { transform: none; }
     .dc-results[aria-busy="true"]::before { animation: none; background-position: 30% 0; }
     .dc-skeleton-card { animation: none; }
     .dc-hover { animation: none; }
