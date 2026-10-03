@@ -437,7 +437,7 @@ Contains:
 - user identity/profile switch where applicable
 - Activity/history
 - watch/read/listen history
-- devices/sessions where appropriate
+- quick link to Devices & Sessions under Settings
 - quick link to Settings
 
 Activity is not a main mobile navigation item.
@@ -453,10 +453,14 @@ Sections:
 - Playback
 - Audio & subtitles
 - Reader
+- Ratings
 - **Modules & Features** — personal On/Off for instance-enabled, permitted optional modules
 - Learning
+- Notifications
 - AI / personal provider
-- Devices
+- Connections
+- Devices & Sessions
+- Profile & Privacy
 - Account/security
 
 Module availability resolves as:
