@@ -538,6 +538,28 @@ public sealed class LibraryReconciliationPlanServiceTests
         Assert.AreEqual(execution.OperationId, completedPlan.ExecutionOperationId);
     }
 
+    /// <summary>A rename on a read-only mount must surface as a blocking conflict in the dry-run instead of failing mid-execution.</summary>
+    [TestMethod]
+    public async Task PreviewReportsAConflictWhenTheLibraryRootIsOnAReadOnlyMount()
+    {
+        using var scope = await Scope.CreateAsync(readOnlyMount: true);
+        var root = scope.AddRoot("Media");
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "unstructured.mkv"), "media");
+        var work = new Work { CanonicalTitle = "Confirmed title", MediaType = WorkMediaType.Movie };
+        scope.Db.Works.Add(work);
+        await scope.Db.SaveChangesAsync();
+        var created = await scope.Service.CreateAsync(new LibraryReconciliationPlanRequest(root.Id), CancellationToken.None);
+        await scope.Service.ScanAsync(created.Plan!.Id, CancellationToken.None);
+        var item = await scope.Db.LibraryReconciliationPlanItems.SingleAsync(x => x.RelativePath == "unstructured.mkv");
+        await scope.Service.AssignWorkAsync(new LibraryReconciliationWorkAssignmentRequest(created.Plan.Id, [item.Id], work.Id), CancellationToken.None);
+        await scope.Service.SetOrganizationModeAsync(new LibraryReconciliationOrganizationModeRequest(created.Plan.Id, LibraryReconciliationOrganizationMode.RenameFiles), CancellationToken.None);
+
+        var preview = await scope.Service.BuildPreviewAsync(created.Plan.Id, CancellationToken.None);
+
+        Assert.AreEqual(LibraryReconciliationPreviewAction.Conflict, preview!.Items.Single().Action);
+        Assert.IsFalse(preview.CanExecute);
+    }
+
     /// <summary>Removes only empty moved-source directories when the administrator explicitly selects cleanup and preserves unknown neighboring files.</summary>
     [TestMethod]
     public async Task CanonicalOrganizationCanRemoveEmptySourceFoldersWithoutDeletingUnknownFiles()
@@ -859,7 +881,7 @@ public sealed class LibraryReconciliationPlanServiceTests
         public LibraryReconciliationPlanService Service { get; }
 
         /// <summary>Creates an isolated database and mount table for a single reconciliation service test.</summary>
-        public static async Task<Scope> CreateAsync()
+        public static async Task<Scope> CreateAsync(bool readOnlyMount = false)
         {
             var basePath = Path.Combine(Path.GetTempPath(), $"jularr-reconciliation-{Guid.NewGuid():N}");
             Directory.CreateDirectory(basePath);
@@ -869,7 +891,7 @@ public sealed class LibraryReconciliationPlanServiceTests
             var db = new AppDbContext(options);
             await db.Database.EnsureCreatedAsync();
             var browser = new FolderBrowseService(
-                new FixedMountTable([new MountPoint(basePath, "ext4", "/dev/test", ReadOnly: false)]),
+                new FixedMountTable([new MountPoint(basePath, "ext4", "/dev/test", ReadOnly: readOnlyMount)]),
                 new DirectoryAccess(),
                 new FolderBrowseOptions(Path.Combine(basePath, "data")));
             return new Scope(basePath, db, new LibraryReconciliationPlanService(db, browser));

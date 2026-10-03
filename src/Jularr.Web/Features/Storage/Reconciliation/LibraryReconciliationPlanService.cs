@@ -250,6 +250,7 @@ public sealed class LibraryReconciliationPlanService(AppDbContext db, FolderBrow
 
         // Conflict detection: prevent overwriting a file, targeting another planned source or merging two sources into one destination.
         var plannedSourcePaths = physicalChanges.Select(x => x.Item.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rootWritable = physicalChanges.Count == 0 || (await folderBrowse.CheckAsync(root.Path, directoryOnly: true, otherPath: null, cancellationToken)).Access.Writable;
         foreach (var change in physicalChanges)
         {
             var sourcePath = TryGetAbsoluteRootPath(root.Path, change.Item.RelativePath)!;
@@ -262,6 +263,10 @@ public sealed class LibraryReconciliationPlanService(AppDbContext db, FolderBrow
             if (targetPath is null)
             {
                 conflict = "The generated destination escapes the configured library root.";
+            }
+            else if (!rootWritable)
+            {
+                conflict = "The library root is read-only or not writable.";
             }
             else if (hasDuplicateTarget)
             {
