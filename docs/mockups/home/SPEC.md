@@ -66,16 +66,21 @@ Recommended order:
 2. Continue Watching / Reading / Listening
 3. Continue Playing, when the current profile has resumable/recent Games activity
 4. Up Next
-5. For You
-6. Because you watched/read/listened to/played …
-7. New episodes / newly relevant library items
-8. Upcoming releases
-9. Trending
+5. optional Watchlist / Reading List shelf when it adds value
+6. For You
+7. Because you watched/read/listened to/played …
+8. New episodes / newly relevant library items
+9. Upcoming releases
+10. Trending
 10. dynamic genre/media-type rows
 
 Rows are horizontal and can lead to a filtered Discover surface.
 
 The exact set of rows is personalized; not every row must appear for every user.
+
+### Personal list shelf
+
+When shown, Watchlist / Reading List uses normal media cards and opens the normal Library with the corresponding personal-state filter. It is not a separate Home-only list store and not a Collection.
 
 ## Hero / banner system
 
