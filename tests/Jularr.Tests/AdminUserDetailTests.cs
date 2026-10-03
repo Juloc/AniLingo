@@ -38,6 +38,33 @@ public sealed class AdminUserDetailTests
     }
 
     [TestMethod]
+    public void DevicesAndSessionsAreScopedToTheSelectedAccount()
+    {
+        var root = RepositoryRoot();
+        var page = File.ReadAllText(
+            Path.Combine(root, "src", "Jularr.Web", "Pages", "Admin", "User.cshtml"));
+        var model = File.ReadAllText(
+            Path.Combine(root, "src", "Jularr.Web", "Pages", "Admin", "User.cshtml.cs"));
+
+        StringAssert.Contains(page, "data-admin-user-devices-sessions");
+        StringAssert.Contains(page, "asp-page-handler=\"StopSession\"");
+        StringAssert.Contains(page, "asp-page-handler=\"RevokeDevice\"");
+        StringAssert.Contains(page, "admin-sessions.css");
+
+        StringAssert.Contains(model, "sessionsService.ListForProfileAsync(id, cancellationToken)");
+        StringAssert.Contains(model, "deviceRegistry.ListForProfileAsync(id, cancellationToken)");
+        StringAssert.Contains(model, "sessionStore.Remove(sessionId, id)");
+        StringAssert.Contains(model, "requesterProfileId: id");
+
+        Assert.IsFalse(
+            model.Contains("sessionStore.RemoveAny(", StringComparison.Ordinal),
+            "A per-user detail action must never stop another account's playback session.");
+        Assert.IsFalse(
+            page.Contains("admin.devices.events.", StringComparison.Ordinal),
+            "Global sign-in/security-event diagnostics do not belong on one user's detail page.");
+    }
+
+    [TestMethod]
     public void CapabilityEditorHasStablePerUserAnchors()
     {
         var page = File.ReadAllText(

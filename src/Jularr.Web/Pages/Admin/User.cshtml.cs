@@ -1,6 +1,9 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Playback.Decision;
 using Jularr.Web.Features.Tracking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,11 +15,18 @@ namespace Jularr.Web.Pages.Admin;
 public sealed class UserModel(
     AppDbContext db,
     OwnerAuthService authService,
-    AniListAccountStore aniListAccountStore) : PageModel
+    AniListAccountStore aniListAccountStore,
+    AdminSessionsService sessionsService,
+    PlaybackStreamSessionStore sessionStore,
+    KnownDeviceRegistry deviceRegistry) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     public LocalAccountSummary Account { get; private set; } = null!;
+
+    public IReadOnlyList<AdminSessionRow> Sessions { get; private set; } = [];
+
+    public IReadOnlyList<KnownDeviceRow> Devices { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         string id,
@@ -135,6 +145,43 @@ public sealed class UserModel(
         }
     }
 
+    public async Task<IActionResult> OnPostStopSessionAsync(
+        string id,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (await authService.GetAsync(id, cancellationToken) is null)
+        {
+            return NotFound();
+        }
+
+        TempData["Status"] = sessionStore.Remove(sessionId, id)
+            ? Ui["profile.devices.stopped"]
+            : Ui["profile.devices.alreadyEnded"];
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRevokeDeviceAsync(
+        string id,
+        string deviceId,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (await authService.GetAsync(id, cancellationToken) is null)
+        {
+            return NotFound();
+        }
+
+        TempData["Status"] = await deviceRegistry.RevokeAsync(
+            deviceId,
+            requesterProfileId: id,
+            cancellationToken)
+            ? Ui["admin.devices.revoked"]
+            : Ui["admin.devices.alreadyGone"];
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnPostDeleteAsync(
         string id,
         string confirmation,
@@ -191,6 +238,8 @@ public sealed class UserModel(
         }
 
         Account = account;
+        Sessions = await sessionsService.ListForProfileAsync(id, cancellationToken);
+        Devices = await deviceRegistry.ListForProfileAsync(id, cancellationToken);
         return true;
     }
 }

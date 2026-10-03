@@ -390,6 +390,13 @@ button, input { font: inherit; }
     margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border);
 }
 .admin-user-session-action p { margin: 0; }
+.admin-user-devices-sessions { margin-top: 16px; }
+.admin-user-session-section { display: grid; gap: 10px; }
+.admin-user-session-section + .admin-user-session-section {
+    margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);
+}
+.admin-user-session-section h3 { margin: 0; font-size: 14px; }
+.admin-user-session-section > .muted { margin: 0; }
 .admin-user-danger { margin-top: 16px; }
 .admin-user-delete-form { max-width: 520px; }
 
