@@ -1,4 +1,4 @@
-# Jularr information architecture
+# Information architecture
 
 ## 0. Account entry and active Profile
 
@@ -15,8 +15,6 @@ Account authentication -> active Profile -> permission-derived shell
 - `Switch profile` returns to the picker without logout.
 - The selected Profile determines personal progress/history/ratings/settings and the media capabilities used to derive navigation.
 - External login providers authenticate a local Jularr Account; personal provider Connections/sync remain Profile-scoped and separate.
-
-# Information architecture
 
 Canonical reference for the consumer/admin split, the media model, provider mapping, admin
 navigation and the Sonarr/Radarr/Bazarr/Readarr parity gap. Source: [#510](https://github.com/Juloc/Jularr/issues/510)
