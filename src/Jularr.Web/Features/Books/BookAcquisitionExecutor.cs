@@ -3,6 +3,8 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
+using Jularr.Web.Features.Acquisition.Release;
 using Jularr.Web.Features.Acquisition.Wanted;
 
 namespace Jularr.Web.Features.Books;
@@ -179,6 +181,10 @@ public sealed class BookWantedRequestHandler(
 /// <summary>One indexer result as the book selector judged it; <see cref="Score"/> 0 means rejected.</summary>
 public sealed record RankedBookRelease(ProwlarrReleaseCandidate Release, int Score, string? RejectedBecause)
 {
+    public string? QualityKey { get; init; }
+
+    public int QualityRank { get; init; } = int.MaxValue;
+
     public IReadOnlyList<string> ScoreReasons { get; init; } = [];
 }
 
@@ -229,6 +235,7 @@ public static class BookUsenetSearch
         IndexerSearchCoordinator indexers,
         string title,
         string? author,
+        QualityProfile profile,
         CancellationToken cancellationToken)
     {
         var queries = Queries(title, author);
@@ -246,7 +253,7 @@ public static class BookUsenetSearch
 
         return new BookUsenetSearchResult(
             queries,
-            BookReleaseSelector.Rank(result.Releases, title, author),
+            BookReleaseSelector.Rank(result.Releases, title, author, profile),
             result.Warnings,
             fallback);
     }
@@ -260,21 +267,31 @@ public static class BookReleaseSelector
     public static ProwlarrReleaseCandidate? Pick(
         IReadOnlyList<ProwlarrReleaseCandidate> releases,
         string title,
-        string? author) =>
-        Rank(releases, title, author).FirstOrDefault(release => release.Score > 0)?.Release;
+        string? author,
+        QualityProfile? profile = null) =>
+        Rank(releases, title, author, profile).FirstOrDefault(release => release.Score > 0)?.Release;
 
     /// <summary>Every release, best first; rejected releases (score 0) last, each with its reason.</summary>
     public static IReadOnlyList<RankedBookRelease> Rank(
         IReadOnlyList<ProwlarrReleaseCandidate> releases,
         string title,
-        string? author)
+        string? author,
+        QualityProfile? profile = null)
     {
-        // Subtitles ("Dune: Deluxe Edition") rarely appear in release names; the main title must.
+        // Identity is always checked before quality. A custom profile can reject or prefer a format,
+        // regex or scored term, but it can never make a release for another book eligible.
+        var effectiveProfile = profile ?? BookQualityProfiles.CreateDefaultBook();
         var titleWords = Words(MainTitle(title));
         var authorWords = Words(author);
         return releases
-            .Select(release => Judge(release, titleWords, authorWords))
-            .OrderByDescending(candidate => candidate.Score)
+            .Select(release => Judge(
+                release,
+                titleWords,
+                authorWords,
+                effectiveProfile))
+            .OrderByDescending(candidate => candidate.Score > 0)
+            .ThenBy(candidate => candidate.QualityRank)
+            .ThenByDescending(candidate => candidate.Score)
             .ThenByDescending(candidate => candidate.Release.PublishedAt)
             .ToArray();
     }
@@ -296,7 +313,8 @@ public static class BookReleaseSelector
     private static RankedBookRelease Judge(
         ProwlarrReleaseCandidate release,
         IReadOnlyCollection<string> titleWords,
-        IReadOnlyCollection<string> authorWords)
+        IReadOnlyCollection<string> authorWords,
+        QualityProfile profile)
     {
         if (release.InternalDownloadUri is null)
         {
@@ -329,12 +347,30 @@ public static class BookReleaseSelector
             return new RankedBookRelease(release, 0, $"{formatWords[0].ToUpperInvariant()}, not EPUB or PDF");
         }
 
-        // EPUB is preferred, PDF accepted; a name without a format may still hold either, which
-        // the download import checks. Keep the contribution list beside the score so Manual Search
-        // can explain the exact number instead of presenting an opaque ranking.
+        var quality = ReleaseScorer.Score(
+            profile,
+            new ReleaseCandidate(
+                BookReleaseParser.Instance.Parse(release.Title),
+                release.SizeBytes,
+                release.Indexer));
+        if (!quality.Accepted)
+        {
+            return new RankedBookRelease(
+                release,
+                0,
+                string.Join("; ", quality.RejectionReasons))
+            {
+                QualityKey = quality.QualityKey,
+                QualityRank = quality.QualityRank,
+                ScoreReasons = quality.ScoreReasons
+            };
+        }
+
+        // Identity score remains Book-specific. Quality order and configurable generic profile
+        // rules are layered on top, so current title/author safety and future shared rules coexist.
         var reasons = new List<string>();
         var titleScore = 10 + matchedTitle;
-        var score = titleScore;
+        var score = titleScore + quality.Score;
         reasons.Add($"Title match +{titleScore}");
 
         var authorHits = authorWords.Count(words.Contains);
@@ -345,22 +381,8 @@ public static class BookReleaseSelector
             reasons.Add($"Author match +{authorScore}");
         }
 
-        if (isEpub)
-        {
-            score += 8;
-            reasons.Add("EPUB +8");
-        }
-        else if (isPdf)
-        {
-            score += 3;
-            reasons.Add("PDF +3");
-        }
-
-        if (words.Contains("retail"))
-        {
-            score += 2;
-            reasons.Add("Retail +2");
-        }
+        reasons.Add($"Quality {quality.QualityKey}");
+        reasons.AddRange(quality.ScoreReasons);
 
         if (release.SizeBytes is > 200L * 1024 * 1024)
         {
@@ -370,6 +392,8 @@ public static class BookReleaseSelector
 
         return new RankedBookRelease(release, Math.Max(score, 1), null)
         {
+            QualityKey = quality.QualityKey,
+            QualityRank = quality.QualityRank,
             ScoreReasons = reasons
         };
     }
