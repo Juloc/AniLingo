@@ -1,5 +1,7 @@
 # Jularr planning audit
 
+Cross-spec consistency: `CROSS-SPEC-CONSISTENCY-AUDIT.md`.
+
 Status: **current planning coverage audit**. This document does not authorize bypassing architecture, migration, security, visual-approval or implementation gates.
 
 ## 1. Authority order
@@ -111,6 +113,8 @@ Some Admin specs are approved visual directions while others are planning baseli
 ## 4. Current UX planning gaps
 
 There is **no longer a generic missing core consumer page category** from the earlier audit list.
+
+The current cross-spec pass found one remaining direct product decision: Mobile primary navigation still disagrees on whether the fifth primary module slot is Learning or Games. Do not implement that navigation until the owner locks one rule.
 
 The next work should therefore not invent additional pages merely to continue planning.
 
