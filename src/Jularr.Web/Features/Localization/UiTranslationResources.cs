@@ -2458,7 +2458,6 @@ public static class UiTranslationResources
         M("admin.user.userNameLabel", "User name", "Admin", "Label", "Form label for a user's account name.", "short form label", 18, null, null),
         M("admin.users.accounts", "Accounts", "Admin", "Heading", "Heading of the account list panel on the Users page.", "concise section heading", 16, null, null),
         M("admin.users.createdAt", "Created {time}", "Admin", "Value", "Compact account creation date in the Users list.", "compact metadata", 30, new Dictionary<string, string> { ["time"] = "Account creation date." }, null),
-        M("admin.users.lastActivityAt", "Last active {time} UTC", "Admin", "Value", "Compact last activity timestamp in the Users list.", "compact metadata", 34, new Dictionary<string, string> { ["time"] = "Last activity timestamp." }, ["UTC"]),
         M("admin.users.noAccounts", "No accounts yet", "Admin", "Empty state", "Empty-state title when no accounts can be listed.", "concise empty state", 24, null, null),
         M("admin.users.noAccountsHint", "Create the first account to get started.", "Admin", "Empty state", "Empty-state hint below the Users account list.", "concise empty state", 54, null, null),
         M("admin.users.activeAt", "active {time} UTC", "Admin", "Value", "Inline fragment showing a user's last activity time in the Users list.", "compact metadata", 26, new Dictionary<string, string> { ["time"] = "Last activity timestamp." }, ["UTC"]),
