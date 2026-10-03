@@ -574,7 +574,8 @@ public sealed partial class BookCatalogService(
         string sourceKind,
         string sourceUrl,
         CancellationToken cancellationToken,
-        string? storagePath = null)
+        string? storagePath = null,
+        Guid? existingWorkId = null)
     {
         using var copy = await CopyToMemoryBoundedAsync(
             stream,
@@ -591,17 +592,20 @@ public sealed partial class BookCatalogService(
         var sourceKey =
             "upload-" + BuildParsedBookIdentity(parsed);
 
-        var existingId = await db.NovelWorks
-            .AsNoTracking()
-            .Where(x =>
-                x.SourceProvider == ImportedBookProvider
-                && x.SourceKey == sourceKey)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (existingId is Guid existing)
+        if (existingWorkId is null)
         {
-            return existing;
+            var existingId = await db.NovelWorks
+                .AsNoTracking()
+                .Where(x =>
+                    x.SourceProvider == ImportedBookProvider
+                    && x.SourceKey == sourceKey)
+                .Select(x => (Guid?)x.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (existingId is Guid existing)
+            {
+                return existing;
+            }
         }
 
         return await ImportParsedBookAsync(
@@ -619,7 +623,8 @@ public sealed partial class BookCatalogService(
             contentHash: contentHash,
             sizeBytes: bytes.LongLength,
             cancellationToken,
-            storagePath: storagePath);
+            storagePath: storagePath,
+            existingWorkId: existingWorkId);
     }
 
     public async Task<Guid> ImportRemoteEpubAsync(
@@ -1454,15 +1459,26 @@ public sealed partial class BookCatalogService(
         CancellationToken cancellationToken,
         string fileFormat = "EPUB",
         string fileMediaType = "application/epub+zip",
-        string? storagePath = null)
+        string? storagePath = null,
+        Guid? existingWorkId = null)
     {
         sourceKey = CleanSourceKey(sourceKey);
 
-        var work = await db.NovelWorks
-            .SingleOrDefaultAsync(
+        var targeted = existingWorkId is Guid;
+        var work = targeted
+            ? await db.NovelWorks.SingleOrDefaultAsync(
+                x => x.Id == existingWorkId
+                    && x.SourceProvider == ImportedBookProvider,
+                cancellationToken)
+            : await db.NovelWorks.SingleOrDefaultAsync(
                 x => x.SourceProvider == ImportedBookProvider
                     && x.SourceKey == sourceKey,
                 cancellationToken);
+
+        if (targeted && work is null)
+        {
+            throw new InvalidOperationException("The target Books work no longer exists.");
+        }
 
         if (work is null)
         {
@@ -1482,23 +1498,32 @@ public sealed partial class BookCatalogService(
         work.SourceUrl = Truncate(
             sourceUrl,
             2048);
-        work.Title = Truncate(
-            parsed.Title,
-            500);
-        work.Author = TruncateNullable(
-            parsed.Author ?? fallbackAuthor,
-            300);
-        work.Description = TruncateNullable(
-            parsed.Description ?? fallbackDescription,
-            4000);
-        work.MetadataProvider = TruncateNullable(
-            metadataProvider,
-            80);
-        work.MetadataExternalId = TruncateNullable(
-            metadataExternalId,
-            200);
-        work.MetadataTitle = work.Title;
-        work.MetadataDescription = work.Description;
+        if (!targeted)
+        {
+            work.Title = Truncate(
+                parsed.Title,
+                500);
+            work.Author = TruncateNullable(
+                parsed.Author ?? fallbackAuthor,
+                300);
+            work.Description = TruncateNullable(
+                parsed.Description ?? fallbackDescription,
+                4000);
+            work.MetadataProvider = TruncateNullable(
+                metadataProvider,
+                80);
+            work.MetadataExternalId = TruncateNullable(
+                metadataExternalId,
+                200);
+            work.MetadataTitle = work.Title;
+            work.MetadataDescription = work.Description;
+        }
+        else if (string.IsNullOrWhiteSpace(work.Author))
+        {
+            work.Author = TruncateNullable(
+                parsed.Author ?? fallbackAuthor,
+                300);
+        }
 
         // Library artwork is always local once a book is imported. Prefer a
         // current Google Books edition cover, then the actual EPUB cover, then
