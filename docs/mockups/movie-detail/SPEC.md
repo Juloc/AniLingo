@@ -56,9 +56,9 @@ Hero content:
 - runtime
 - a few useful genres
 - short description
-- primary action: Play / Continue
-- Favorite / My List
-- overflow for secondary actions
+- primary action is state-dependent: `Play` / `Continue` when a usable version is available; `Request` when unavailable and requestable; otherwise show the existing live Request state
+- Watchlist/Favorite where supported
+- optional Collection/overflow for secondary actions
 
 ### Hero information strip
 
@@ -117,6 +117,8 @@ The detailed view can show:
 - quality/format variants
 
 Do not expose release-group/import/file internals on the normal user page.
+
+There is no consumer `Add to Library` acquisition action on Movie Detail. Acquisition uses the shared Request flow; Watchlist/Favorite/Collection are separate personal-state actions.
 
 ## 4. Cast & Crew
 
@@ -220,6 +222,8 @@ Movie page should make it obvious whether:
 - content/version is not available
 
 Detailed tracks belong in the Versions & Languages detail view.
+
+Audio/subtitle Track choices are not fake Editions. A distinct video Edition exists only for a materially distinct presentation/cut/publication; ordinary dub/subtitle selection remains Track selection and Player behavior.
 
 ## Responsive behavior
 
