@@ -20,6 +20,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 
 - `home/SPEC.md`
 - `library/README.md` — current binding draft; normalize to `SPEC.md` after approval
+- `collection-detail-edit/SPEC.md` — Manual/Smart/Linked Collections, rule builder and linked sync
 - `discover/SPEC.md`
 - `anime-series-detail/SPEC.md`
 - `movie-detail/SPEC.md`

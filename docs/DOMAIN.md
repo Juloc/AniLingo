@@ -183,17 +183,31 @@ Acquisition policy:
 
 Translation providers are pluggable: local/self-hosted engines can be default; optional external APIs can be configured. Reader can switch between available editions/languages.
 
-## 9. Metadata
+## 9. Metadata and provider evidence
 
 Metadata providers return candidates/evidence. They do not own canonical records.
 
 Pipeline:
 
 ```text
-Provider result -> identity resolution -> canonical Work -> field resolution/provenance
+Provider result -> persist provider evidence/snapshot -> identity resolution -> canonical Work -> field resolution/provenance
 ```
 
-Metadata conflicts must be correctable. Provider-specific raw/cache data may exist outside canonical domain tables.
+External provider data fetched for durable Jularr features should remain locally usable after fetch rather than making normal UI rendering depend on repeated provider calls.
+
+Conceptual `ProviderEntitySnapshot`:
+- Provider;
+- EntityKind;
+- ExternalId;
+- normalized searchable fields;
+- provider payload snapshot where allowed/useful;
+- fetched/refreshed timestamps;
+- stale/refresh metadata;
+- optional resolved WorkId.
+
+Snapshots/evidence may become stale, but stale data remains locally readable until an explicit retention/cleanup policy removes it.
+
+Metadata conflicts must be correctable. Provider evidence never replaces canonical Work identity.
 
 ## 10. Acquisition
 
@@ -370,7 +384,30 @@ Server AI availability and personal user AI configuration are policy/configurati
 
 ## 16. Collections and discovery
 
-Collections reference `Work` IDs across media types.
+Collections are profile-scoped views/sets of canonical `Work` IDs across media types.
+
+Persisted Collection modes:
+- Manual — explicit membership/order;
+- Smart — rule-driven membership over canonical/local facts and profile state;
+- Linked — local membership synchronized from an external provider list.
+
+Cross-media is a normal Collection capability, not a separate kind. Franchise/adaptation grouping uses canonical Work relations through Smart/derived views rather than a competing identity model.
+
+A `CollectionEntry` references a local Work ID. It never stores provider IDs as canonical media identity or duplicates canonical title/progress/rating metadata as a source of truth.
+
+Linked Collection sync follows:
+
+```text
+External list
+ -> persist provider list/item snapshots
+ -> resolve/create canonical Work identities
+ -> update local Collection membership by WorkId
+ -> render from local Jularr state
+```
+
+A provider outage must not make an already-synced Linked Collection unreadable.
+
+Ambiguous provider identity is retained as provider evidence/mapping work; Jularr must not silently merge Works from title similarity alone.
 
 Discovery results are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
 

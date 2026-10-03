@@ -174,7 +174,22 @@ Owns cross-provider discovery/recommendation presentation data:
 A discovery result is not automatically a library item.
 
 ### Collections
-Owns static/smart collections of canonical Work references.
+Owns profile-scoped Collection metadata and canonical Work membership.
+
+Persisted modes:
+- Manual — explicit membership/order;
+- Smart — versioned rule expression + include/exclude overrides evaluated against local/cached Media Facts;
+- Linked — locally persisted Work membership synchronized from an external provider list.
+
+Boundary rules:
+- cross-media is normal Collection behavior, not a separate Collection type;
+- franchise/adaptation grouping uses canonical Work relations through Smart/derived views;
+- CollectionEntry stores WorkId, never provider identity as canonical membership;
+- Smart render/preview performs no provider network calls;
+- Linked render performs no provider network calls;
+- Linked sync persists provider list/item evidence first, resolves to canonical Work IDs, then updates local membership;
+- ambiguous identity becomes mapping/review state instead of title-only silent merge;
+- removing/deleting Collection membership never deletes media/progress/request state.
 
 ### Accounts
 Owns authentication, Accounts, Profiles, linked login identities, profile selection, authorization and user/group policy.
@@ -421,6 +436,8 @@ query/external id
 ```
 
 Refreshing metadata must not overwrite manual/admin corrections without policy. Provider removal must not invalidate canonical internal IDs.
+
+Provider responses used for durable product features are persisted as local evidence/snapshots (`ProviderEntitySnapshot` concept) with provider/entity/external identity, normalized fields, refresh timestamps/stale state and optional resolved WorkId. Linked Collections additionally persist external list/membership evidence. Normal UI rendering consumes local state rather than making provider availability a page-render dependency.
 
 ## 12. Playback flow
 
