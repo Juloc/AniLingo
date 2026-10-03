@@ -361,6 +361,12 @@ Vocabulary / Sentences:
 - Vocabulary remains canonical LearningUnit/Variant/Card state
 - Sentences reuses canonical LearningContext/Sentence Practice data rather than inventing a second sentence store
 
+Progress / Achievements:
+- binding specification: `docs/mockups/progress-achievements/SPEC.md`
+- bounded learner analytics over canonical Learning state/events
+- Course progress, Review/FSRS state, Vocabulary state and gamification remain separate
+- unavailable XP/time/Streak/Achievement metrics are omitted until their canonical contracts exist
+
 Course detail:
 - binding specification: `docs/mockups/course-detail/SPEC.md`
 - canonical Curriculum -> Level -> Chapter -> Lesson structure
