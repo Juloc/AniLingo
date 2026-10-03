@@ -3,8 +3,8 @@
 @model (DiscoverCardView Card, UiTextBundle Ui)
 @* One title of Discover (docs/mockups/discover): dominant artwork, title, a compact type and year line and one
    language or request indicator. The card is deliberately simpler than a Library card: no progress. The rich
-   preview (a hover popover on a pointer, a bottom sheet on touch) is the inert template below, cloned by
-   wwwroot/js/discover.js when it opens. Styles: wwwroot/css/discover-browse.css. *@
+   preview opens explicitly as the stable detail sheet; hovering never resizes the card or opens another surface.
+   The inert template below is cloned by wwwroot/js/discover.js when requested. Styles: wwwroot/css/discover-browse.css. *@
 @{
     var card = Model.Card;
     var ui = Model.Ui;
