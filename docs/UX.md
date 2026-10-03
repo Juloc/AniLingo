@@ -712,6 +712,21 @@ This is a normal settings page, **not a Setup Wizard continuation**. It must not
 
 The Setup Wizard and this page must use the same canonical settings store. Appearance, Modules, Storage, Providers, Acquisition, AI, Backup and Runtime remain in their owning Admin areas.
 
+## 27d. Admin Notifications
+
+Binding specification:
+- `docs/mockups/admin-notifications/SPEC.md`
+
+Admin Notifications owns the instance's technical notification delivery layer:
+- registered/configured notification sinks;
+- channel health and tests;
+- read-only canonical event catalog/audience/severity;
+- delivery diagnostics/history once backed by a durable delivery-attempt store.
+
+Current implementation has a real **In-App** sink only. Push/Digest exist in the model but must not appear as working transports until a real sink/configuration contract exists. Future E-Mail, Web Push, Webhook/Home Assistant or other channels plug into the shared `INotificationSink` pipeline rather than creating parallel notification systems.
+
+Profile Notification Settings continue to own each user's event preferences. Activity/History remain operational-job surfaces and are not duplicated by notification delivery history.
+
 ## 28. Responsive profiles
 
 ### Mobile
