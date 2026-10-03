@@ -19,16 +19,11 @@
         root.dataset[`status${status.charAt(0).toUpperCase()}${status.slice(1)}`] || status;
 
     const touchFirst = window.matchMedia("(hover: none), (pointer: coarse)");
-    const HOVER_DELAY = 450;
-    const HOVER_LEAVE_DELAY = 180;
     const SEARCH_DELAY = 250;
 
     let abortController = null;
     let requestVersion = 0;
     let debounceTimer = null;
-    let hoverTimer = null;
-    let leaveTimer = null;
-    let hoverCard = null;
     let loadFailed = false;
     // Changes the visitor made in a preview (follow, request), applied again when a card's preview reopens.
     const overrides = new Map();
@@ -97,6 +92,7 @@
             hideHover();
             // Same-origin, server-rendered and HTML-encoded by Razor; injected as the page body.
             body.innerHTML = html;
+            activateLiveRequests(body);
             loadFailed = false;
         } catch (error) {
             if (error?.name === "AbortError" || version !== requestVersion) return;
@@ -205,36 +201,7 @@
     }
     let keyCounter = 0;
 
-    function positionHover(card) {
-        const rect = card.getBoundingClientRect();
-        const width = hover.offsetWidth || 320;
-        const height = hover.offsetHeight || 0;
-        const left = Math.min(
-            Math.max(8, rect.left + rect.width / 2 - width / 2),
-            Math.max(8, window.innerWidth - width - 8));
-        const top = Math.min(
-            Math.max(8, rect.top - 14),
-            Math.max(8, window.innerHeight - height - 8));
-        hover.style.left = `${Math.round(left)}px`;
-        hover.style.top = `${Math.round(top)}px`;
-    }
-
-    function showHover(card) {
-        if (sheet.open) return;
-        const content = cloneTemplate(card);
-        if (!content) return;
-        keyOf(card);
-        hoverCard = card;
-        hover.replaceChildren(content);
-        hover.setAttribute("aria-label", card.querySelector(".dc-card-title")?.textContent?.trim() || "");
-        hover.hidden = false;
-        positionHover(card);
-    }
-
     function hideHover() {
-        clearTimeout(hoverTimer);
-        clearTimeout(leaveTimer);
-        hoverCard = null;
         if (!hover.hidden) {
             hover.hidden = true;
             hover.replaceChildren();
@@ -248,6 +215,7 @@
         keyOf(card);
         sheet.dataset.for = card.dataset.dcKey;
         sheetContent.replaceChildren(content);
+        activateLiveRequests(sheetContent);
         sheet.setAttribute("aria-label", card.querySelector(".dc-card-title")?.textContent?.trim() || "");
         if (typeof sheet.showModal === "function") {
             if (!sheet.open) sheet.showModal();
@@ -264,44 +232,9 @@
 
     sheet.addEventListener("close", () => sheetContent.replaceChildren());
     sheet.querySelector("[data-dc-sheet-close]")?.addEventListener("click", closeSheet);
-    // A click on the dimmed area (the dialog itself, outside its content) closes the sheet.
     sheet.addEventListener("click", event => {
         if (event.target === sheet) closeSheet();
     });
-
-    // Hover: after a short delay, and only for a mouse.
-    body.addEventListener("pointerover", event => {
-        if (event.pointerType !== "mouse" || touchFirst.matches) return;
-        const card = event.target instanceof Element ? event.target.closest("[data-dc-card]") : null;
-        if (!card || card === hoverCard) {
-            clearTimeout(leaveTimer);
-            return;
-        }
-
-        clearTimeout(hoverTimer);
-        clearTimeout(leaveTimer);
-        hoverTimer = setTimeout(() => showHover(card), HOVER_DELAY);
-    });
-
-    body.addEventListener("pointerout", event => {
-        if (event.pointerType !== "mouse") return;
-        const card = event.target instanceof Element ? event.target.closest("[data-dc-card]") : null;
-        if (!card) return;
-        const next = event.relatedTarget instanceof Element ? event.relatedTarget : null;
-        if (next && (card.contains(next) || hover.contains(next))) return;
-
-        clearTimeout(hoverTimer);
-        clearTimeout(leaveTimer);
-        leaveTimer = setTimeout(hideHover, HOVER_LEAVE_DELAY);
-    });
-
-    hover.addEventListener("pointerenter", () => clearTimeout(leaveTimer));
-    hover.addEventListener("pointerleave", () => {
-        clearTimeout(leaveTimer);
-        leaveTimer = setTimeout(hideHover, HOVER_LEAVE_DELAY);
-    });
-    window.addEventListener("scroll", hideHover, { capture: true, passive: true });
-    window.addEventListener("resize", hideHover);
 
     // Click: the preview button always opens the sheet. A card that is not in the library opens it too, since
     // its only page is the provider's; a library card opens its page, except on touch where the sheet comes first.
@@ -375,64 +308,222 @@
         button.replaceWith(link);
     }
 
-    function showRequestResult(scope, status, resultUrl) {
-        const slot = scope.querySelector("[data-dc-add-slot]");
-        if (slot) {
-            const pill = document.createElement("span");
-            pill.className = `dc-pv-status request-status-${status}`;
-            pill.textContent = statusText(status);
-            slot.replaceChildren(pill);
-            if (resultUrl) {
-                const link = document.createElement("a");
-                link.className = "button";
-                link.href = resultUrl;
-                link.textContent = text("textOpen");
-                slot.append(link);
-            }
+    const requestPollers = new Map();
+
+    function requestProgressLabel(payload) {
+        const stage = statusText(payload.status || "pending");
+        const progress = Number.isFinite(payload.progress) ? Math.max(0, Math.min(100, payload.progress)) : 0;
+        return payload.done || progress <= 0 ? stage : `${stage} · ${progress}%`;
+    }
+
+    function defaultProgress(status) {
+        return {
+            pending: 0,
+            approved: 5,
+            searching: 15,
+            downloading: 35,
+            importing: 90,
+            completed: 100,
+            rejected: 100,
+            failed: 100
+        }[status] ?? 0;
+    }
+
+    function renderRequestSlot(slot, payload) {
+        if (!slot) return;
+        const progress = Number.isFinite(payload.progress)
+            ? Math.max(0, Math.min(100, payload.progress))
+            : defaultProgress(payload.status);
+        slot.dataset.dcLiveRequest = payload.requestId || slot.dataset.dcLiveRequest || "";
+        slot.dataset.dcLiveStatus = payload.status || "";
+
+        if (payload.status === "completed" && payload.resultUrl) {
+            const link = document.createElement("a");
+            link.className = "button button-primary dc-request-open";
+            link.href = payload.resultUrl;
+            link.textContent = text("textOpen");
+            slot.replaceChildren(link);
+            return;
         }
-        showRequested(scope, statusText(status));
+
+        const live = document.createElement("span");
+        live.className = `button button-primary dc-request-live request-status-${payload.status || "pending"}`;
+        live.setAttribute("role", "status");
+
+        const ring = document.createElement("span");
+        ring.className = "dc-request-ring";
+        ring.style.setProperty("--dc-progress", `${progress}%`);
+        const number = document.createElement("span");
+        number.textContent = `${Math.round(progress)}`;
+        ring.append(number);
+
+        const label = document.createElement("span");
+        label.className = "dc-request-live-label";
+        label.textContent = statusText(payload.status || "pending");
+
+        live.append(ring, label);
+        if (payload.message) live.title = payload.message;
+        slot.replaceChildren(live);
+    }
+
+    function updateRequestEverywhere(payload) {
+        const id = payload.requestId;
+        if (!id) return;
+
+        root.querySelectorAll(`[data-dc-live-request="${id}"]`).forEach(slot =>
+            renderRequestSlot(slot, payload));
+
+        body.querySelectorAll(`[data-dc-request-id="${id}"]`).forEach(card => {
+            card.dataset.dcRequestStatus = payload.status || "";
+            showRequested(card, requestProgressLabel(payload));
+        });
+    }
+
+    async function fetchRequestProgress(requestId) {
+        const url = new URL(root.dataset.requestStatusUrl, window.location.origin);
+        url.searchParams.set("id", requestId);
+        const response = await fetch(url.pathname + url.search, {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" }
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+    }
+
+    function pollRequest(requestId) {
+        if (!requestId || requestPollers.has(requestId)) return;
+
+        const tick = async () => {
+            try {
+                const payload = await fetchRequestProgress(requestId);
+                updateRequestEverywhere(payload);
+                if (payload.done) {
+                    requestPollers.delete(requestId);
+                    return;
+                }
+            } catch {
+                // Keep the current visible state; transient navigation/network failures may recover.
+            }
+
+            const timer = window.setTimeout(tick, 1500);
+            requestPollers.set(requestId, timer);
+        };
+
+        requestPollers.set(requestId, 0);
+        void tick();
+    }
+
+    function activateLiveRequests(scope) {
+        scope.querySelectorAll("[data-dc-live-request]").forEach(slot => {
+            const requestId = slot.dataset.dcLiveRequest;
+            if (!requestId) return;
+            renderRequestSlot(slot, {
+                requestId,
+                status: slot.dataset.dcLiveStatus || "pending",
+                progress: defaultProgress(slot.dataset.dcLiveStatus || "pending"),
+                done: false
+            });
+            pollRequest(requestId);
+        });
     }
 
     function applyOverrides(scope, change) {
         if (change.followed !== undefined) showFollowState(scope, change.followed);
         if (change.franchiseId) showFranchise(scope, change.franchiseId);
-        if (change.status) showRequestResult(scope, change.status, change.resultUrl);
+        if (change.requestId) {
+            const slot = scope.querySelector("[data-dc-add-slot]");
+            if (slot) {
+                slot.dataset.dcLiveRequest = change.requestId;
+                slot.dataset.dcLiveStatus = change.status || "pending";
+                renderRequestSlot(slot, change);
+                pollRequest(change.requestId);
+            }
+        }
     }
 
     function remember(scope, change) {
-        const holder = scope.closest("[data-dc-sheet], [data-dc-hover]");
-        const key = holder?.dataset.for || (holder === hover ? hoverCard?.dataset.dcKey : null);
+        const holder = scope.closest("[data-dc-sheet]");
+        const key = holder?.dataset.for;
         if (!key) return;
         overrides.set(key, { ...(overrides.get(key) || {}), ...change });
-        // The card behind the preview shows the new request state too.
-        if (change.status) {
+        if (change.requestId) {
             const card = document.querySelector(`[data-dc-card][data-dc-key="${key}"]`);
-            if (card) showRequested(card, statusText(change.status));
+            if (card) {
+                card.dataset.dcRequestId = change.requestId;
+                card.dataset.dcRequestStatus = change.status || "pending";
+                const slot = card.querySelector("[data-dc-card-request-slot]");
+                if (slot) {
+                    slot.dataset.dcLiveRequest = change.requestId;
+                    slot.dataset.dcLiveStatus = change.status || "pending";
+                    renderRequestSlot(slot, change);
+                }
+                showRequested(card, requestProgressLabel(change));
+                pollRequest(change.requestId);
+            }
+        }
+    }
+
+    async function submitDiscoverRequest(data, button, scope) {
+        button.disabled = true;
+        try {
+            const payload = await postForm(root.dataset.addUrl, {
+                category: data.category,
+                provider: data.provider,
+                externalId: data.externalId,
+                title: data.title,
+                subtitle: data.subtitle,
+                coverImageUrl: data.cover
+            });
+
+            const slot = button.closest("[data-dc-add-slot], [data-dc-card-request-slot]");
+            if (slot) {
+                slot.dataset.dcLiveRequest = payload.requestId;
+                slot.dataset.dcLiveStatus = payload.status;
+                renderRequestSlot(slot, payload);
+            }
+            showRequested(scope, requestProgressLabel(payload));
+            pollRequest(payload.requestId);
+            return payload;
+        } catch {
+            button.disabled = false;
+            button.textContent = text("textAddFailed");
+            return null;
         }
     }
 
     root.addEventListener("click", async event => {
         const target = event.target instanceof Element ? event.target : null;
-        const preview = target?.closest(".dc-pv");
-        if (!target || !preview) return;
+        if (!target) return;
+
+        const cardAdd = target.closest("[data-dc-card-add]");
+        if (cardAdd) {
+            const card = cardAdd.closest("[data-dc-card]");
+            if (!card) return;
+            const payload = await submitDiscoverRequest({
+                category: card.dataset.dcCategory,
+                provider: card.dataset.dcProvider,
+                externalId: card.dataset.dcExternalId,
+                title: card.dataset.dcTitle,
+                subtitle: card.dataset.dcSubtitle,
+                cover: card.dataset.dcCover
+            }, cardAdd, card);
+            if (payload) {
+                card.dataset.dcRequestId = payload.requestId;
+                card.dataset.dcRequestStatus = payload.status;
+            }
+            return;
+        }
+
+        const preview = target.closest(".dc-pv");
+        if (!preview) return;
         const data = preview.dataset;
 
         const add = target.closest("[data-dc-add]");
         if (add) {
-            add.disabled = true;
-            try {
-                const payload = await postForm(root.dataset.addUrl, {
-                    category: data.category,
-                    externalId: data.externalId,
-                    title: data.title,
-                    subtitle: data.subtitle,
-                    coverImageUrl: data.cover
-                });
-                showRequestResult(preview, payload.status, payload.resultUrl);
-                remember(preview, { status: payload.status, resultUrl: payload.resultUrl });
-            } catch {
-                add.disabled = false;
-                add.textContent = text("textAddFailed");
+            const payload = await submitDiscoverRequest(data, add, preview);
+            if (payload) {
+                remember(preview, payload);
             }
             return;
         }
