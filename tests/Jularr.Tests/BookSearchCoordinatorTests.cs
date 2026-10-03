@@ -149,6 +149,39 @@ public sealed class BookSearchCoordinatorTests
     }
 
     [TestMethod]
+    public void UsenetQueryPlanCoversEveryDisplayedCanonicalWork()
+    {
+        var works = Enumerable.Range(1, 24)
+            .Select(index => new BookCatalogItem(
+                $"book-{index}",
+                $"Book {index:00}",
+                $"Author {index:00}",
+                null,
+                null,
+                [],
+                null,
+                null,
+                null,
+                $"https://catalog.example/book-{index}",
+                "Test",
+                null))
+            .ToArray();
+
+        var queries = BookSearchCoordinator.BuildUsenetQueries(
+            works,
+            "books");
+
+        Assert.AreEqual(25, queries.Count);
+        Assert.AreEqual("books", queries[0]);
+        foreach (var index in Enumerable.Range(1, 24))
+        {
+            CollectionAssert.Contains(
+                queries.ToList(),
+                $"Author {index:00} Book {index:00}");
+        }
+    }
+
+    [TestMethod]
     public async Task SearchChecksGutenbergEvenWhenMetadataAlreadyFoundTheWork()
     {
         var root = Path.Combine(

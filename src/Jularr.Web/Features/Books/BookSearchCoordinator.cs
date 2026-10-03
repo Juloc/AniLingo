@@ -90,14 +90,13 @@ public sealed class BookSearchCoordinator(
             .Take(ResultLimit)
             .ToArray();
 
-        var usenetQueries = works
-            .Take(4)
-            .SelectMany(work => BookUsenetSearch.Queries(work.Title, work.Author))
-            .Prepend(normalizedQuery)
-            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(12)
-            .ToArray();
+        // Check every displayed canonical work against Usenet without turning the search page into
+        // N separate indexer calls per row. One strongest identity query per displayed work plus the
+        // user's original query gives each result a chance to surface indexer availability while the
+        // total query count stays bounded by ResultLimit + 1.
+        var usenetQueries = BuildUsenetQueries(
+            works,
+            normalizedQuery);
         var usenetResult = await CaptureUsenetPoolAsync(
             usenetQueries,
             cancellationToken);
@@ -148,6 +147,28 @@ public sealed class BookSearchCoordinator(
             warnings
                 .Distinct()
                 .ToArray());
+    }
+
+    /// <summary>
+    /// Builds one bounded Usenet availability query for every result shown by consumer search.
+    /// The author + main-title query is preferred where possible because it is the strongest Book
+    /// identity query; the user's original query is kept as a broad fallback.
+    /// </summary>
+    public static IReadOnlyList<string> BuildUsenetQueries(
+        IReadOnlyList<BookCatalogItem> works,
+        string originalQuery)
+    {
+        ArgumentNullException.ThrowIfNull(works);
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalQuery);
+
+        return works
+            .Take(ResultLimit)
+            .Select(work => BookUsenetSearch.Queries(work.Title, work.Author).First())
+            .Prepend(originalQuery.Trim())
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(ResultLimit + 1)
+            .ToArray();
     }
 
     /// <summary>
