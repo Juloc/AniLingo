@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaCore;
 using Microsoft.AspNetCore.Authorization;
@@ -15,7 +16,11 @@ namespace Jularr.Web.Pages.Admin.Capabilities;
 /// discovery resolve against.
 /// </summary>
 [Authorize(Policy = JularrPolicies.AdminSystem)]
-public sealed class IndexModel(AppDbContext db, MediaCapabilityStore store, OwnerAuthService accounts) : PageModel
+public sealed class IndexModel(
+    AppDbContext db,
+    MediaCapabilityStore store,
+    OwnerAuthService accounts,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -24,7 +29,7 @@ public sealed class IndexModel(AppDbContext db, MediaCapabilityStore store, Owne
     /// <summary>Non-owner accounts whose overrides can be edited (the owner is always unrestricted).</summary>
     public IReadOnlyList<LocalAccountSummary> Users { get; private set; } = [];
 
-    public IReadOnlyList<WorkMediaType> MediaTypes => WorkMediaTypes.All;
+    public IReadOnlyList<WorkMediaType> MediaTypes { get; private set; } = WorkMediaTypes.All;
 
     public IReadOnlyList<AccountRole> Roles => MediaCapabilityPolicy.ConfigurableRoles;
 
@@ -47,9 +52,10 @@ public sealed class IndexModel(AppDbContext db, MediaCapabilityStore store, Owne
     public async Task<IActionResult> OnPostRolesAsync(CancellationToken cancellationToken)
     {
         var policy = await store.LoadAsync(cancellationToken);
+        var mediaTypes = await EnabledMediaTypesAsync(cancellationToken);
         foreach (var role in MediaCapabilityPolicy.ConfigurableRoles)
         {
-            foreach (var mediaType in WorkMediaTypes.All)
+            foreach (var mediaType in mediaTypes)
             {
                 if (MediaCapabilityNames.TryParse(Request.Form[RoleField(role, mediaType)].ToString()) is { } capability)
                 {
@@ -68,7 +74,8 @@ public sealed class IndexModel(AppDbContext db, MediaCapabilityStore store, Owne
         if (account is not null && account.Role != AccountRole.Owner)
         {
             var policy = await store.LoadAsync(cancellationToken);
-            foreach (var mediaType in WorkMediaTypes.All)
+            var mediaTypes = await EnabledMediaTypesAsync(cancellationToken);
+            foreach (var mediaType in mediaTypes)
             {
                 // An empty selection means "inherit the role default", stored as no override.
                 var capability = MediaCapabilityNames.TryParse(Request.Form[UserField(mediaType)].ToString());
@@ -106,9 +113,25 @@ public sealed class IndexModel(AppDbContext db, MediaCapabilityStore store, Owne
         return RedirectToPage();
     }
 
+    private async Task<IReadOnlyList<WorkMediaType>> EnabledMediaTypesAsync(
+        CancellationToken cancellationToken)
+    {
+        if (instanceModules is null)
+        {
+            return WorkMediaTypes.All;
+        }
+
+        var instance = await instanceModules.GetAsync(cancellationToken);
+        return WorkMediaTypes.All
+            .Where(mediaType =>
+                InstanceModuleMedia.IsCapabilityFamilyEnabled(instance, mediaType))
+            .ToArray();
+    }
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        MediaTypes = await EnabledMediaTypesAsync(cancellationToken);
         Policy = await store.LoadAsync(cancellationToken);
         Users = (await accounts.ListAsync(cancellationToken))
             .Where(account => account.Role != AccountRole.Owner)
