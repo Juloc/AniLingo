@@ -476,7 +476,7 @@ Every platform defines:
 - missing BIOS;
 - browser/device unsupported;
 - requested;
-- downloading/importing;
+- downloading/preparing;
 - not local/requestable;
 - no Save States;
 - screenshots empty;
