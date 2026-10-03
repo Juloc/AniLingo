@@ -1,12 +1,80 @@
 # Nintendo DS Player
 
-Status: platform-specific player planning. Visual mockups pending approval.
+Status: Desktop, Tablet, Mobile Portrait, Mobile Landscape and Screen Layout Editor visual direction approved. The owner will upload the approved mockup image into this folder.
 
 Parent player: `docs/mockups/game-player/SPEC.md`.
 Touch controls: `docs/mockups/game-touch-controls/SPEC.md`.
 Games architecture: #725.
 UX planning: #729.
 Browser runtime: #771.
+
+## Visual direction
+
+Nintendo DS must use the normal Jularr product UI. Do **not** visually imitate Nintendo DS hardware.
+
+Hard rules:
+- no fake DS shell;
+- no fake hinge;
+- no decorative console bezel;
+- no fake physical speaker holes, cartridge shell, handheld chassis or device silhouette;
+- no fake phone/tablet/console frame around the actual application UI;
+- no ornamental hardware framing around TopScreen or BottomScreen.
+
+TopScreen and BottomScreen are plain modern content surfaces inside the Jularr layout.
+
+The two screens may use:
+- simple neutral background;
+- small radius consistent with Jularr cards/player surfaces;
+- subtle border/shadow only where needed for separation;
+- clear touch-screen indication for BottomScreen.
+
+They must not be wrapped in a reproduction of Nintendo hardware.
+
+### Clean theme
+
+The approved Clean visual direction follows the existing light Jularr Admin/Activity design language:
+- white / very light neutral surfaces;
+- dark navy text;
+- restrained purple accent;
+- subtle gray borders;
+- soft shadows;
+- compact modern controls;
+- no decorative gaming skin;
+- no oversized neon glow;
+- no fake glass/hardware treatment.
+
+### Original Jularr theme
+
+Original Jularr may use the established warm Japanese watercolor/cherry-blossom background and red accent, but the actual player layout remains modern Jularr UI.
+
+Theme changes color/surface treatment only. It does not change screen arrangement, control hierarchy or runtime behavior.
+
+### Content framing
+
+The game screens themselves are the focal content.
+
+Desktop:
+- screens use available content width directly;
+- Side-by-side is preferred when space permits;
+- controls/actions sit in normal Jularr toolbars/cards.
+
+Tablet:
+- screens stack or sit side-by-side according to orientation;
+- no decorative device frame.
+
+Mobile Portrait:
+- TopScreen and BottomScreen stack as clean rectangular surfaces;
+- physical touch controls occupy the remaining safe area.
+
+Mobile Landscape:
+- screens use the available width directly;
+- physical controls may overlay safe empty regions;
+- no fake handheld outline.
+
+Screen Layout Editor:
+- preview uses plain screen rectangles on a neutral grid/canvas;
+- resize handles/selection outlines are functional editor affordances only;
+- never use a fake DS chassis as the editor canvas.
 
 ## Purpose
 
