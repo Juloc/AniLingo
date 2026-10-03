@@ -37,30 +37,10 @@
         ? ui["novels.work.oneVolumeInline"]
         : ui.Format("novels.work.volumesCountInline", ("count", count));
     var backLink = new ContextBackLinkModel("/Novels", ui["novels.work.backToNovels"], "back-link");
-    // Splits a volume's chapters into runs of consecutive same-group chapters, so an
-    // ungrouped novel (every run's GroupTitle is null) renders exactly as before groups
-    // existed, and a grouped run draws once under its own collapsible heading (#512).
-    static IReadOnlyList<(string? GroupTitle, List<Jularr.Web.Features.Novels.NovelChapterItem> Chapters)> GroupRuns(
-        IReadOnlyList<Jularr.Web.Features.Novels.NovelChapterItem> chapters)
-    {
-        var runs = new List<(string? GroupTitle, List<Jularr.Web.Features.Novels.NovelChapterItem> Chapters)>();
-        foreach (var chapter in chapters)
-        {
-            if (runs.Count > 0 && runs[^1].GroupTitle == chapter.GroupTitle)
-            {
-                runs[^1].Chapters.Add(chapter);
-            }
-            else
-            {
-                runs.Add((chapter.GroupTitle, [chapter]));
-            }
-        }
-
-        return runs;
-    }
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/library-presentation.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
 }
@@ -324,6 +304,7 @@
                     </div>;
 
                     Func<dynamic?, IHtmlContent> filesGroup = @<div>
+                        <a class="button" href="/Library/PresentationGroups/@work.Id?media=novel">@ui["library.presentation.manageLink"]</a>
                         <a class="button" href="/Books/ChapterArt/@work.Id">@ui["chapterArt.title"]</a>
                         @if (detail.IsEpubSeries)
                         {
@@ -431,65 +412,41 @@
         }
     </div>
 
-    @foreach (var group in chapterGroups)
+    @if (Model.PresentationVolumeSections.Count > 0)
     {
-        var volume = group.Volume;
-        var volumeCurrent = volume is not null && currentChapter?.VolumeId == volume.Id;
-        <div class="novel-volume-group @(volumeCurrent ? "current" : "")">
-            @if (volume is not null)
-            {
-                <header class="novel-volume-header" id="volume-@volume.Number">
-                    <div class="novel-volume-cover">
-                        @if (volume.CoverUrl is not null)
-                        {
-                            <img src="@volume.CoverUrl" alt="" loading="lazy" />
-                        }
-                        else
-                        {
-                            <span>@volume.Number</span>
-                        }
-                    </div>
-                    <div class="novel-volume-copy">
-                        <strong>@ui.Format("novels.work.volumeLabel", ("number", volume.Number))</strong>
-                        @if (!string.IsNullOrWhiteSpace(volume.Title))
-                        {
-                            <span lang="ja">@volume.Title</span>
-                        }
-                        <small>@ChapterCount(group.Chapters.Count)@(volumeCurrent ? $" · {ui["novels.work.readingIndicator"]}" : "")</small>
-                    </div>
-                    @if (group.Chapters.FirstOrDefault() is { } volumeStart)
-                    {
-                        <a class="button novel-volume-open" href="/Novels/Read/@(volumeCurrent ? currentChapter!.Id : volumeStart.Id)">
-                            @(volumeCurrent ? ui["novels.work.continueVolumeAction"] : ui["novels.work.readVolumeAction"])
-                        </a>
-                    }
-                </header>
-            }
-
-            <div class="novel-chapter-list">
-                @foreach (var run in GroupRuns(group.Chapters))
+        @foreach (var presentationSection in Model.PresentationVolumeSections)
+        {
+            <details class="presentation-group" open>
+                <summary class="presentation-group-summary">
+                    <span class="presentation-group-name">@presentationSection.Name</span>
+                    <span class="presentation-group-count">@ui.Format("library.presentation.itemCount", ("count", presentationSection.Items.Count), ("units", ui["library.presentation.volumes"]))</span>
+                </summary>
+                @foreach (var volume in presentationSection.Items)
                 {
-                    if (run.GroupTitle is null)
-                    {
-                        @foreach (var chapter in run.Chapters)
-                        {
-                            <partial name="_NovelChapterRow" model="new Jularr.Web.Pages.Novels.NovelChapterRowModel(chapter, currentChapter, Model.Progress, ui)" />
-                        }
-                    }
-                    else
-                    {
-                        <details class="novel-chapter-group" open>
-                            <summary class="novel-chapter-group-heading">@run.GroupTitle</summary>
-                            <div class="novel-chapter-group-list">
-                                @foreach (var chapter in run.Chapters)
-                                {
-                                    <partial name="_NovelChapterRow" model="new Jularr.Web.Pages.Novels.NovelChapterRowModel(chapter, currentChapter, Model.Progress, ui)" />
-                                }
-                            </div>
-                        </details>
-                    }
+                    var chapters = detail.Chapters.Where(chapter => chapter.VolumeId == volume.Id).ToArray();
+                    <partial name="_NovelVolumeGroup" model="new Jularr.Web.Pages.Novels.NovelVolumeGroupModel(volume, chapters, currentChapter, Model.Progress, ui)" />
                 }
-            </div>
-        </div>
+            </details>
+        }
+    }
+    else if (Model.PresentationChapterSections.Count > 0)
+    {
+        @foreach (var presentationSection in Model.PresentationChapterSections)
+        {
+            <details class="presentation-group" open>
+                <summary class="presentation-group-summary">
+                    <span class="presentation-group-name">@presentationSection.Name</span>
+                    <span class="presentation-group-count">@ui.Format("library.presentation.itemCount", ("count", presentationSection.Items.Count), ("units", ui["library.presentation.chapters"]))</span>
+                </summary>
+                <partial name="_NovelVolumeGroup" model="new Jularr.Web.Pages.Novels.NovelVolumeGroupModel(null, presentationSection.Items, currentChapter, Model.Progress, ui)" />
+            </details>
+        }
+    }
+    else
+    {
+        @foreach (var group in chapterGroups)
+        {
+            <partial name="_NovelVolumeGroup" model="new Jularr.Web.Pages.Novels.NovelVolumeGroupModel(group.Volume, group.Chapters, currentChapter, Model.Progress, ui)" />
+        }
     }
 </section>
