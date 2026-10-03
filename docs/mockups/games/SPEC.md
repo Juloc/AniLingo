@@ -25,6 +25,7 @@ Planned game-specific surfaces:
 - `game-detail/SPEC.md`
 - `game-player/SPEC.md`
 - `game-player-nintendo-ds/SPEC.md`
+- `game-player-playstation/SPEC.md`
 - `game-touch-controls/SPEC.md`
 - `game-play-options/SPEC.md`
 
