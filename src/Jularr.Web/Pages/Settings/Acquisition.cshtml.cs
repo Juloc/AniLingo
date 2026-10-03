@@ -7,6 +7,7 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Policy;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Media.Optimization;
@@ -34,7 +35,8 @@ public sealed class AcquisitionModel(
     MediaInboxImportService inboxes,
     FolderBrowseService folders,
     AppDbContext db,
-    ILogger<AcquisitionModel> logger) : PageModel
+    ILogger<AcquisitionModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -44,6 +46,8 @@ public sealed class AcquisitionModel(
     public IReadOnlyList<LibraryRoot> Roots { get; private set; } = [];
     public IReadOnlyList<IndexerEntry> IndexerEntries { get; private set; } = [];
     public bool AniListAutoMonitorEnabled { get; private set; }
+    public InstanceModuleSettings InstanceModules { get; private set; } = InstanceModuleSettings.Default;
+    public bool ShowAnimeAutoMonitor => InstanceModules.IsEnabled(InstanceModule.Anime);
     public AcquisitionBackupPreview? RestorePreview { get; private set; }
     public string? PendingRestoreJson { get; private set; }
     public string? Error => TempData["AcquisitionSettingsError"] as string;
@@ -97,7 +101,8 @@ public sealed class AcquisitionModel(
     }
 
     /// <summary>The reading media types with their own folders, in display order.</summary>
-    public IReadOnlyList<MediaAcquisitionKind> MediaFolderKinds => MediaInboxImportService.InboxKinds;
+    public IReadOnlyList<MediaAcquisitionKind> MediaFolderKinds =>
+        MediaInboxImportService.InboxKinds.Where(IsKindEnabled).ToArray();
 
     public MediaLibraryTarget FoldersFor(MediaAcquisitionKind kind) => ImportSettings.FoldersFor(kind);
 
@@ -132,6 +137,8 @@ public sealed class AcquisitionModel(
         string? inboxRoot,
         CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+
         if (!CanManageStorage)
         {
             return Forbid();
@@ -199,6 +206,8 @@ public sealed class AcquisitionModel(
         MediaAcquisitionKind kind,
         CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!MediaFolderKinds.Contains(kind))
         {
@@ -250,8 +259,8 @@ public sealed class AcquisitionModel(
     }
 
     /// <summary>Every media type has its own remote path mappings.</summary>
-    public IReadOnlyList<MediaAcquisitionKind> PathMappingKinds { get; } =
-        Enum.GetValues<MediaAcquisitionKind>();
+    public IReadOnlyList<MediaAcquisitionKind> PathMappingKinds =>
+        Enum.GetValues<MediaAcquisitionKind>().Where(IsKindEnabled).ToArray();
 
     public string KindLabel(MediaAcquisitionKind kind) =>
         Ui[$"admin.requests.kind.{AcquisitionAccessNames.Kind(kind)}"];
@@ -262,6 +271,8 @@ public sealed class AcquisitionModel(
         string localPrefix,
         CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!PathMappingKinds.Contains(kind))
         {
@@ -294,6 +305,8 @@ public sealed class AcquisitionModel(
         string? localPrefix,
         CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+
         if (!ModelState.IsValid || !PathMappingKinds.Contains(kind) || string.IsNullOrWhiteSpace(samplePath))
         {
             return BadRequest();
@@ -321,6 +334,8 @@ public sealed class AcquisitionModel(
         string remotePrefix,
         CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!PathMappingKinds.Contains(kind))
         {
@@ -477,6 +492,12 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostAniListAutoMonitorAsync(bool enabled, CancellationToken cancellationToken)
     {
+        await LoadInstanceModulesAsync(cancellationToken);
+        if (!ShowAnimeAutoMonitor)
+        {
+            return NotFound();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         await aniListAutoMonitorStore.SetEnabledAsync(currentAccount.ProfileId, enabled, DateTimeOffset.UtcNow, cancellationToken);
@@ -568,9 +589,20 @@ public sealed class AcquisitionModel(
         return RedirectToPage();
     }
 
+    private bool IsKindEnabled(MediaAcquisitionKind kind) =>
+        InstanceModules.IsEnabled(AcquisitionInstanceModules.For(kind));
+
+    private async Task LoadInstanceModulesAsync(CancellationToken cancellationToken)
+    {
+        InstanceModules = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+    }
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadInstanceModulesAsync(cancellationToken);
         ImportSettings = await importSettings.LoadAsync(cancellationToken);
         Policy = await policyStore.LoadAsync(cancellationToken);
         Roots = await db.LibraryRoots.AsNoTracking().OrderBy(root => root.Name).ToArrayAsync(cancellationToken);

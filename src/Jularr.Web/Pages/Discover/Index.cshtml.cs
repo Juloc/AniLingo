@@ -5,10 +5,12 @@ using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Recommendations;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Ui;
 using Microsoft.AspNetCore.Mvc;
@@ -30,7 +32,8 @@ public sealed class IndexModel(
     WatchlistStore watchlist,
     FranchiseService franchiseService,
     MediaRecommendationService recommendations,
-    ILogger<IndexModel> logger) : PageModel
+    ILogger<IndexModel> logger,
+    IAppShellService? shell = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
@@ -350,6 +353,11 @@ public sealed class IndexModel(
             return BadRequest();
         }
 
+        if (!await IsVisibleAsync(draft.Identity, cancellationToken))
+        {
+            return NotFound();
+        }
+
         if (follow)
         {
             await watchlist.FollowAsync(account.ProfileId, draft, cancellationToken);
@@ -376,6 +384,11 @@ public sealed class IndexModel(
             !FranchiseService.CanSeed(identity))
         {
             return BadRequest();
+        }
+
+        if (!await IsVisibleAsync(identity, cancellationToken))
+        {
+            return NotFound();
         }
 
         var franchiseId = await franchiseService.FollowFromSeedAsync(
@@ -444,6 +457,11 @@ public sealed class IndexModel(
         if (!account.IsOwner)
         {
             return Forbid();
+        }
+
+        if (!await IsVisibleAsync(WorkMediaType.LightNovel, cancellationToken))
+        {
+            return NotFound();
         }
 
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
@@ -525,5 +543,25 @@ public sealed class IndexModel(
             TempData["Status"] = Ui["discover.import.sourceImportFailed"];
             return RedirectToPage();
         }
+    }
+
+    private async Task<bool> IsVisibleAsync(
+        WatchlistIdentity identity,
+        CancellationToken cancellationToken) =>
+        await IsVisibleAsync(
+            WorkMediaTypes.FromWatchlist(identity.MediaType),
+            cancellationToken);
+
+    private async Task<bool> IsVisibleAsync(
+        WorkMediaType mediaType,
+        CancellationToken cancellationToken)
+    {
+        if (shell is null)
+        {
+            return true;
+        }
+
+        var access = await shell.GetMediaAccessAsync(User, cancellationToken);
+        return access.VisibleMediaTypes.Contains(mediaType);
     }
 }

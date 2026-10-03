@@ -2,6 +2,8 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaCore;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -23,7 +25,8 @@ public sealed class DetailsModel(
     FranchiseService franchiseService,
     MediaRelationStore relations,
     WatchlistStore watchlist,
-    WatchlistLibraryResolver library) : PageModel
+    WatchlistLibraryResolver library,
+    IAppShellService? shell = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -47,7 +50,15 @@ public sealed class DetailsModel(
 
         Franchise = franchise;
         IsFollowed = await franchises.IsFollowedAsync(account.ProfileId, id, cancellationToken);
-        var members = await franchises.GetMembersAsync(id, cancellationToken);
+        var visible = shell is null
+            ? WorkMediaTypes.All.ToHashSet()
+            : (await shell.GetMediaAccessAsync(User, cancellationToken))
+                .VisibleMediaTypes
+                .ToHashSet();
+        var members = (await franchises.GetMembersAsync(id, cancellationToken))
+            .Where(member => visible.Contains(
+                WorkMediaTypes.FromWatchlist(member.Media.Identity.MediaType)))
+            .ToArray();
         var graph = await relations.GetForFranchiseAsync(id, cancellationToken);
         var matches = await library.ResolveAsync(members.Select(member => member.Media.Identity), cancellationToken);
         var followed = await watchlist.GetEffectiveKeysAsync(account.ProfileId, cancellationToken);
@@ -122,6 +133,17 @@ public sealed class DetailsModel(
         if (member is null)
         {
             return BadRequest();
+        }
+
+        if (shell is not null)
+        {
+            var visible = (await shell.GetMediaAccessAsync(User, cancellationToken))
+                .VisibleMediaTypes;
+            if (!visible.Contains(
+                    WorkMediaTypes.FromWatchlist(member.Media.Identity.MediaType)))
+            {
+                return NotFound();
+            }
         }
 
         await action(member.Media.Identity);

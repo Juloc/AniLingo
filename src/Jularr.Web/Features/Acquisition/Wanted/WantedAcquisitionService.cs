@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Web.Features.Acquisition.Wanted;
@@ -91,6 +92,17 @@ public sealed class WantedAcquisitionService(
         DateTime nowUtc,
         CancellationToken cancellationToken)
     {
+        var modules = services.GetService<IInstanceModuleService>();
+        InstanceModuleSettings? instance = null;
+        if (modules is not null)
+        {
+            instance = await modules.GetAsync(cancellationToken);
+            if (!instance.IsEnabled(InstanceModule.Acquisition))
+            {
+                return 0;
+            }
+        }
+
         var handlers = services
             .GetServices<IWantedRequestHandler>()
             .GroupBy(handler => handler.Kind)
@@ -104,6 +116,12 @@ public sealed class WantedAcquisitionService(
         var advanced = 0;
         foreach (var handler in handlers.Values)
         {
+            if (instance is not null
+                && !instance.IsEnabled(AcquisitionInstanceModules.For(handler.Kind)))
+            {
+                continue;
+            }
+
             advanced += await RecoverInFlightAsync(
                 services,
                 handler,

@@ -1,5 +1,6 @@
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
@@ -25,7 +26,8 @@ public sealed class ReadModel(
     BookCatalogService books,
     CurrentAccountContext account,
     BackgroundJobQueue jobs,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookReaderChapter Reader { get; private set; } = null!;
@@ -694,7 +696,7 @@ public sealed class ReadModel(
         Guid workId,
         Guid chapterId,
         CancellationToken cancellationToken) =>
-        new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
+        new LearningModuleResolver(db, instanceModules).ResolveTranslationEnabledAsync(
             account.ProfileId,
             LearningMediaType.Book,
             workId.ToString(),

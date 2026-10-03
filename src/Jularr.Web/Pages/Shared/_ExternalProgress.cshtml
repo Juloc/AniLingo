@@ -1,5 +1,7 @@
+@using Jularr.Web.Features.Instance
 @using Jularr.Web.Features.Localization
 @using Jularr.Web.Features.Tracking
+@using Microsoft.Extensions.DependencyInjection
 @model ExternalProgressPanel
 @*
     Shared AniList progress card for Anime, Episode, Manga and Novel detail pages: consumer-safe
@@ -18,7 +20,14 @@
 @{
     var ui = Model.Ui ?? UiTextBundle.English;
     var summary = Model.Summary;
+    var instanceModules = Context.RequestServices.GetService<IInstanceModuleService>();
+    var trackingEnabled = instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Tracking,
+            Context.RequestAborted);
 }
+@if (trackingEnabled)
+{
 <section class="panel external-progress"
          data-external-progress
          data-src="@Model.RemoteStateUrl">
@@ -88,3 +97,4 @@
             .catch(() => slot.replaceChildren(failed.content.cloneNode(true)));
     })();
 </script>
+}

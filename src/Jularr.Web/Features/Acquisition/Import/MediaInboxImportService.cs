@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Web.Features.Acquisition.Import;
@@ -12,7 +13,8 @@ namespace Jularr.Web.Features.Acquisition.Import;
 public sealed class MediaInboxImportService(
     AnimeImportSettingsStore settings,
     IEnumerable<IMediaInboxImportAdapter> adapters,
-    OperationRunner operations)
+    OperationRunner operations,
+    IInstanceModuleService? instanceModules = null)
 {
     public const string OperationKind = "media-inbox-import";
 
@@ -33,6 +35,17 @@ public sealed class MediaInboxImportService(
         string? profileId,
         CancellationToken cancellationToken)
     {
+        if (instanceModules is not null)
+        {
+            var instance = await instanceModules.GetAsync(cancellationToken);
+            if (!instance.IsEnabled(InstanceModule.Acquisition)
+                || !instance.IsEnabled(AcquisitionInstanceModules.For(kind)))
+            {
+                throw new InvalidOperationException(
+                    "Inbox import is disabled for this media type.");
+            }
+        }
+
         var adapter = adapters.FirstOrDefault(candidate => candidate.Kind == kind)
             ?? throw new InvalidOperationException($"{Label(kind)} has no inbox import.");
         var state = await settings.LoadAsync(cancellationToken);

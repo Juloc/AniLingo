@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Mapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Manga;
@@ -226,7 +227,8 @@ public sealed partial class AniListAccountService(
     CurrentAccountContext currentAccount,
     ILogger<AniListAccountService> logger,
     TimeProvider? timeProvider = null,
-    IHttpContextAccessor? httpContextAccessor = null)
+    IHttpContextAccessor? httpContextAccessor = null,
+    IInstanceModuleService? instanceModules = null)
 {
     private const string ViewerQuery = """
         query {
@@ -2237,6 +2239,15 @@ public sealed partial class AniListAccountService(
         bool missingListEntryIsNull,
         CancellationToken cancellationToken)
     {
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Tracking,
+                cancellationToken))
+        {
+            throw new AniListAccountException(
+                "Tracking and external sync are disabled on this Jularr instance.");
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "");

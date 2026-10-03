@@ -1,4 +1,21 @@
+using Jularr.Web.Features.Instance;
+
 namespace Jularr.Web.Features.Calendar;
+
+public static class ReleaseInstanceModules
+{
+    public static InstanceModule For(ReleaseMediaType mediaType) =>
+        mediaType switch
+        {
+            ReleaseMediaType.Anime => InstanceModule.Anime,
+            ReleaseMediaType.Tv => InstanceModule.Tv,
+            ReleaseMediaType.Movie => InstanceModule.Movie,
+            ReleaseMediaType.Manga => InstanceModule.Manga,
+            ReleaseMediaType.LightNovel => InstanceModule.Novel,
+            ReleaseMediaType.Book => InstanceModule.Book,
+            _ => throw new ArgumentOutOfRangeException(nameof(mediaType))
+        };
+}
 
 public sealed record ReleaseCalendarDay(DateOnly Date, IReadOnlyList<ReleaseEvent> Events);
 
@@ -109,15 +126,30 @@ public static class ReleaseCalendarAssembler
 /// </summary>
 public sealed class ReleaseCalendarService(
     IEnumerable<IReleaseEventSource> sources,
-    ILogger<ReleaseCalendarService> logger)
+    ILogger<ReleaseCalendarService> logger,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int MaxRangeDays = 62;
 
     private readonly IReadOnlyList<IReleaseEventSource> registered = sources.ToArray();
 
-    /// <summary>Media types some source can produce, in display order; filters only offer these.</summary>
+    /// <summary>Media types some source can produce, before instance-level filtering.</summary>
     public IReadOnlyList<ReleaseMediaType> SupportedMediaTypes =>
         registered.SelectMany(source => source.MediaTypes).Distinct().Order().ToArray();
+
+    public async Task<IReadOnlyList<ReleaseMediaType>> GetSupportedMediaTypesAsync(
+        CancellationToken cancellationToken)
+    {
+        if (instanceModules is null)
+        {
+            return SupportedMediaTypes;
+        }
+
+        var settings = await instanceModules.GetAsync(cancellationToken);
+        return SupportedMediaTypes
+            .Where(type => settings.IsEnabled(ReleaseInstanceModules.For(type)))
+            .ToArray();
+    }
 
     public async Task<ReleaseCalendarResult> GetAsync(
         DateOnly start,
@@ -133,10 +165,20 @@ public sealed class ReleaseCalendarService(
             throw new ArgumentOutOfRangeException(nameof(end), "The calendar range is limited to two months.");
         }
 
-        var mediaType = filter.MediaTypes.Count == 1 ? filter.MediaTypes.Single() : (ReleaseMediaType?)null;
+        var enabledMediaTypes = (await GetSupportedMediaTypesAsync(cancellationToken)).ToHashSet();
+        var requestedMediaTypes = filter.MediaTypes.Count == 0
+            ? enabledMediaTypes
+            : filter.MediaTypes.Where(enabledMediaTypes.Contains).ToHashSet();
+        if (filter.MediaTypes.Count > 0 && requestedMediaTypes.Count == 0)
+        {
+            var empty = ReleaseCalendarAssembler.Assemble([], start, end, zone, filter, now);
+            return new ReleaseCalendarResult(start, end, empty.Days, empty.Imprecise, []);
+        }
+
+        var mediaType = requestedMediaTypes.Count == 1 ? requestedMediaTypes.Single() : (ReleaseMediaType?)null;
         var (events, failed) = await CollectAsync(
             new ReleaseEventQuery(start, end, zone, now, includeUndated, mediaType, ProfileId: filter.ProfileId),
-            filter.MediaTypes,
+            requestedMediaTypes,
             cancellationToken);
         var (days, imprecise) = ReleaseCalendarAssembler.Assemble(events, start, end, zone, filter, now);
         return new ReleaseCalendarResult(start, end, days, imprecise, failed);
@@ -154,6 +196,15 @@ public sealed class ReleaseCalendarService(
         int limit,
         CancellationToken cancellationToken)
     {
+        if (instanceModules is not null)
+        {
+            var settings = await instanceModules.GetAsync(cancellationToken);
+            if (!settings.IsEnabled(ReleaseInstanceModules.For(mediaType)))
+            {
+                return [];
+            }
+        }
+
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var (events, _) = await CollectAsync(
             new ReleaseEventQuery(today, today.AddDays(MaxRangeDays * 2), zone, now, IncludeUndated: true, mediaType, mediaId),

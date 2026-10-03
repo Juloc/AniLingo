@@ -192,6 +192,33 @@ Owns operational views and commands, not duplicate business logic:
 
 Admin UI calls the same application services as automated flows wherever possible.
 
+### Instance module gates
+Server-wide module availability is resolved before profile settings or permissions. The canonical
+runtime contract is `IInstanceModuleService` / `InstanceModuleStore`, persisted below
+`/data/system`. Existing installations and newly introduced modules default to enabled.
+
+Resolution order is:
+
+```text
+instance module -> profile/media capability -> feature/profile setting
+```
+
+A module switch is exposed in **Admin → Instance** only after that module's complete vertical slice
+uses the same gate for navigation, routes/API, application services and background work. Disabling a
+module preserves its stored data; re-enabling restores access. Queued/retryable jobs must re-check
+the module before doing work rather than relying only on the state at enqueue time.
+
+Implemented verticals currently include:
+- **Learning** — hides Learning navigation/routes and stops learning assistance, vocabulary/text preparation and Learning client capabilities.
+- **Anime** — removes Anime from effective media capabilities, client/library playback surfaces, scans and Anime-specific acquisition work.
+- **Movie / TV** — remove the respective video type from effective capabilities/search/calendar/offline surfaces and block media-specific library/import writes.
+- **Manga / Novel / Book** — remove the respective reading type from capabilities, discovery/search, Home, Watchlist/franchises, release calendar, offline/acquisition surfaces and related background work.
+- **Audiobook** — independently gates audiobook search, offline packages, progress, library/import writes and acquisition even though audiobook works share the Book capability family.
+- **Acquisition** — hides request/downloader/admin routes and stops request execution, Wanted passes, imports, health checks and SABnzbd acquisition work.
+- **Tracking** — hides AniList settings/progress UI, blocks AniList network sync and pauses the automatic sync loop.
+
+All switches retain their stored domain data and resume from that state when re-enabled.
+
 ## 4. Dependency rules
 
 Allowed conceptual direction:

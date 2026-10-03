@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Tracking;
 
@@ -19,12 +20,18 @@ public sealed class AniListSyncService(
     AniListSyncStateStore states,
     AniListRateLimitGate rateLimit,
     CurrentAccountContext currentAccount,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int ActivityLimit = 20;
 
     public async Task<AniListSyncOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
+        if (!await IsTrackingEnabledAsync(cancellationToken))
+        {
+            return new AniListSyncOverview(AniListSyncMode.Off, null, [], null);
+        }
+
         var account = await accounts.LoadAsync(currentAccount.ProfileId, cancellationToken);
         if (account is null)
         {
@@ -36,11 +43,16 @@ public sealed class AniListSyncService(
             account.ViewerId,
             cancellationToken);
 
+        var instance = instanceModules is null
+            ? null
+            : await instanceModules.GetAsync(cancellationToken);
+
         return new AniListSyncOverview(
             account.SyncMode,
             account.SyncEnabledAt,
             state.Items
                 .Where(x => x.Status != AniListSyncItemStatus.NotMatched)
+                .Where(x => IsMediaKindEnabled(instance, x.MediaKind))
                 .OrderByDescending(x => x.LastAttemptAt)
                 .Take(ActivityLimit)
                 .ToArray(),
@@ -49,19 +61,42 @@ public sealed class AniListSyncService(
                 : rateLimit.BlockedUntil(timeProvider.GetUtcNow()));
     }
 
-    public Task<bool> SetModeAsync(AniListSyncMode mode, CancellationToken cancellationToken)
+    public async Task<bool> SetModeAsync(AniListSyncMode mode, CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(mode))
         {
             throw new ArgumentOutOfRangeException(nameof(mode));
         }
 
-        return accounts.UpdateSyncModeAsync(
+        if (!await IsTrackingEnabledAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        return await accounts.UpdateSyncModeAsync(
             currentAccount.ProfileId,
             mode,
             timeProvider.GetUtcNow(),
             cancellationToken);
     }
+
+    private async Task<bool> IsTrackingEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Tracking,
+            cancellationToken);
+
+    private static bool IsMediaKindEnabled(
+        InstanceModuleSettings? settings,
+        string mediaKind) =>
+        settings is null
+        || mediaKind switch
+        {
+            AniListSyncCheckpoints.Anime => settings.IsEnabled(InstanceModule.Anime),
+            AniListSyncCheckpoints.Manga => settings.IsEnabled(InstanceModule.Manga),
+            AniListSyncCheckpoints.Novel => settings.IsEnabled(InstanceModule.Novel),
+            _ => true
+        };
 }
 
 /// <summary>
@@ -103,6 +138,31 @@ public sealed class AniListSyncBackgroundService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var services = scope.ServiceProvider;
+            var modules = services.GetService<IInstanceModuleService>();
+            InstanceModuleSettings? instance = null;
+            if (modules is not null)
+            {
+                instance = await modules.GetAsync(cancellationToken);
+                if (!instance.IsEnabled(InstanceModule.Tracking))
+                {
+                    return;
+                }
+            }
+
+            var enabledMediaKinds = new HashSet<string>(StringComparer.Ordinal);
+            if (instance is null || instance.IsEnabled(InstanceModule.Anime))
+            {
+                enabledMediaKinds.Add(AniListSyncCheckpoints.Anime);
+            }
+            if (instance is null || instance.IsEnabled(InstanceModule.Manga))
+            {
+                enabledMediaKinds.Add(AniListSyncCheckpoints.Manga);
+            }
+            if (instance is null || instance.IsEnabled(InstanceModule.Novel))
+            {
+                enabledMediaKinds.Add(AniListSyncCheckpoints.Novel);
+            }
+
             var httpClients = services.GetRequiredService<IHttpClientFactory>();
             var reconciler = new AniListSyncReconciler(
                 services.GetRequiredService<AppDbContext>(),
@@ -114,7 +174,8 @@ public sealed class AniListSyncBackgroundService(
                     httpClients.CreateClient(nameof(AniListAccountService)),
                     AniListSyncReconciler.ProfileAccount(profileId)),
                 timeProvider,
-                logger);
+                logger,
+                enabledMediaKinds);
 
             var summary = await reconciler.RunOnceAsync(cancellationToken);
             if (summary.Evaluated > 0)

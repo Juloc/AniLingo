@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Monitoring;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Acquisition.Pipeline;
 
@@ -65,6 +66,11 @@ public sealed class AnimeAcquisitionScheduler(
     {
         ArgumentNullException.ThrowIfNull(action);
 
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("Anime module is disabled.");
+        }
+
         await gate.WaitAsync(cancellationToken);
         try
         {
@@ -77,11 +83,21 @@ public sealed class AnimeAcquisitionScheduler(
         }
     }
 
-    public Task<AnimeAcquisitionRunSummary> RunNowAsync(
+    public async Task<AnimeAcquisitionRunSummary> RunNowAsync(
         string? animeKey,
         AnimeSearchTrigger trigger,
-        CancellationToken cancellationToken) =>
-        RunExclusiveAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return new AnimeAcquisitionRunSummary(
+                0,
+                0,
+                0,
+                ["Anime module is disabled."]);
+        }
+
+        return await RunExclusiveAsync(
             async (pipeline, token) =>
             {
                 await ResumeImportsAsync(token);
@@ -96,13 +112,20 @@ public sealed class AnimeAcquisitionScheduler(
                 return summary;
             },
             cancellationToken);
+    }
 
     /// <summary>
     /// Startup recovery: resumes interrupted or missed imports and brings monitoring attempts in
     /// line with the acquisition relation and Operations. Safe to run more than once.
     /// </summary>
-    public Task<int> RecoverAsync(CancellationToken cancellationToken) =>
-        RunExclusiveAsync(
+    public async Task<int> RecoverAsync(CancellationToken cancellationToken)
+    {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return 0;
+        }
+
+        return await RunExclusiveAsync(
             async (pipeline, token) =>
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
@@ -113,6 +136,7 @@ public sealed class AnimeAcquisitionScheduler(
                 return recovered;
             },
             cancellationToken);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -212,6 +236,11 @@ public sealed class AnimeAcquisitionScheduler(
         AnimeSearchTrigger trigger,
         CancellationToken stoppingToken)
     {
+        if (!await IsAnimeEnabledAsync(stoppingToken))
+        {
+            return;
+        }
+
         try
         {
             var summary = await RunNowAsync(animeKey, trigger, stoppingToken);
@@ -279,6 +308,21 @@ public sealed class AnimeAcquisitionScheduler(
         {
             logger.LogWarning(exception, "AniList list auto-monitor pass failed; the next run retries it.");
         }
+    }
+
+    private async Task<bool> IsAnimeEnabledAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var modules = scope.ServiceProvider.GetService<IInstanceModuleService>();
+        if (modules is null)
+        {
+            return true;
+        }
+
+        var instance = await modules.GetAsync(cancellationToken);
+        return instance.IsEnabled(InstanceModule.Anime)
+            && instance.IsEnabled(InstanceModule.Acquisition);
     }
 
     private async Task<AnimeMonitoringSchedule> LoadScheduleAsync(CancellationToken stoppingToken)

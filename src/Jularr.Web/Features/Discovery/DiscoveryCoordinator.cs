@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.Novels;
@@ -16,6 +17,7 @@ public sealed class DiscoveryCoordinator(
     AniListAccountService aniListAccount,
     AppDbContext db,
     ILogger<DiscoveryCoordinator> logger,
+    IInstanceModuleService? instanceModules = null,
     BookSearchCoordinator? bookSearch = null) : IDiscoveryFeed
 {
     private const int AnimeLimit = 10;
@@ -34,8 +36,37 @@ public sealed class DiscoveryCoordinator(
         bool includeBooks,
         CancellationToken cancellationToken)
     {
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
+        var animeEnabled = instance.IsEnabled(InstanceModule.Anime);
+        var mangaEnabled = instance.IsEnabled(InstanceModule.Manga);
+        var novelEnabled = instance.IsEnabled(InstanceModule.Novel);
+        var bookEnabled = instance.IsEnabled(InstanceModule.Book);
+
+        if (!CategoryAvailable(
+                request.Category,
+                animeEnabled,
+                mangaEnabled,
+                novelEnabled,
+                bookEnabled))
+        {
+            return new DiscoveryResponse(
+                request.Query,
+                CategoryName(request.Category),
+                ModeName(request.Mode),
+                request.Genre,
+                false,
+                [],
+                []);
+        }
+
+        includeAniList &= animeEnabled || mangaEnabled || novelEnabled;
+        includeBooks &= bookEnabled;
+
         var cacheKey = request.CacheKey(profileId)
-            + $"|anilist:{includeAniList}|books:{includeBooks}";
+            + $"|anilist:{includeAniList}|books:{includeBooks}"
+            + $"|modules:a{animeEnabled}:m{mangaEnabled}:n{novelEnabled}:b{bookEnabled}";
         if (TryGetCached(cacheKey, out var cached))
         {
             return cached;
@@ -76,6 +107,9 @@ public sealed class DiscoveryCoordinator(
                 request.Category,
                 isOwner,
                 warnings,
+                animeEnabled,
+                mangaEnabled,
+                novelEnabled,
                 cancellationToken);
         }
         else
@@ -86,6 +120,10 @@ public sealed class DiscoveryCoordinator(
                 warnings,
                 includeAniList,
                 includeBooks,
+                animeEnabled,
+                mangaEnabled,
+                novelEnabled,
+                bookEnabled,
                 cancellationToken);
         }
 
@@ -119,15 +157,19 @@ public sealed class DiscoveryCoordinator(
         ICollection<string> warnings,
         bool includeAniList,
         bool includeBooks,
+        bool animeEnabled,
+        bool mangaEnabled,
+        bool novelEnabled,
+        bool bookEnabled,
         CancellationToken cancellationToken)
     {
-        var includeAnime = includeAniList &&
+        var includeAnime = includeAniList && animeEnabled &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime);
-        var includeNovel = includeAniList &&
+        var includeNovel = includeAniList && novelEnabled &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel or DiscoveryCategory.BooksAndLightNovels);
-        var includeManga = includeAniList &&
+        var includeManga = includeAniList && mangaEnabled &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga);
-        var includeBook = includeBooks &&
+        var includeBook = includeBooks && bookEnabled &&
             (request.Category is DiscoveryCategory.All or DiscoveryCategory.Book or DiscoveryCategory.BooksAndLightNovels);
 
         var animeTask = includeAnime
@@ -220,11 +262,16 @@ public sealed class DiscoveryCoordinator(
         DiscoveryCategory category,
         bool isOwner,
         ICollection<string> warnings,
+        bool animeEnabled,
+        bool mangaEnabled,
+        bool novelEnabled,
         CancellationToken cancellationToken)
     {
-        var includeAnime = category is DiscoveryCategory.All or DiscoveryCategory.Anime;
-        var includeReading = category is DiscoveryCategory.All or
-            DiscoveryCategory.LightNovel or DiscoveryCategory.Manga or DiscoveryCategory.BooksAndLightNovels;
+        var includeAnime = animeEnabled
+            && (category is DiscoveryCategory.All or DiscoveryCategory.Anime);
+        var includeReading = (mangaEnabled || novelEnabled)
+            && (category is DiscoveryCategory.All or
+                DiscoveryCategory.LightNovel or DiscoveryCategory.Manga or DiscoveryCategory.BooksAndLightNovels);
 
         var animeTask = includeAnime
             ? CaptureAsync(
@@ -249,6 +296,7 @@ public sealed class DiscoveryCoordinator(
                         cancellationToken);
 
                     return rows
+                        .Where(x => x.IsNovel ? novelEnabled : mangaEnabled)
                         .Where(x => category switch
                         {
                             DiscoveryCategory.LightNovel or DiscoveryCategory.BooksAndLightNovels => x.IsNovel,
@@ -643,6 +691,22 @@ public sealed class DiscoveryCoordinator(
             response,
             DateTimeOffset.UtcNow.Add(lifetime));
     }
+
+    private static bool CategoryAvailable(
+        DiscoveryCategory category,
+        bool animeEnabled,
+        bool mangaEnabled,
+        bool novelEnabled,
+        bool bookEnabled) =>
+        category switch
+        {
+            DiscoveryCategory.Anime => animeEnabled,
+            DiscoveryCategory.Manga => mangaEnabled,
+            DiscoveryCategory.LightNovel => novelEnabled,
+            DiscoveryCategory.Book => bookEnabled,
+            DiscoveryCategory.BooksAndLightNovels => bookEnabled || novelEnabled,
+            _ => animeEnabled || mangaEnabled || novelEnabled || bookEnabled
+        };
 
     private static string CategoryName(DiscoveryCategory category) =>
         category switch

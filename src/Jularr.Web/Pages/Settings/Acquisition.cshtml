@@ -345,17 +345,20 @@
         </form>
     </section>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>@ui["settings.acquisition.autoMonitorHeading"]</h2></div>
-        <p class="muted">@ui["settings.acquisition.autoMonitorDescription"]</p>
-        <form method="post" asp-page-handler="AniListAutoMonitor" class="acquisition-inline-form">
-            <label class="acquisition-check">
-                <input type="checkbox" name="enabled" value="true" checked="@Model.AniListAutoMonitorEnabled" />
-                <span>@ui["settings.acquisition.autoMonitorCheckbox"]</span>
-            </label>
-            <button class="button" type="submit">@ui["common.save"]</button>
-        </form>
-    </section>
+    @if (Model.ShowAnimeAutoMonitor)
+    {
+        <section class="panel">
+            <div class="panel-heading"><h2>@ui["settings.acquisition.autoMonitorHeading"]</h2></div>
+            <p class="muted">@ui["settings.acquisition.autoMonitorDescription"]</p>
+            <form method="post" asp-page-handler="AniListAutoMonitor" class="acquisition-inline-form">
+                <label class="acquisition-check">
+                    <input type="checkbox" name="enabled" value="true" checked="@Model.AniListAutoMonitorEnabled" />
+                    <span>@ui["settings.acquisition.autoMonitorCheckbox"]</span>
+                </label>
+                <button class="button" type="submit">@ui["common.save"]</button>
+            </form>
+        </section>
+    }
 
     @if (Model.CanManageStorage)
     {

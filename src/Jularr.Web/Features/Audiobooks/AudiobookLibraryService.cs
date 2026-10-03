@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,10 @@ public sealed record AudiobookLibraryEntry(Audiobook Audiobook, Guid WorkId);
 /// and always resolves to the same <see cref="Work"/> through the <c>WorkSourceKind.Audiobook</c> source
 /// link; each file is idempotent per audiobook on its folded name.
 /// </summary>
-public sealed class AudiobookLibraryService(AppDbContext db, LegacyWorkBridge bridge)
+public sealed class AudiobookLibraryService(
+    AppDbContext db,
+    LegacyWorkBridge bridge,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<AudiobookLibraryEntry> EnsureAsync(
         string title,
@@ -36,6 +40,14 @@ public sealed class AudiobookLibraryService(AppDbContext db, LegacyWorkBridge br
         IReadOnlyList<AudiobookFileInput> files,
         CancellationToken cancellationToken)
     {
+        if (instanceModules is not null
+            && !await instanceModules.IsEnabledAsync(
+                InstanceModule.Audiobook,
+                cancellationToken))
+        {
+            throw new InvalidOperationException("Audiobook module is disabled.");
+        }
+
         var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim();
         var key = AudiobookKey(cleanTitle, year);
 

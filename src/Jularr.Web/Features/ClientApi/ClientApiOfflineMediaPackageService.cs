@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Manga;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
@@ -12,7 +13,10 @@ namespace Jularr.Web.Features.ClientApi;
 /// exposes stable resource ids rather than host file paths; every content request is resolved again
 /// from the database and the current filesystem state.
 /// </summary>
-public sealed class ClientApiOfflineMediaPackageService(AppDbContext db, OfflinePortableRenditionService renditions)
+public sealed class ClientApiOfflineMediaPackageService(
+    AppDbContext db,
+    OfflinePortableRenditionService renditions,
+    IInstanceModuleService? instanceModules = null)
 {
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -89,8 +93,20 @@ public sealed class ClientApiOfflineMediaPackageService(AppDbContext db, Offline
         return await renditions.GetAsync(source.Path, source.Type, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<OfflineSource>?> GetSourcesAsync(string kind, Guid id, CancellationToken cancellationToken) =>
-        kind.ToLowerInvariant() switch
+    private async Task<IReadOnlyList<OfflineSource>?> GetSourcesAsync(
+        string kind,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var normalized = kind.ToLowerInvariant();
+        if (instanceModules is not null
+            && OfflineInstanceModule(normalized) is { } module
+            && !await instanceModules.IsEnabledAsync(module, cancellationToken))
+        {
+            return null;
+        }
+
+        return normalized switch
         {
             "episode" => await EpisodeSourcesAsync(id, cancellationToken),
             "audiobook" => await AudiobookSourcesAsync(id, cancellationToken),
@@ -98,6 +114,19 @@ public sealed class ClientApiOfflineMediaPackageService(AppDbContext db, Offline
             "tv" or "series" => await FolderSourcesAsync("tv", id, cancellationToken),
             "manga" => await MangaSourcesAsync(id, cancellationToken),
             "book" => await BookSourcesAsync(id, cancellationToken),
+            _ => null
+        };
+    }
+
+    private static InstanceModule? OfflineInstanceModule(string kind) =>
+        kind switch
+        {
+            "episode" => InstanceModule.Anime,
+            "audiobook" => InstanceModule.Audiobook,
+            "movie" => InstanceModule.Movie,
+            "tv" or "series" => InstanceModule.Tv,
+            "manga" => InstanceModule.Manga,
+            "book" => InstanceModule.Book,
             _ => null
         };
 

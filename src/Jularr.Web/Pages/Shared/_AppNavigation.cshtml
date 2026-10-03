@@ -1,14 +1,25 @@
 @using Jularr.Web.Data
 @using Jularr.Web.Features.Localization
+@using Jularr.Web.Features.Instance
 @using Jularr.Web.Features.Learning
 @using Jularr.Web.Features.Shell
+@using Microsoft.Extensions.DependencyInjection
 @inject AppDbContext LearningNavigationDb
 @inject IAppShellService AppShell
 @{
     var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
     var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var instanceModules = Context.RequestServices.GetService<IInstanceModuleService>();
+    var instanceSettings = instanceModules is null
+        ? InstanceModuleSettings.Default
+        : await instanceModules.GetAsync(Context.RequestAborted);
+    var enabledModules = instanceSettings.Modules
+        .Where(pair => pair.Value)
+        .Select(pair => pair.Key)
+        .ToHashSet();
     var learningVisible = false;
-    if (!string.IsNullOrWhiteSpace(profileId))
+    if (instanceSettings.IsEnabled(InstanceModule.Learning)
+        && !string.IsNullOrWhiteSpace(profileId))
     {
         learningVisible = await new LearningConfigurationStore(LearningNavigationDb)
             .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
@@ -20,7 +31,8 @@
         Context.Request.Path,
         learningVisible,
         policy => Jularr.Web.Features.Auth.JularrPolicies.Allows(User, policy),
-        media.VisibleMediaTypes);
+        media.VisibleMediaTypes,
+        enabledModules);
 
     // Discover has its own search field; the shell search would repeat it.
     var showSearch = !Context.Request.Path.StartsWithSegments("/Discover", StringComparison.OrdinalIgnoreCase);

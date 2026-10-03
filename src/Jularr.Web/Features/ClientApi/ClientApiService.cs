@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.MediaSegments;
@@ -8,6 +9,7 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.ClientApi;
@@ -19,11 +21,17 @@ public sealed class ClientApiService(
     MediaAvailabilityService mediaAvailability,
     EpisodeProgressService progressService,
     CurrentAccountContext currentAccount,
-    MediaSegmentService mediaSegments)
+    MediaSegmentService mediaSegments,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<ClientLibraryResponse> GetLibraryAsync(
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return new ClientLibraryResponse([]);
+        }
+
         var animeRows = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()
@@ -77,6 +85,11 @@ public sealed class ClientApiService(
         Guid animeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()
@@ -101,6 +114,8 @@ public sealed class ClientApiService(
         {
             return null;
         }
+
+        var learningEnabled = await IsLearningEnabledAsync(cancellationToken);
 
         var episodeRows = await db.Episodes
             .AsNoTracking()
@@ -129,7 +144,7 @@ public sealed class ClientApiService(
                     episode.Number,
                     episode.Title,
                     episode.HasMedia,
-                    episode.HasJapaneseLearningSubtitle))
+                    learningEnabled && episode.HasJapaneseLearningSubtitle))
                     .ToArray()))
             .ToArray();
 
@@ -150,6 +165,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
@@ -177,30 +197,38 @@ public sealed class ClientApiService(
             .AsNoTracking()
             .AnyAsync(x => x.EpisodeId == episodeId, cancellationToken);
 
-        var activeTrack = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
-            .OrderByDescending(x => x.ImportedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => new { x.Id })
-            .FirstOrDefaultAsync(cancellationToken);
+        Guid? activeTrackId = null;
+        var cueCount = 0;
+        var termStates = new List<UserTermState?>();
 
-        var cueCount = activeTrack is null
-            ? 0
-            : await db.SubtitleCues
+        if (await IsLearningEnabledAsync(cancellationToken))
+        {
+            activeTrackId = await db.SubtitleTracks
                 .AsNoTracking()
-                .CountAsync(
-                    x => x.SubtitleTrackId == activeTrack.Id,
-                    cancellationToken);
+                .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => (Guid?)x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        var termStates = await (
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
-                on episodeTerm.TermId equals stateValue.TermId into states
-            from state in states.DefaultIfEmpty()
-            where episodeTerm.EpisodeId == episodeId
-            select state == null ? (UserTermState?)null : state.State)
-            .ToListAsync(cancellationToken);
+            if (activeTrackId is { } trackId)
+            {
+                cueCount = await db.SubtitleCues
+                    .AsNoTracking()
+                    .CountAsync(
+                        x => x.SubtitleTrackId == trackId,
+                        cancellationToken);
+            }
+
+            termStates = await (
+                from episodeTerm in db.EpisodeTerms.AsNoTracking()
+                join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                    on episodeTerm.TermId equals stateValue.TermId into states
+                from state in states.DefaultIfEmpty()
+                where episodeTerm.EpisodeId == episodeId
+                select state == null ? (UserTermState?)null : state.State)
+                .ToListAsync(cancellationToken);
+        }
 
         var known = termStates.Count(x => x == UserTermState.Known);
         var learning = termStates.Count(x => x == UserTermState.Learning);
@@ -213,7 +241,7 @@ public sealed class ClientApiService(
             row.SeasonNumber,
             row.Number,
             hasMedia,
-            activeTrack?.Id,
+            activeTrackId,
             cueCount,
             new ClientLearningCoverage(
                 termStates.Count,
@@ -226,6 +254,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var episode = await (
             from localEpisode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on localEpisode.AnimeId equals anime.Id
@@ -251,18 +284,16 @@ public sealed class ClientApiService(
             episodeId,
             cancellationToken);
 
-        var learningTrackRows = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
-            .OrderByDescending(x => x.ImportedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => new
-            {
-                x.Id,
-                x.Language,
-                x.Format
-            })
-            .ToListAsync(cancellationToken);
+        var learningTrackRows = new List<SubtitleTrack>();
+        if (await IsLearningEnabledAsync(cancellationToken))
+        {
+            learningTrackRows = await db.SubtitleTracks
+                .AsNoTracking()
+                .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken);
+        }
 
         var activeLearningTrackId = learningTrackRows
             .Select(x => (Guid?)x.Id)
@@ -285,7 +316,7 @@ public sealed class ClientApiService(
         var trickplay = ClientApiMappings.ToClientTrickplay(episodeId, navigation.Trickplay);
 
         var preferences = await progressService.GetPreferencesAsync(cancellationToken);
-        var learningSettings = await new LearningConfigurationStore(db).ResolveAsync(
+        var learningSettings = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(
                 LearningMediaType.Anime,
@@ -413,6 +444,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
         {
             return null;
@@ -426,6 +462,11 @@ public sealed class ClientApiService(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
         {
             return null;
@@ -443,6 +484,11 @@ public sealed class ClientApiService(
         int? toMs,
         CancellationToken cancellationToken)
     {
+        if (!await IsAnimeEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var exists = await db.Episodes
             .AsNoTracking()
             .AnyAsync(x => x.Id == episodeId, cancellationToken);
@@ -450,6 +496,15 @@ public sealed class ClientApiService(
         if (!exists)
         {
             return null;
+        }
+
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return new ClientCueResponse(
+                null,
+                fromMs,
+                toMs,
+                []);
         }
 
         var cueSet = await playbackService.GetCueSetAsync(
@@ -470,6 +525,11 @@ public sealed class ClientApiService(
         Guid termId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var row = await (
             from term in db.Terms.AsNoTracking()
             join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
@@ -501,6 +561,11 @@ public sealed class ClientApiService(
         UserTermState state,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var exists = await db.Terms
             .AsNoTracking()
             .AnyAsync(x => x.Id == termId, cancellationToken);
@@ -515,4 +580,18 @@ public sealed class ClientApiService(
             termId,
             ClientApiMappings.StateName(state));
     }
+
+    private async Task<bool> IsAnimeEnabledAsync(
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Anime,
+            cancellationToken);
+
+    private async Task<bool> IsLearningEnabledAsync(
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Learning,
+            cancellationToken);
 }

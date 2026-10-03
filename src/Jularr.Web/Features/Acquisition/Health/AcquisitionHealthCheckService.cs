@@ -1,5 +1,6 @@
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Indexers;
+using Jularr.Web.Features.Instance;
 
 namespace Jularr.Web.Features.Acquisition.Health;
 
@@ -58,6 +59,14 @@ public sealed class AcquisitionHealthCheckService(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
+        var modules = services.GetService<IInstanceModuleService>();
+        if (modules is not null
+            && !await modules.IsEnabledAsync(
+                InstanceModule.Acquisition,
+                cancellationToken))
+        {
+            return;
+        }
 
         var indexerStore = services.GetRequiredService<IndexerStore>();
         var indexers = services.GetRequiredService<IReadOnlyDictionary<IndexerType, IIndexer>>();

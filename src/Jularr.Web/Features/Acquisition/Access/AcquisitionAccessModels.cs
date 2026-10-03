@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Acquisition.Access;
@@ -23,6 +24,22 @@ public enum MediaAcquisitionKind
 }
 
 /// <summary>Who may use the manual add controls (file upload, URL, NZB, inbox import).</summary>
+public static class AcquisitionInstanceModules
+{
+    public static InstanceModule For(MediaAcquisitionKind kind) =>
+        kind switch
+        {
+            MediaAcquisitionKind.Anime => InstanceModule.Anime,
+            MediaAcquisitionKind.Manga => InstanceModule.Manga,
+            MediaAcquisitionKind.LightNovel => InstanceModule.Novel,
+            MediaAcquisitionKind.Book => InstanceModule.Book,
+            MediaAcquisitionKind.Movie => InstanceModule.Movie,
+            MediaAcquisitionKind.Tv => InstanceModule.Tv,
+            MediaAcquisitionKind.Audiobook => InstanceModule.Audiobook,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+}
+
 public enum ManualAddMode
 {
     OwnerOnly,

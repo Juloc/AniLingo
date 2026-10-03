@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Search;
@@ -46,6 +47,11 @@ public static class MediaSearchTypes
         MediaSearchType.Series => WorkMediaType.Series,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
+
+    public static InstanceModule ToInstanceModule(MediaSearchType type) =>
+        type == MediaSearchType.Audiobook
+            ? InstanceModule.Audiobook
+            : InstanceModuleMedia.For(ToWorkMediaType(type));
 
     public static WorkSourceKind ToSourceKind(MediaSearchType type) => type switch
     {

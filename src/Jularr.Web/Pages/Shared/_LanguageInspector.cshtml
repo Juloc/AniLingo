@@ -7,15 +7,18 @@
 *@
 @using Jularr.Web.Data
 @using Jularr.Web.Features.Auth
+@using Jularr.Web.Features.Instance
 @using Jularr.Web.Features.Learning.LanguageAssistance
 @using Jularr.Web.Features.Localization
 @using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.Extensions.DependencyInjection
 @model LanguageInspectorHost
 @inject AppDbContext InspectorDb
 @inject CurrentAccountContext InspectorAccount
 @inject IAntiforgery InspectorAntiforgery
 @{
-    var availability = await new LearningModuleResolver(InspectorDb).ResolveAssistanceAsync(
+    var instanceModules = Context.RequestServices.GetService<IInstanceModuleService>();
+    var availability = await new LearningModuleResolver(InspectorDb, instanceModules).ResolveAssistanceAsync(
         InspectorAccount.ProfileId,
         Model.Scope,
         Model.SourceType,

@@ -38,12 +38,25 @@ public static class AniListSyncCheckpoints
         AppDbContext db,
         string profileId,
         DateTime sinceUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlySet<string>? enabledMediaKinds = null)
     {
         var checkpoints = new List<AniListSyncCheckpoint>();
-        checkpoints.AddRange(await LoadAnimeAsync(db, profileId, sinceUtc, cancellationToken));
-        checkpoints.AddRange(await LoadMangaAsync(db, profileId, sinceUtc, cancellationToken));
-        checkpoints.AddRange(await LoadNovelsAsync(db, profileId, sinceUtc, cancellationToken));
+        if (enabledMediaKinds is null || enabledMediaKinds.Contains(Anime))
+        {
+            checkpoints.AddRange(await LoadAnimeAsync(db, profileId, sinceUtc, cancellationToken));
+        }
+
+        if (enabledMediaKinds is null || enabledMediaKinds.Contains(Manga))
+        {
+            checkpoints.AddRange(await LoadMangaAsync(db, profileId, sinceUtc, cancellationToken));
+        }
+
+        if (enabledMediaKinds is null || enabledMediaKinds.Contains(Novel))
+        {
+            checkpoints.AddRange(await LoadNovelsAsync(db, profileId, sinceUtc, cancellationToken));
+        }
+
         return checkpoints;
     }
 

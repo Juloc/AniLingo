@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Learning.Courses;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -72,6 +73,7 @@ public sealed class SubtitleImportService
     private readonly IDataProtector? jimakuProtector;
     private readonly LearningContentLanguageResolver contentLanguageResolver;
     private readonly ILogger<SubtitleImportService>? logger;
+    private readonly IInstanceModuleService? instanceModules;
 
     public SubtitleImportService(
         AppDbContext db,
@@ -81,7 +83,8 @@ public sealed class SubtitleImportService
         BackgroundJobQueue? jobs = null,
         IHttpClientFactory? httpClientFactory = null,
         IDataProtectionProvider? dataProtectionProvider = null,
-        ILogger<SubtitleImportService>? logger = null)
+        ILogger<SubtitleImportService>? logger = null,
+        IInstanceModuleService? instanceModules = null)
     {
         this.db = db;
         this.vocabularyService = vocabularyService;
@@ -90,6 +93,7 @@ public sealed class SubtitleImportService
         this.jobs = jobs;
         this.httpClientFactory = httpClientFactory;
         this.logger = logger;
+        this.instanceModules = instanceModules;
         contentLanguageResolver = new LearningContentLanguageResolver(db);
         jimakuProtector = dataProtectionProvider?.CreateProtector(
             "AniLingo.Subtitles.Jimaku.ApiKey.v1");
@@ -103,6 +107,13 @@ public sealed class SubtitleImportService
         SubtitleSidecarDirectoryCache listings,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            // Unavailable means "leave current state untouched"; a disabled Learning module must
+            // not make a library scan delete previously prepared subtitle/vocabulary state.
+            return new SubtitleSidecarImportResult(SubtitleSidecarImportStatus.Unavailable);
+        }
+
         var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
 
         try
@@ -139,6 +150,11 @@ public sealed class SubtitleImportService
         string content,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return;
+        }
+
         var normalizedFormat = format.Trim().TrimStart('.').ToLowerInvariant();
         var cues = SubtitleParser.ParseFormat(normalizedFormat, content);
         if (cues.Count == 0)
@@ -235,6 +251,13 @@ public sealed class SubtitleImportService
         TrackSlot? requestedSlot = null)
     {
         var slot = requestedSlot ?? new TrackSlot(targetLanguage, false, false, true);
+        if (slot.IsLearningSource && !await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            // Manual subtitle management remains usable with Learning off, but must not rebuild
+            // vocabulary, mark preparation ready or apply learning-source pruning semantics.
+            slot = slot with { IsLearningSource = false };
+        }
+
         sourceUpdatedAt = ToStoredPrecision(sourceUpdatedAt);
         string readyMessage;
         Guid trackId;
@@ -542,6 +565,13 @@ public sealed class SubtitleImportService
         return kanaCues * 3 >= cues.Count;
     }
 
+    private async Task<bool> IsLearningModuleEnabledAsync(
+        CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Learning,
+            cancellationToken);
+
     public LearningTextPreparationState GetPreparationState(Guid episodeId) =>
         PreparationStates.TryGetValue(episodeId, out var state)
             ? state
@@ -653,6 +683,12 @@ public sealed class SubtitleImportService
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            PreparationStates.TryRemove(episodeId, out _);
+            return false;
+        }
+
         var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
         if (await HasUsableTextAsync(episodeId, targetLanguage, cancellationToken))
         {
@@ -696,6 +732,21 @@ public sealed class SubtitleImportService
                         cancellationToken: jobCancellationToken);
 
                     var importer = services.GetRequiredService<SubtitleImportService>();
+                    var moduleService = services.GetRequiredService<IInstanceModuleService>();
+                    if (!await moduleService.IsEnabledAsync(
+                            InstanceModule.Learning,
+                            jobCancellationToken))
+                    {
+                        await importer.PrepareLearningTextAsync(
+                            episodeId,
+                            jobCancellationToken);
+                        await operation.ReportAsync(
+                            100,
+                            "Learning module is disabled; preparation skipped.",
+                            cancellationToken: jobCancellationToken);
+                        return;
+                    }
+
                     await importer.PrepareLearningTextAsync(
                         episodeId,
                         jobCancellationToken);
@@ -719,6 +770,11 @@ public sealed class SubtitleImportService
 
     public async Task<int> QueueAllMissingAsync(CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            return 0;
+        }
+
         lock (PreparationStateLock)
         {
             if (batchQueued != 0)
@@ -777,6 +833,20 @@ public sealed class SubtitleImportService
                     {
                         var importer =
                             services.GetRequiredService<SubtitleImportService>();
+                        var moduleService =
+                            services.GetRequiredService<IInstanceModuleService>();
+
+                        if (!await moduleService.IsEnabledAsync(
+                                InstanceModule.Learning,
+                                jobCancellationToken))
+                        {
+                            await operation.ReportAsync(
+                                100,
+                                "Learning module is disabled; batch skipped.",
+                                cancellationToken: jobCancellationToken);
+                            return;
+                        }
+
                         var pendingIds =
                             await importer.GetMissingEpisodeIdsAsync(jobCancellationToken);
 
@@ -792,6 +862,17 @@ public sealed class SubtitleImportService
                         for (var index = 0; index < pendingIds.Count; index++)
                         {
                             jobCancellationToken.ThrowIfCancellationRequested();
+
+                            if (!await moduleService.IsEnabledAsync(
+                                    InstanceModule.Learning,
+                                    jobCancellationToken))
+                            {
+                                await operation.ReportAsync(
+                                    100,
+                                    "Learning module was disabled; remaining preparation skipped.",
+                                    cancellationToken: jobCancellationToken);
+                                return;
+                            }
 
                             var episodeId = pendingIds[index];
                             var percent = Math.Clamp(
@@ -834,6 +915,12 @@ public sealed class SubtitleImportService
         Guid episodeId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningModuleEnabledAsync(cancellationToken))
+        {
+            PreparationStates.TryRemove(episodeId, out _);
+            return;
+        }
+
         PreparationStates[episodeId] = new LearningTextPreparationState(
             LearningTextPreparationStatus.Processing,
             Message: "Checking learning-text sources.",

@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Localization;
@@ -47,7 +48,9 @@ public sealed record UiNavigationEntry(
     bool RequiresLearning = false,
     UiNavigationSection[]? Sections = null,
     UiMediaRoute[]? MediaRoutes = null,
-    UiNavigationEntry[]? Tabs = null);
+    UiNavigationEntry[]? Tabs = null,
+    InstanceModule? Module = null,
+    InstanceModule[]? Modules = null);
 
 /// <summary>
 /// A consumer route root (the URL prefix of a page folder) and the media types it serves. A
@@ -95,16 +98,16 @@ public static class UiNavigationCatalog
         [
             new("admin-overview", "admin.nav.overview", "/Admin", "admin", Exact: true, Policy: JularrPolicies.AdminMedia),
             new("admin-users", "admin.nav.users", "/Admin/Users", "users", ["/Admin/Users", "/Admin/User"], Policy: JularrPolicies.AdminSystem),
-            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests", Policy: JularrPolicies.AdminMedia)
+            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests", Policy: JularrPolicies.AdminMedia, Module: InstanceModule.Acquisition)
         ]),
         new("nav.group.adminMedia",
         [
-            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"], Policy: JularrPolicies.AcquisitionSettings),
-            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"], Policy: JularrPolicies.AdminMedia),
-            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming"], Policy: JularrPolicies.AcquisitionSettings),
+            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"], Policy: JularrPolicies.AcquisitionSettings, Module: InstanceModule.Acquisition),
+            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"], Policy: JularrPolicies.AdminMedia, Modules: [InstanceModule.Anime, InstanceModule.Acquisition]),
+            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming", "/Settings/ReadingNaming"], Policy: JularrPolicies.AcquisitionSettings, Module: InstanceModule.Acquisition),
             new("admin-mapping", "admin.nav.mapping", "/Settings/MappingReview", "link", ["/Settings/MappingReview", "/Settings/MappingSegments"], Policy: JularrPolicies.MappingEdit),
             new("admin-subtitles", "admin.nav.subtitles", "/Admin/Subtitles", "subtitles", ["/Admin/Subtitles", "/Settings/Subtitles"], Policy: JularrPolicies.AdminMedia),
-            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"], Policy: JularrPolicies.AdminSystem)
+            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"], Policy: JularrPolicies.AdminSystem, Module: InstanceModule.Acquisition)
         ]),
         new("nav.group.adminSystem",
         [
@@ -116,6 +119,7 @@ public static class UiNavigationCatalog
             new("admin-ai", "admin.nav.ai", "/Admin/Ai", "spark", Policy: JularrPolicies.AdminSystem),
             new("admin-localization", "admin.nav.localization", "/LocalizationAdmin", "globe", Policy: JularrPolicies.AdminSystem),
             new("admin-api-keys", "admin.nav.apiKeys", "/Settings/ApiKeys", "key", Policy: JularrPolicies.AdminSystem),
+            new("admin-instance", "admin.nav.instance", "/Admin/Instance", "settings", Policy: JularrPolicies.AdminSystem),
             new("admin-system", "admin.nav.system", "/Admin/System", "server", Policy: JularrPolicies.AdminSystem),
             new("admin-health", "admin.nav.health", "/Admin/Health", "pulse", Policy: JularrPolicies.AdminSystem)
         ])
@@ -134,12 +138,12 @@ public static class UiNavigationCatalog
         ]),
         new("nav.group.settingsLearning",
         [
-            new("settings-learning", "settings.nav.learning", "/Settings/Learning", "learn", ["/Settings/Learning", "/Settings/LearningCourses", "/Settings/LearningScope"]),
+            new("settings-learning", "settings.nav.learning", "/Settings/Learning", "learn", ["/Settings/Learning", "/Settings/LearningCourses", "/Settings/LearningScope"], Module: InstanceModule.Learning),
             new("settings-ai", "settings.nav.ai", "/Settings/Ai", "spark")
         ]),
         new("nav.group.settingsConnections",
         [
-            new("settings-anilist", "settings.nav.anilist", "/Settings/AniList", "sync"),
+            new("settings-anilist", "settings.nav.anilist", "/Settings/AniList", "sync", Module: InstanceModule.Tracking),
             new("settings-offline", "settings.nav.offline", "/Settings/Offline", "download")
         ])
     ];
@@ -150,7 +154,7 @@ public static class UiNavigationCatalog
         new("library", "nav.library", "/Library", "library", Tabs: LibraryTabs),
         new("watchlist", "nav.watchlist", "/Watchlist", "watchlist", ["/Watchlist", "/Franchises"]),
         new("calendar", "nav.calendar", "/Calendar", "calendar"),
-        new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true),
+        new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true, Module: InstanceModule.Learning),
         new("activity", "nav.activity", "/Activity", "history")
     ];
 
@@ -244,25 +248,27 @@ public sealed record UiShellNavigation(
         PathString path,
         bool learningVisible,
         Func<string, bool> can,
-        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null)
+        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null,
+        IReadOnlySet<InstanceModule>? enabledInstanceModules = null)
     {
         var media = visibleMediaTypes ?? WorkMediaTypes.All;
+        var modules = enabledInstanceModules ?? AllInstanceModules;
 
         // Admin pages that live under /Settings belong to Admin, not to Settings.
         var admin = UiNavigationCatalog.Secondary.Single(entry => entry.Id == "admin");
-        var inAdmin = Visible(admin, learningVisible, can, media) && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
+        var inAdmin = Visible(admin, learningVisible, can, media, modules) && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
         var inSettings = !inAdmin && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Settings));
 
         var primary = UiNavigationCatalog.App
-            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Where(entry => Visible(entry, learningVisible, can, media, modules))
             .Select(entry => ToItem(entry, IsActive(entry, path), media))
             .ToArray();
         var secondary = UiNavigationCatalog.Secondary
-            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Where(entry => Visible(entry, learningVisible, can, media, modules))
             .Select(entry => entry.Id switch
             {
-                "admin" => inAdmin ? Expand(entry, path, can) : ToItem(entry, false, media),
-                "settings" => inSettings ? Expand(entry, path, can) : ToItem(entry, false, media),
+                "admin" => inAdmin ? Expand(entry, path, can, modules) : ToItem(entry, false, media),
+                "settings" => inSettings ? Expand(entry, path, can, modules) : ToItem(entry, false, media),
                 _ => ToItem(entry, !inAdmin && !inSettings && IsActive(entry, path), media)
             })
             .ToArray();
@@ -288,21 +294,23 @@ public sealed record UiShellNavigation(
     public static (IReadOnlyList<UiNavigationItem> Links, IReadOnlyList<UiNavigationItem> Elsewhere) BuildProfile(
         bool learningVisible,
         Func<string, bool> can,
-        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null)
+        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null,
+        IReadOnlySet<InstanceModule>? enabledInstanceModules = null)
     {
         var media = visibleMediaTypes ?? WorkMediaTypes.All;
+        var modules = enabledInstanceModules ?? AllInstanceModules;
         var entries = UiNavigationCatalog.All.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var links = UiNavigationCatalog.ProfileLinkIds
             .Where(id => id != UiNavigationCatalog.ProfileDevices.Id || UiNavigationCatalog.DevicesPageAvailable)
             .Select(id => entries[id])
-            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Where(entry => Visible(entry, learningVisible, can, media, modules))
             .Select(entry => entry.Sections is null
                 ? ToItem(entry, false, media)
                 : ToItem(entry, false, media) with { Href = DrillInHref(entry.Id) })
             .ToArray();
 
         var elsewhere = UiNavigationCatalog.App.Concat(UiNavigationCatalog.Secondary)
-            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Where(entry => Visible(entry, learningVisible, can, media, modules))
             .Where(entry => !UiNavigationCatalog.MobilePrimaryIds.Contains(entry.Id)
                 && !UiNavigationCatalog.ProfileLinkIds.Contains(entry.Id))
             .Select(entry => ToItem(entry, false, media))
@@ -312,14 +320,18 @@ public sealed record UiShellNavigation(
     }
 
     /// <summary>The drill-in list of Admin or Settings, or null when the section is not available.</summary>
-    public static UiNavigationItem? BuildSection(string? sectionId, Func<string, bool> can)
+    public static UiNavigationItem? BuildSection(
+        string? sectionId,
+        Func<string, bool> can,
+        IReadOnlySet<InstanceModule>? enabledInstanceModules = null)
     {
+        var modules = enabledInstanceModules ?? AllInstanceModules;
         var entry = UiNavigationCatalog.Secondary.FirstOrDefault(candidate =>
             candidate.Sections is not null
             && string.Equals(candidate.Id, sectionId, StringComparison.OrdinalIgnoreCase));
-        return entry is null || !Allowed(entry, learningVisible: true, can)
+        return entry is null || !Allowed(entry, learningVisible: true, can, modules)
             ? null
-            : Expand(entry, PathString.Empty, can);
+            : Expand(entry, PathString.Empty, can, modules);
     }
 
     public static string DrillInHref(string sectionId) => $"/Profile/{sectionId}";
@@ -343,12 +355,20 @@ public sealed record UiShellNavigation(
         UiNavigationEntry entry,
         bool learningVisible,
         Func<string, bool> can,
-        IReadOnlyCollection<WorkMediaType> media) =>
-        Allowed(entry, learningVisible, can) && ReachesMedia(entry, media);
+        IReadOnlyCollection<WorkMediaType> media,
+        IReadOnlySet<InstanceModule> enabledInstanceModules) =>
+        Allowed(entry, learningVisible, can, enabledInstanceModules) && ReachesMedia(entry, media);
 
-    /// <summary>The account-level checks: the policy an account needs and whether Learning is on.</summary>
-    private static bool Allowed(UiNavigationEntry entry, bool learningVisible, Func<string, bool> can) =>
-        (entry.Policy is null || can(entry.Policy)) && (!entry.RequiresLearning || learningVisible);
+    /// <summary>Account policy, profile Learning state and server-wide module availability.</summary>
+    private static bool Allowed(
+        UiNavigationEntry entry,
+        bool learningVisible,
+        Func<string, bool> can,
+        IReadOnlySet<InstanceModule> enabledInstanceModules) =>
+        (entry.Policy is null || can(entry.Policy))
+        && (!entry.RequiresLearning || learningVisible)
+        && (entry.Module is null || enabledInstanceModules.Contains(entry.Module.Value))
+        && (entry.Modules is null || entry.Modules.All(enabledInstanceModules.Contains));
 
     /// <summary>An entry that is not media-scoped is always reachable; otherwise one browsable media type is enough.</summary>
     private static bool ReachesMedia(UiNavigationEntry entry, IReadOnlyCollection<WorkMediaType> media)
@@ -357,12 +377,16 @@ public sealed record UiShellNavigation(
         return types.Length == 0 || types.Any(media.Contains);
     }
 
-    private static UiNavigationItem Expand(UiNavigationEntry anchor, PathString path, Func<string, bool> can)
+    private static UiNavigationItem Expand(
+        UiNavigationEntry anchor,
+        PathString path,
+        Func<string, bool> can,
+        IReadOnlySet<InstanceModule> enabledInstanceModules)
     {
         // Admin and Settings pages are account-level, never scoped to a media type.
         var entries = anchor.Sections!
             .SelectMany(section => section.Entries)
-            .Where(entry => Allowed(entry, learningVisible: true, can))
+            .Where(entry => Allowed(entry, learningVisible: true, can, enabledInstanceModules))
             .ToArray();
 
         // The most specific match wins, so "/Admin" (overview) is not active on "/Admin/Users".
@@ -422,4 +446,7 @@ public sealed record UiShellNavigation(
 
     private static bool IsUnder(PathString path, IEnumerable<string> roots) =>
         roots.Any(root => path.StartsWithSegments(root, StringComparison.OrdinalIgnoreCase));
+
+    private static IReadOnlySet<InstanceModule> AllInstanceModules { get; } =
+        Enum.GetValues<InstanceModule>().ToHashSet();
 }

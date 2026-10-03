@@ -1,4 +1,6 @@
 using System.Threading.Channels;
+using Jularr.Web.Features.Instance;
+using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Franchises;
 
@@ -78,6 +80,10 @@ public sealed class FranchiseRefreshService(
         await using var scope = scopes.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<FranchiseStore>();
         var service = scope.ServiceProvider.GetRequiredService<FranchiseService>();
+        var modules = scope.ServiceProvider.GetService<IInstanceModuleService>();
+        var instance = modules is null
+            ? null
+            : await modules.GetAsync(cancellationToken);
         var runs = 0;
         while (runs < MaxRunsPerWake)
         {
@@ -87,6 +93,28 @@ public sealed class FranchiseRefreshService(
             if (due.Count == 0)
             {
                 return null;
+            }
+
+            if (instance is not null)
+            {
+                var enabled = new List<Guid>(due.Count);
+                foreach (var franchiseId in due)
+                {
+                    var summary = await store.GetAsync(franchiseId, cancellationToken);
+                    if (summary is not null
+                        && instance.IsEnabled(
+                            InstanceModuleMedia.For(
+                                WorkMediaTypes.FromWatchlist(summary.Seed.MediaType))))
+                    {
+                        enabled.Add(franchiseId);
+                    }
+                }
+
+                due = enabled;
+                if (due.Count == 0)
+                {
+                    return null;
+                }
             }
 
             foreach (var franchiseId in due)

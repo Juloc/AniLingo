@@ -24,6 +24,7 @@ using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Events;
 using Jularr.Web.Frontend;
 using Jularr.Web.Features.Health;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Library;
@@ -109,6 +110,9 @@ builder.Services.AddScoped<OwnerAuthService>();
 // (#598) and provider-driven discovery (#595).
 builder.Services.AddSingleton(_ => new MediaCapabilityStore("/data"));
 builder.Services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
+// Instance-wide module switches are the top-level feature gate. Profile capabilities/settings
+// only apply after the corresponding module is enabled here.
+builder.Services.AddSingleton<IInstanceModuleService>(_ => new InstanceModuleStore("/data"));
 // Permission-derived app shell (#598): the profile's visible media types, resolved once per request.
 builder.Services.AddScoped<IAppShellService, AppShellService>();
 // Provider-driven discovery (#595): the coordinator behind browse/search + the shelf board it feeds.
@@ -702,6 +706,24 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
+// Instance module switches are stronger than profile settings. Gated routes disappear immediately
+// when an owner disables a module; background/service gates use the same canonical service.
+app.Use(async (context, next) =>
+{
+    var requiredModules = InstanceModuleRoutes.Resolve(context.Request.Path);
+    if (requiredModules.Count > 0)
+    {
+        var modules = context.RequestServices.GetRequiredService<IInstanceModuleService>();
+        var settings = await modules.GetAsync(context.RequestAborted);
+        if (requiredModules.Any(module => !settings.IsEnabled(module)))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+    }
+
+    await next();
+});
 // Operations created while a signed-in account's request runs record that account as their actor
 // (Admin → History); work started by the server itself has none.
 app.Use(async (context, next) =>

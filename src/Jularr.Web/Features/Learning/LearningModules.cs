@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning.Courses;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,12 +41,25 @@ public sealed record LearningModuleAvailability(
         Settings.IsEnabled(LearningCapability.ScriptTrainer) && !Kana;
 }
 
-public sealed class LearningModuleResolver(AppDbContext db)
+public sealed class LearningModuleResolver(
+    AppDbContext db,
+    IInstanceModuleService? instanceModules = null)
 {
     public async Task<LearningModuleAvailability> ResolveAsync(
         string profileId,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return new LearningModuleAvailability(
+                DisabledSettings,
+                Reviews: false,
+                Vocabulary: false,
+                Sentences: false,
+                Kana: false,
+                Progress: false);
+        }
+
         var settings = await new LearningConfigurationStore(db).ResolveProfileAsync(
             profileId,
             cancellationToken);
@@ -77,6 +91,11 @@ public sealed class LearningModuleResolver(AppDbContext db)
         LanguageAssistance.LanguageSourceType? surface,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return LanguageAssistance.LanguageAssistanceAvailability.None;
+        }
+
         var store = new LearningConfigurationStore(db);
         var settings = scope is null
             ? await store.ResolveProfileAsync(profileId, cancellationToken)
@@ -102,6 +121,11 @@ public sealed class LearningModuleResolver(AppDbContext db)
         string? contentKey,
         CancellationToken cancellationToken)
     {
+        if (!await IsLearningEnabledAsync(cancellationToken))
+        {
+            return false;
+        }
+
         var settings = await new LearningConfigurationStore(db).ResolveAsync(
             profileId,
             new LearningScopeContext(mediaType, workKey, contentKey),
@@ -109,6 +133,18 @@ public sealed class LearningModuleResolver(AppDbContext db)
 
         return settings.IsEnabled(LearningCapability.Translation);
     }
+
+    private async Task<bool> IsLearningEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Learning,
+            cancellationToken);
+
+    private static LearningResolvedSettings DisabledSettings { get; } =
+        new(
+            LearningMode.Off,
+            Enum.GetValues<LearningCapability>()
+                .ToDictionary(capability => capability, _ => false));
 
     /// <summary>The Kana trainer is the writing-system trainer of the Japanese toolkit.</summary>
     public const string KanaLanguageTag = "ja";

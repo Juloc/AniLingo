@@ -1,5 +1,7 @@
 using System.Globalization;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
+using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
@@ -27,7 +29,8 @@ public sealed class ReleaseCalendarRefresher(
     IAniListReleaseScheduleClient client,
     AniListRequestLimiter limiter,
     ILogger<ReleaseCalendarRefresher> logger,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int MaxIdsPerRun = 200;
 
@@ -172,27 +175,38 @@ public sealed class ReleaseCalendarRefresher(
     private async Task<IReadOnlyList<AniListReleaseTarget>> CollectTargetsAsync(CancellationToken cancellationToken)
     {
         var targets = new List<AniListReleaseTarget>();
+        var instance = instanceModules is null
+            ? InstanceModuleSettings.Default
+            : await instanceModules.GetAsync(cancellationToken);
 
-        var anime = await db.AnimeMetadata
-            .AsNoTracking()
-            .Where(item => item.Provider == AniListReleaseNormalizer.Provider)
-            .Select(item => new { item.ExternalId, item.Status })
-            .ToListAsync(cancellationToken);
-        targets.AddRange(anime
-            .Where(item => TryId(item.ExternalId, out _))
-            .Select(item => new AniListReleaseTarget(ParseId(item.ExternalId), item.Status, false)));
-
-        foreach (var mapping in await mappings.LoadAllEpisodeMappingsAsync(cancellationToken))
+        if (instance.IsEnabled(InstanceModule.Anime))
         {
-            if (mapping.Provider.Equals(AniListReleaseNormalizer.Provider, StringComparison.OrdinalIgnoreCase) &&
-                TryId(mapping.ExternalId, out var id))
+            var anime = await db.AnimeMetadata
+                .AsNoTracking()
+                .Where(item => item.Provider == AniListReleaseNormalizer.Provider)
+                .Select(item => new { item.ExternalId, item.Status })
+                .ToListAsync(cancellationToken);
+            targets.AddRange(anime
+                .Where(item => TryId(item.ExternalId, out _))
+                .Select(item => new AniListReleaseTarget(ParseId(item.ExternalId), item.Status, false)));
+
+            foreach (var mapping in await mappings.LoadAllEpisodeMappingsAsync(cancellationToken))
             {
-                targets.Add(new AniListReleaseTarget(id, null, false));
+                if (mapping.Provider.Equals(AniListReleaseNormalizer.Provider, StringComparison.OrdinalIgnoreCase) &&
+                    TryId(mapping.ExternalId, out var id))
+                {
+                    targets.Add(new AniListReleaseTarget(id, null, false));
+                }
             }
         }
 
         foreach (var reading in await ReleaseLibraryLinks.LoadReadingLinksAsync(db, cancellationToken))
         {
+            if (!instance.IsEnabled(ReleaseInstanceModules.For(reading.MediaType)))
+            {
+                continue;
+            }
+
             if (TryId(reading.ExternalId, out var id))
             {
                 targets.Add(new AniListReleaseTarget(id, reading.Status, true));
@@ -201,8 +215,10 @@ public sealed class ReleaseCalendarRefresher(
 
         foreach (var followed in await new WatchlistStore(db).GetEffectiveAcrossProfilesAsync(cancellationToken))
         {
-            if (!followed.Identity.ProviderKey.Equals(AniListReleaseNormalizer.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !TryId(followed.Identity.ExternalKey, out var id))
+            var workType = WorkMediaTypes.FromWatchlist(followed.Identity.MediaType);
+            if (!instance.IsEnabled(InstanceModuleMedia.For(workType))
+                || !followed.Identity.ProviderKey.Equals(AniListReleaseNormalizer.Provider, StringComparison.OrdinalIgnoreCase)
+                || !TryId(followed.Identity.ExternalKey, out var id))
             {
                 continue;
             }

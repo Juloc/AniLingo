@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,7 +24,8 @@ public sealed class RequestsModel(
     AcquisitionRequestService requests,
     AcquisitionRequestSettingsStore settings,
     QualityProfileStore qualityProfiles,
-    ILogger<RequestsModel> logger) : PageModel
+    ILogger<RequestsModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     private const string PagePath = "/Admin/Requests";
     private const int QueueLimit = 2000;
@@ -43,6 +45,8 @@ public sealed class RequestsModel(
     public IReadOnlyDictionary<string, string> ProfileNames { get; private set; } = new Dictionary<string, string>();
     public AcquisitionRequestSettings RequestSettings { get; private set; } = AcquisitionRequestSettings.Default;
     public IReadOnlyList<QualityProfile> QualityProfiles { get; private set; } = [];
+    public IReadOnlyList<MediaAcquisitionKind> EnabledKinds { get; private set; } =
+        Enum.GetValues<MediaAcquisitionKind>();
     public IReadOnlyDictionary<string, string> QualityProfileNames { get; private set; } = new Dictionary<string, string>();
 
     /// <summary>Whether the signed-in account may change rules and settings (the queue itself needs only the page policy).</summary>
@@ -85,7 +89,10 @@ public sealed class RequestsModel(
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        Policies = await store.GetPoliciesAsync(cancellationToken);
+        await LoadEnabledKindsAsync(cancellationToken);
+        Policies = (await store.GetPoliciesAsync(cancellationToken))
+            .Where(policy => EnabledKinds.Contains(policy.Kind))
+            .ToArray();
         ProfileNames = await db.OwnerAccounts
             .AsNoTracking()
             .ToDictionaryAsync(account => account.Id, account => account.UserName, cancellationToken);
@@ -103,8 +110,10 @@ public sealed class RequestsModel(
             Math.Max(p, 1));
         try
         {
-            var rows = await store.ListAllAsync(QueueLimit, cancellationToken);
-            AnyRequests = rows.Count > 0;
+            var rows = (await store.ListAllAsync(QueueLimit, cancellationToken))
+                .Where(row => EnabledKinds.Contains(row.Kind))
+                .ToArray();
+            AnyRequests = rows.Length > 0;
             Requesters = rows
                 .Select(row => row.RequestedByProfileId)
                 .Distinct(StringComparer.Ordinal)
@@ -123,12 +132,13 @@ public sealed class RequestsModel(
 
     public async Task<IActionResult> OnPostPoliciesAsync(CancellationToken cancellationToken)
     {
+        await LoadEnabledKindsAsync(cancellationToken);
         if (!CanEditSettings)
         {
             return Forbid();
         }
 
-        foreach (var kind in Enum.GetValues<MediaAcquisitionKind>())
+        foreach (var kind in EnabledKinds)
         {
             var manual = Request.Form[$"manual.{AcquisitionAccessNames.Kind(kind)}"].ToString();
             if (manual.Length == 0)
@@ -154,6 +164,7 @@ public sealed class RequestsModel(
         int? periodDays,
         CancellationToken cancellationToken)
     {
+        await LoadEnabledKindsAsync(cancellationToken);
         if (!CanEditSettings)
         {
             return Forbid();
@@ -166,9 +177,17 @@ public sealed class RequestsModel(
             var quota = maxRequests is null && periodDays is null
                 ? null
                 : new AutoApprovalQuota(maxRequests ?? 0, periodDays ?? 0);
+            var parsedKinds = (kinds ?? [])
+                .Select(AcquisitionAccessNames.ParseKind)
+                .ToArray();
+            if (parsedKinds.Any(kind => !EnabledKinds.Contains(kind)))
+            {
+                throw new ArgumentException("A disabled media module cannot be added to an auto-approval rule.");
+            }
+
             var rule = AutoApprovalRule.Create(
                 name,
-                (kinds ?? []).Select(AcquisitionAccessNames.ParseKind),
+                parsedKinds,
                 string.IsNullOrWhiteSpace(profileId) ? [] : [profileId],
                 quota);
             await settings.AddRuleAsync(rule, cancellationToken);
@@ -251,6 +270,20 @@ public sealed class RequestsModel(
         }
 
         return Back(returnUrl);
+    }
+
+    private async Task LoadEnabledKindsAsync(CancellationToken cancellationToken)
+    {
+        if (instanceModules is null)
+        {
+            EnabledKinds = Enum.GetValues<MediaAcquisitionKind>();
+            return;
+        }
+
+        var instance = await instanceModules.GetAsync(cancellationToken);
+        EnabledKinds = Enum.GetValues<MediaAcquisitionKind>()
+            .Where(kind => instance.IsEnabled(AcquisitionInstanceModules.For(kind)))
+            .ToArray();
     }
 
     /// <summary>Returns to the filtered queue the action came from; anything else goes to the unfiltered page.</summary>

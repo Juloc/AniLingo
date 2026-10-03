@@ -60,6 +60,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.Capabilities.IndexModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.DevicesModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.HealthModel"] = JularrPolicies.AdminSystem,
+        ["Jularr.Web.Pages.Admin.InstanceModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SonarrModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SystemModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.UserModel"] = JularrPolicies.AdminSystem,

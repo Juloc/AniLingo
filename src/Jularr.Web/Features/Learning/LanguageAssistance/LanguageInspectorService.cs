@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Ai;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Vocabulary;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,8 @@ public sealed class LanguageInspectorService(
     AppDbContext db,
     LearningService learning,
     LanguageTextAnalyzer analyzer,
-    AiSentenceExplanationService explanations)
+    AiSentenceExplanationService explanations,
+    IInstanceModuleService? instanceModules = null)
 {
     public const int MaxTextLength = 500;
     public const int MaxSentenceLength = 500;
@@ -207,7 +209,7 @@ public sealed class LanguageInspectorService(
                     context.Region));
         }
 
-        var availability = await new LearningModuleResolver(db).ResolveAssistanceAsync(
+        var availability = await new LearningModuleResolver(db, instanceModules).ResolveAssistanceAsync(
             ProfileId,
             anchor?.Scope,
             surface: null,

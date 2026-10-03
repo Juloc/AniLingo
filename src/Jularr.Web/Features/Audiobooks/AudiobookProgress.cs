@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Instance;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Audiobooks;
@@ -50,7 +51,9 @@ public sealed record AudiobookProgressSnapshot(
 /// <c>EpisodeProgressService</c>): once an audiobook is finished a later partial checkpoint updates the
 /// resume position but never flips it back to unfinished — only <see cref="SetCompletedAsync"/> can.
 /// </summary>
-public sealed class AudiobookProgressService(AppDbContext db)
+public sealed class AudiobookProgressService(
+    AppDbContext db,
+    IInstanceModuleService? instanceModules = null)
 {
     /// <summary>Listening at or beyond this share of the duration marks the audiobook finished.</summary>
     public const double CompletionThreshold = 0.95;
@@ -60,6 +63,11 @@ public sealed class AudiobookProgressService(AppDbContext db)
         Guid audiobookId,
         CancellationToken cancellationToken)
     {
+        if (!await IsEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
         var progress = await db.Set<AudiobookProgress>()
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.ProfileId == profileId && x.AudiobookId == audiobookId, cancellationToken);
@@ -80,6 +88,7 @@ public sealed class AudiobookProgressService(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        await EnsureEnabledAsync(cancellationToken);
 
         var normalizedDuration = durationMs is > 0 ? durationMs : null;
         var position = Math.Max(0, positionMs);
@@ -123,6 +132,7 @@ public sealed class AudiobookProgressService(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        await EnsureEnabledAsync(cancellationToken);
 
         var progress = await db.Set<AudiobookProgress>()
             .SingleOrDefaultAsync(x => x.ProfileId == profileId && x.AudiobookId == audiobookId, cancellationToken);
@@ -142,6 +152,20 @@ public sealed class AudiobookProgressService(AppDbContext db)
 
         await db.SaveChangesAsync(cancellationToken);
         return ToSnapshot(progress);
+    }
+
+    private async Task<bool> IsEnabledAsync(CancellationToken cancellationToken) =>
+        instanceModules is null
+        || await instanceModules.IsEnabledAsync(
+            InstanceModule.Audiobook,
+            cancellationToken);
+
+    private async Task EnsureEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (!await IsEnabledAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("Audiobook module is disabled.");
+        }
     }
 
     private static AudiobookProgressSnapshot ToSnapshot(AudiobookProgress progress) =>

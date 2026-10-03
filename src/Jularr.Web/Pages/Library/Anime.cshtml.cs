@@ -3,6 +3,7 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
+using Jularr.Web.Features.Instance;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
@@ -33,7 +34,8 @@ public sealed class AnimeModel(
     WatchlistLibraryResolver watchlistLibrary,
     AcquisitionAccessStore requestStore,
     IMediaCapabilityService mediaCapabilities,
-    ILogger<AnimeModel> logger) : PageModel
+    ILogger<AnimeModel> logger,
+    IInstanceModuleService? instanceModules = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
@@ -161,7 +163,7 @@ public sealed class AnimeModel(
             Metadata?.BannerImageUrl);
         SearchQuery = string.IsNullOrWhiteSpace(q) ? anime.Title : q.Trim();
 
-        var learning = await new LearningConfigurationStore(db).ResolveAsync(
+        var learning = await new LearningConfigurationStore(db, instanceModules).ResolveAsync(
             currentAccount.ProfileId,
             new LearningScopeContext(
                 LearningMediaType.Anime,
