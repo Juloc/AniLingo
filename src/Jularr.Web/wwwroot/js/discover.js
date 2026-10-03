@@ -473,6 +473,7 @@
                 externalId: data.externalId,
                 title: data.title,
                 subtitle: data.subtitle,
+                author: data.author,
                 coverImageUrl: data.cover
             });
 
@@ -506,6 +507,7 @@
                 externalId: card.dataset.dcExternalId,
                 title: card.dataset.dcTitle,
                 subtitle: card.dataset.dcSubtitle,
+                author: card.dataset.dcAuthor,
                 cover: card.dataset.dcCover
             }, cardAdd, card);
             if (payload) {
