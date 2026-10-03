@@ -25,10 +25,12 @@ Profile is one coherent consumer area with shared profile chrome and tabs:
 1. **Activity** — default
 2. **Stats**
 3. **Ratings**
-4. **Friends**
+4. **Friends**, only when a real Friends/social capability is implemented and available
 5. **Settings**
 
 The profile hero, mini stats and activity heatmap stay above the tabs.
+
+Do not render a dead Friends tab. Until a canonical Friends capability/domain contract exists, Friends is hidden rather than backed by UI-only placeholder state.
 
 Do not create many tiny account pages.
 
