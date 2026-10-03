@@ -150,6 +150,34 @@ Rules:
 
 This preserves the current Sonarr conflict-detection value after handover without keeping Sonarr as a second canonical authority.
 
+### Ownership scope
+
+Management ownership is resolved at **Work level only**.
+
+Examples:
+- one TV series Work → Extern verwaltet / Gemeinsam / Jularr verwaltet;
+- one Anime Work → its own ownership mode;
+- one Movie Work → its own ownership mode.
+
+Do not split manager ownership by Season, Episode, Volume, Chapter or individual file.
+
+Reason:
+- acquisition/import/naming authority stays deterministic;
+- file/path ownership checks stay explainable;
+- handover/revert remains auditable;
+- external-manager conflict detection does not need to reason about mixed managers inside one Work.
+
+This does **not** flatten monitoring granularity.
+
+Monitoring/Wanted may still vary below Work level where the canonical model supports it, for example:
+- one Season monitored, another not;
+- selected Episodes wanted/unwanted;
+- chapter/volume monitoring where applicable.
+
+Ownership answers **who may manage the Work**. Monitoring answers **which units Jularr should want/process**. These are separate concepts.
+
+A Work-level ownership change must not silently rewrite Season/Episode monitoring selections unless the source adapter explicitly maps monitoring as part of the handover preview and the admin confirms it.
+
 ### Default ownership by integration and media type
 
 Ownership defaults are configured per **integration × media/content type**, not as one coarse switch for the whole integration.
