@@ -5,8 +5,9 @@ Status: **approved clean baseline**.
 ## Design direction
 - Netflix/Plex-inspired media-first Home.
 - Clean design is the UX/layout baseline.
-- The elaborate Japanese Jularr look is a later theme/skin over the same structure.
+- Original Jularr is the supported Japanese ink/watercolor/cherry-blossom skin over the same structure; Clean and Original do not fork UX behavior.
 - **Light and Dark are both first-class and must both be polished on every major screen.**
+- Accent colors are token-driven and may hue-shift theme highlights coherently without recoloring provider logos or semantic status colors.
 - Desktop, Tablet, Mobile and TV use the same information architecture with platform-specific navigation and interaction.
 
 ## Home content
