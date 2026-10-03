@@ -29,3 +29,16 @@ The mascot is **optional**. Original Jularr screens do not have to show her. Whe
 The Clean skin does not use this mascot by default.
 
 Screen-specific behavior, layout and information architecture remain defined by the relevant `docs/mockups/**/SPEC.md` files. This asset changes visual presentation only.
+
+
+## Learning companion variants
+
+The canonical Jularr mascot is the default Original Jularr Learning companion.
+
+Future course/language-specific companion sets may be added as optional visual assets (for example a culturally appropriate visual companion for a German-learning course). Such variants require their own approved reference asset and must:
+- keep the same Lesson/Review layout and controls;
+- never change scoring, FSRS scheduling, course structure or capabilities;
+- never provide unintended answer clues;
+- remain optional presentation, not curriculum data.
+
+Until a language-specific companion is explicitly approved, use the canonical Jularr mascot above.
