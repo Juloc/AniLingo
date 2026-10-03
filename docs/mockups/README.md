@@ -97,6 +97,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 ## Planning references
 
 - `../PLANNING-AUDIT.md` — coverage, architecture consistency and open-issue audit.
+- `../CROSS-SPEC-CONSISTENCY-AUDIT.md` — cross-document semantic consistency and remaining product decision.
 - `../IMPLEMENTATION-ROADMAP.md` — dependency-ordered implementation sequence.
 
 Only create platform images that are actually needed. Important screens should receive approved Desktop/Mobile/Tablet/TV references according to their SPEC before their implementation is considered complete.
