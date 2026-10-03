@@ -402,14 +402,14 @@ Both Lesson and Review end with a consistent summary language.
 - next recommendation.
 
 ### Review
-- XP;
-- time;
+- XP when gamification is enabled;
+- active learning time;
 - reviews completed;
 - accuracy;
 - Again/Hard/Good/Easy distribution;
 - items needing attention;
 - next due summary;
-- Daily Goal;
+- Daily Goal when gamification is enabled;
 - next recommendation.
 
 Use charts sparingly; the summary should be readable in seconds.
