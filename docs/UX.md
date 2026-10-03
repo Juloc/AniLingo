@@ -626,6 +626,31 @@ Activity / To-Do is the live/pending operational work queue for imports, remux, 
 
 History is the past operational record with category/date filters and actor/result details.
 
+## 27a. System & Diagnostics
+
+Binding specification:
+- `docs/mockups/admin-system-diagnostics/SPEC.md`
+
+System & Diagnostics consolidates the existing Health, Resources and Logs technical surfaces into one Admin destination with tabs:
+- Übersicht
+- Ressourcen
+- Abhängigkeiten
+- Logs
+- Diagnose
+- Updates
+- Runtime
+
+The existing `/Admin/Resources` telemetry is reused as the Resources tab and remains scoped to the Jularr + PostgreSQL stack and mounts visible to Jularr. The standalone Resources navigation entry is retired after feature parity; the old route may remain as a compatibility redirect.
+
+Boundaries:
+- Dashboard = live operational glance and current activity;
+- System → Ressourcen = detailed stack telemetry/history;
+- Storage = mount/path/LibraryRoot configuration;
+- Runtime = global worker/job runtime only;
+- Downloader/Provider/AI keep their own technical settings.
+
+Overview may show small current resource values, but detailed charts/history live only in Resources. System must not become a second Storage/Downloader/Provider/AI configuration hub.
+
 ## 28. Responsive profiles
 
 ### Mobile
