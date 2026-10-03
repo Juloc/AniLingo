@@ -596,6 +596,32 @@ It does **not** duplicate:
 
 Overview may show downloader-specific throughput, workspace pressure and bottlenecks. Queue owns deep per-job diagnostics. Server owns NNTP configuration/health. Processing owns Verify/Repair/Extract/Cleanup. Speed & Schedule owns bandwidth, concurrency and timed actions. Settings owns general retry/duplicate/retention/cache behavior. External Clients is compatibility-only; native Usenet remains the normal/default path.
 
+## 23b. Acquisition Profiles & Scoring
+
+Binding specification:
+- `docs/mockups/admin-acquisition-settings/SPEC.md`
+
+Acquisition is centered on one reusable **Acquisition Profile** rather than separate Sonarr-style Quality Profile, Custom Format, Release Profile and Delay Profile screens.
+
+One profile owns:
+- quality/tier ordering and upgrade cutoff;
+- minimum acceptance score and upgrade-until-score;
+- normalized language policy;
+- reusable Release Rules with profile-specific effect/score;
+- explicit hard Reject rules;
+- per-quality/group size policy where supported;
+- wait/delay and source/provider preference;
+- default-per-media-kind and per-Work assignment;
+- one canonical Score-Test/explanation flow.
+
+Shared Release Rule definitions answer *what is detected*; the effect inside a profile answers *what this profile does with it*. A shared rule can therefore score differently or reject in different profiles without duplicating its matcher.
+
+Normal workflow stays inside the profile. A secondary Rule Library is allowed, but there is no required permanent Custom Formats sidebar destination.
+
+Automatic acquisition, Manual Search and Score-Test must use the same scorer/decision explanation. Sonarr Quality Profiles, Custom Formats, Release Profiles and Delay Profiles are migration inputs translated into the Jularr model, not parallel runtime models.
+
+Provider credentials remain in Providers, downloader transport in Downloader and paths in Storage.
+
 ## 24. Provider settings
 
 All provider types use a common configuration pattern:
