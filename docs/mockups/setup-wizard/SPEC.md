@@ -196,10 +196,12 @@ When a canonical Games instance module exists and is enabled, or when the setup 
 
 ### Optional storage roles
 
-Depending on enabled modules:
-- Native Download Workspace
-- Generic Downloads Root
-- optional future backup/cache/transcode roles
+Depending on the capabilities/configuration selected for this setup:
+- Native Download Workspace when the downloader is being configured;
+- Generic Downloads Root when that managed role is actually supported/needed;
+- optional future backup/cache/transcode roles only when their owning feature exists.
+
+Do not infer independent module switches for these roles. Storage roles follow their owning feature contracts and the canonical Instance module system.
 
 Path selection uses the safe Storage path browser.
 
@@ -212,7 +214,9 @@ Validate:
 
 ## 5. Downloader / Usenet
 
-Only shown when Native Downloader or an external download client is enabled.
+Show this step when downloader configuration is part of the selected setup and the installation exposes the relevant capability.
+
+Do **not** invent a separate Native Downloader instance-module switch. Until such a complete runtime gate exists, Setup follows the real canonical module/capability state and simply configures the Downloader owner when applicable.
 
 ### Native Usenet
 
@@ -288,7 +292,9 @@ Secrets are masked/write-only.
 
 ## 7. AI
 
-Only shown if AI is enabled.
+Show this step when server/shared AI capability is available and the admin chooses to configure it during setup.
+
+Do **not** depend on a fake AI InstanceModule. Until a complete canonical AI runtime gate exists, this is optional setup of the dedicated Admin AI contract and may be skipped for later configuration.
 
 Allow:
 - provider selection
@@ -367,9 +373,9 @@ Run:
 - database readiness
 - Storage read/write
 - LibraryRoot validation
-- downloader health if enabled
+- downloader health if configured
 - required provider health
-- AI provider/model health if enabled
+- AI provider/model health if configured
 - unresolved blocking migration/setup conflicts
 
 Result states:
