@@ -169,7 +169,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(x => x.LibraryRootId)
                 .OnDelete(DeleteBehavior.NoAction);
-            entity.HasIndex(x => x.ContentType);
+            entity.HasIndex(x => new { x.ContentType, x.IsDefault });
             entity.HasIndex(x => x.ContentType)
                 .IsUnique()
                 .HasFilter("\"IsDefault\" = TRUE");
