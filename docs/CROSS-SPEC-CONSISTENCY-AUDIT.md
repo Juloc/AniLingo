@@ -280,9 +280,10 @@ The owning split is consistent:
 - **Providers** -> Indexer/Search, Metadata, Subtitles, Translation, Reading Sources and other provider adapter configuration;
 - **Acquisition Profiles** -> quality, upgrade, language, Release Rules, scoring, wait/delay and source/provider preference;
 - **Migration adapter** -> source-manager path translation/coexistence state;
-- **content importer/library layer** -> content-specific naming/organization inside the Storage-selected target.
+- **content importer/library layer** -> content-specific naming/organization inside the Storage-selected target;
+- **Games Admin** -> BIOS/Firmware requirement/validation/binding, while Storage owns the restricted BIOS/Firmware path.
 
-There is no permanent global Import & Routing page and Acquisition does not own filesystem naming/path policy.
+There is no permanent global Import & Routing page and Acquisition does not own filesystem naming/path policy. BIOS/Firmware is neither a Games LibraryRoot nor Generic Downloads.
 
 ## 23. Activity / History / domain diagnostics — aligned
 
@@ -336,6 +337,8 @@ The same artifact must not appear as two competing restore/import workflows.
 `Detailliert | Kompakt` remains one profile-scoped Admin-shell preference. Appearance may expose it only as a shortcut to the same state; no page owns a second density setting and no business logic changes with density.
 
 Authorization remains server-side/capability-based. Hidden navigation is not authorization, and no Admin screen may create its own disconnected permission model.
+
+For AI specifically, Users & Permissions owns base Account/Profile/group/role eligibility for shared instance AI. Admin AI owns only AI-service-specific narrowing and limits; effective access is the intersection of the two contracts.
 
 ## 28. Remaining Admin implementation gaps — not spec contradictions
 
