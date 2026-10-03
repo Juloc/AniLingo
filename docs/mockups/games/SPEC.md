@@ -1,6 +1,6 @@
 # Games — Shared UX Contract
 
-Status: planning scaffold from #725. Detailed page/dialog UX is intentionally pending page-by-page approval.
+Status: shared Games UX contract. Non-player consumer/Admin UX is approved; common Game Boy and Nintendo DS player direction is approved; further platform-player work is intentionally paused.
 
 Global UX rules: `docs/UX.md`.
 Architecture planning: #725.
@@ -150,6 +150,16 @@ Do not make V1 depend on:
 - phone-as-controller / multi-controller TV pairing as a V1 requirement
 - modern storefront integrations
 
-## Planning rule
+## Planning / approval rule
 
-These files are scaffolds only. Each page/dialog is reviewed separately. Once a surface is approved, its own SPEC becomes authoritative for that surface.
+Each page/dialog is reviewed separately. Once a surface is approved, its own SPEC is authoritative for that surface.
+
+Current phase:
+- Games Library, Game Detail and conditional Play Options are approved;
+- Home and Discover reuse their existing shared pages with Games integrated into those specs;
+- Admin Runtimes, Runtime Editor, BIOS/Firmware, BIOS Add/Replace and Import Resolution are approved;
+- Storage, Providers and Setup Wizard remain shared owners for their concerns and have been aligned with Games;
+- common Game Boy player/touch-control direction and Nintendo DS extension are approved;
+- additional platform-player work, including PlayStation 1 visual approval, is intentionally paused until resumed explicitly.
+
+Do not invent extra Games-specific Home, Discover, Request, Provider, Storage, Downloader or Activity pages.
