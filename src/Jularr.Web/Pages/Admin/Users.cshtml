@@ -43,7 +43,7 @@
                                 <div class="user-directory-badges">
                                     <span class="status-pill">@roleLabel</span>
                                     <span class="status-pill @(account.IsEnabled ? "status-ok" : "status-warn")">
-                                        @(account.IsEnabled ? ui["admin.user.enabledLabel"] : ui["admin.user.statusPending"])
+                                        @(account.IsEnabled ? ui["admin.user.enabledLabel"] : ui["admin.user.disabledPendingLabel"])
                                     </span>
                                 </div>
                             </div>
