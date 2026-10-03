@@ -62,6 +62,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.DevicesModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.HealthModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.InstanceModel"] = JularrPolicies.AdminSystem,
+        ["Jularr.Web.Pages.Admin.RolesModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SonarrModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SystemModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.UserModel"] = JularrPolicies.AdminSystem,
@@ -216,6 +217,25 @@ public sealed class RoleAuthorizationTests
         {
             File.Delete(path);
         }
+    }
+
+    [TestMethod]
+    public void EveryNamedPolicyHasADisplayName()
+    {
+        var keys = JularrPolicies.Roles.Keys
+            .Select(JularrPolicies.LabelKey)
+            .ToArray();
+
+        Assert.AreEqual(keys.Length, keys.Distinct(StringComparer.Ordinal).Count());
+        foreach (var key in keys)
+        {
+            Assert.IsTrue(
+                Jularr.Web.Features.Localization.UiTranslationResources.TryGet(key, out _),
+                $"Missing UI text {key}.");
+        }
+
+        Assert.ThrowsExactly<ArgumentException>(
+            () => JularrPolicies.LabelKey("admin.unknown"));
     }
 
     [TestMethod]
