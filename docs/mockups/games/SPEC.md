@@ -24,6 +24,7 @@ Planned game-specific surfaces:
 - `games-library/SPEC.md`
 - `game-detail/SPEC.md`
 - `game-player/SPEC.md`
+- `game-touch-controls/SPEC.md`
 - `game-play-options/SPEC.md`
 
 Games stays integrated into the rest of Jularr:
