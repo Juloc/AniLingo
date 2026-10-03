@@ -410,6 +410,7 @@ public sealed class IndexModel(
         string? externalId,
         string? title,
         string? subtitle,
+        string? author,
         string? coverImageUrl,
         CancellationToken cancellationToken)
     {
@@ -442,7 +443,9 @@ public sealed class IndexModel(
                     canonicalProvider,
                     externalId.Trim(),
                     title.Trim(),
-                    string.IsNullOrWhiteSpace(subtitle) ? null : subtitle.Trim(),
+                    kind == MediaAcquisitionKind.Book
+                        ? string.IsNullOrWhiteSpace(author) ? null : author.Trim()
+                        : string.IsNullOrWhiteSpace(subtitle) ? null : subtitle.Trim(),
                     string.IsNullOrWhiteSpace(coverImageUrl) ? null : coverImageUrl.Trim()),
                 cancellationToken);
             return new JsonResult(await RequestProgressAsync(request, cancellationToken));
