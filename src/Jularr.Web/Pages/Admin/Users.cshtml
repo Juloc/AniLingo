@@ -11,7 +11,10 @@
         <h1>@ui["admin.nav.users"]</h1>
         <p>@ui["admin.users.subtitle"]</p>
     </div>
-    <a class="button" asp-page="/Admin/Capabilities/Index">@ui["admin.capabilities.title"]</a>
+    <div class="inline-actions">
+        <a class="button" asp-page="/Admin/Groups">@ui["admin.groups.title"]</a>
+        <a class="button" asp-page="/Admin/Capabilities/Index">@ui["admin.capabilities.title"]</a>
+    </div>
 </header>
 
 <partial name="_AdminNavigation" model="Model.Ui" />
