@@ -2,6 +2,8 @@
 
 Status: **binding V1 planning specification for Lesson and Review mockups**. This defines the focused learning-session surfaces that pair with the V1 Learning Dashboard. It intentionally does not pull future Speaking/Writing/AI-Tutor/exam systems into the first delivery.
 
+Binding pedagogy and Lesson sequencing: `docs/LEARNING_PEDAGOGY.md`. This screen spec defines presentation/interaction; pedagogy defines when content is introduced, guided, retrieved, corrected, transferred and summarized.
+
 ## 1. Product role
 
 Lesson and Review are separate session types over the same canonical Learning domain.
@@ -48,40 +50,23 @@ Do not show:
 
 ## 3. Lesson structure
 
-V1 Lesson is a mostly linear flow divided into meaningful sections.
-
-Example:
+The canonical pedagogical sequence is defined in `docs/LEARNING_PEDAGOGY.md`:
 
 ```text
-Lesson
-  Section 1 — Introduction
-    Explanation
-    Example
-    Vocabulary
-    Practice
-
-  Section 2 — Use
-    Listening
-    Cloze
-    Sentence order
-    Recognition
-
-  Section summary
-
-  Section 3 — Apply
-    Practice
-    Comprehension
-
-  Lesson summary
+Orient -> Introduce -> Example -> Guided Practice
+-> Independent Retrieval -> Apply/Transfer -> Checkpoint -> Summary
 ```
+
+The visible Lesson remains a mostly linear flow divided into meaningful sections. Simple content may combine adjacent phases; the UI must not invent a different teaching sequence.
 
 Rules:
 - learner normally proceeds forward;
 - previous/review-current-section may be allowed;
-- lesson can be exited and resumed exactly;
+- Lesson can be exited and resumed exactly;
 - sections provide natural checkpoints;
 - short section summaries prevent one giant endless card flow;
-- no unnecessary route change between every exercise.
+- no unnecessary route change between every exercise;
+- ordinary Lesson completion does not require 100% accuracy or retry-until-green.
 
 ## 4. V1 Lesson step types
 
