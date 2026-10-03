@@ -110,6 +110,7 @@ public sealed class DiscoverPageTests
         Assert.IsTrue(DiscoverScopes.IsActive(DiscoveryCategory.BooksAndLightNovels, DiscoveryCategory.LightNovel));
         Assert.IsFalse(DiscoverScopes.IsActive(DiscoveryCategory.Manga, DiscoveryCategory.Book));
         Assert.IsTrue(DiscoverScopes.Includes(DiscoveryCategory.BooksAndLightNovels, DiscoveryCategory.LightNovel));
+        Assert.IsTrue(DiscoverScopes.Includes(DiscoveryCategory.BooksAndLightNovels, DiscoveryCategory.BooksAndLightNovels));
         Assert.IsFalse(DiscoverScopes.Includes(DiscoveryCategory.Anime, DiscoveryCategory.Manga));
         Assert.AreEqual(DiscoveryCategory.BooksAndLightNovels, Parse("category=books-light-novels").Category);
         Assert.AreEqual("/Discover?category=books-light-novels", Parse("category=books-light-novels").Href);
