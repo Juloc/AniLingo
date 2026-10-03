@@ -72,7 +72,7 @@
     <div class="user-admin-list">
         @foreach (var user in Model.Users)
         {
-            <article class="user-admin-card">
+            <article class="user-admin-card" id="user-@user.Id">
                 <div class="user-admin-header">
                     <div>
                         <strong>@user.UserName</strong>
