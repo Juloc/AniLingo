@@ -177,7 +177,10 @@ public sealed class BookWantedRequestHandler(
 }
 
 /// <summary>One indexer result as the book selector judged it; <see cref="Score"/> 0 means rejected.</summary>
-public sealed record RankedBookRelease(ProwlarrReleaseCandidate Release, int Score, string? RejectedBecause);
+public sealed record RankedBookRelease(ProwlarrReleaseCandidate Release, int Score, string? RejectedBecause)
+{
+    public IReadOnlyList<string> ScoreReasons { get; init; } = [];
+}
 
 /// <summary>The outcome of one book search on the indexers, shared by automatic adding and the admin test tool.</summary>
 public sealed record BookUsenetSearchResult(
@@ -327,29 +330,48 @@ public static class BookReleaseSelector
         }
 
         // EPUB is preferred, PDF accepted; a name without a format may still hold either, which
-        // the download import checks.
-        var score = 10 + matchedTitle;
-        score += authorWords.Count(words.Contains) * 2;
+        // the download import checks. Keep the contribution list beside the score so Manual Search
+        // can explain the exact number instead of presenting an opaque ranking.
+        var reasons = new List<string>();
+        var titleScore = 10 + matchedTitle;
+        var score = titleScore;
+        reasons.Add($"Title match +{titleScore}");
+
+        var authorHits = authorWords.Count(words.Contains);
+        if (authorHits > 0)
+        {
+            var authorScore = authorHits * 2;
+            score += authorScore;
+            reasons.Add($"Author match +{authorScore}");
+        }
+
         if (isEpub)
         {
             score += 8;
+            reasons.Add("EPUB +8");
         }
         else if (isPdf)
         {
             score += 3;
+            reasons.Add("PDF +3");
         }
 
         if (words.Contains("retail"))
         {
             score += 2;
+            reasons.Add("Retail +2");
         }
 
         if (release.SizeBytes is > 200L * 1024 * 1024)
         {
             score -= 6;
+            reasons.Add("Large release -6");
         }
 
-        return new RankedBookRelease(release, Math.Max(score, 1), null);
+        return new RankedBookRelease(release, Math.Max(score, 1), null)
+        {
+            ScoreReasons = reasons
+        };
     }
 
     private static HashSet<string> Words(string? value)

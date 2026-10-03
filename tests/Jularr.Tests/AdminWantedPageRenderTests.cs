@@ -74,7 +74,8 @@ public sealed class AdminWantedPageRenderTests
 
         Assert.AreEqual(4, Regex.Matches(html, @">\s*Search now\s*</button>").Count);
         Assert.AreEqual(1, Regex.Matches(html, @">\s*Retry\s*</button>").Count, "Only the failed request can be retried.");
-        Assert.AreEqual(2, Regex.Matches(html, @">\s*Manual search\s*</a>").Count);
+        Assert.AreEqual(4, Regex.Matches(html, @">\s*Manual search\s*</a>").Count);
+        Assert.AreEqual(2, Regex.Matches(html, @"href=""/Admin/BookManualSearch\?id=").Count, "Approved/failed Book requests expose their own manual release search.");
         StringAssert.Contains(html, "handler=SearchRequest");
         StringAssert.Contains(html, "handler=SearchAnime");
         StringAssert.Contains(html, "search=frieren");

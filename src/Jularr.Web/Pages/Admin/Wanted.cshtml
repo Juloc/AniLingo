@@ -215,6 +215,12 @@
                                             <button class="button button-primary" type="submit">@(item.Status == WantedStatus.Failed ? ui["admin.requests.retry"] : ui["admin.requests.searchNow"])</button>
                                         </form>
                                     }
+                                    @if (item.CanSearch && item.Source == WantedSource.Request && item.Kind == MediaAcquisitionKind.Book)
+                                    {
+                                        <a class="button"
+                                           asp-page="/Admin/BookManualSearch"
+                                           asp-route-id="@item.RequestId">@ui["admin.wanted.manualSearch"]</a>
+                                    }
                                     @if (item.CanSearch && item.Source == WantedSource.Monitored)
                                     {
                                         <form method="post" asp-page-handler="SearchAnime">
