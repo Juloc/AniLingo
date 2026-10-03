@@ -190,6 +190,25 @@ Mobile:
 
 Library cards use one shared visual grammar with media-specific secondary information.
 
+## 5a. Collections
+
+Binding specification: `docs/mockups/collection-detail-edit/SPEC.md`.
+
+Collections live under `Library -> Collections` and reuse normal Library media cards.
+
+V1 modes:
+- Manual: explicit membership/order;
+- Smart: rules + include/exclude overrides;
+- Linked: local Collection synchronized from an external provider/list.
+
+Cross-media is not a separate Collection type. Franchise/adaptation grouping should use canonical relations through Smart/derived views.
+
+Landing stays simple: Search, Filter, Sort, New Collection and mosaic Collection cards. Do not require a permanent Manual/Smart/Linked chip row.
+
+Details use a compact header + Library toolbar/grid. Manual gets Add/Reorder, Smart gets Edit Rules, Linked gets Sync/last-sync. Linked Collections render from local state and remain readable when the provider is offline.
+
+TV is browse-first; complex editing belongs to Web/Mobile/Tablet.
+
 ## 6. Canonical media detail page
 
 All media detail pages share a common skeleton while adapting content.
