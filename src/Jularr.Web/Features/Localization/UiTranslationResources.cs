@@ -2478,7 +2478,6 @@ public static class UiTranslationResources
         M("admin.users.subtitle", "Manage accounts, roles and permissions.", "Admin", "Body", "Subtitle under the Users page heading.", "concise admin copy", 64, null, null),
         M("admin.roles.title", "Roles", "Admin", "Heading", "Title and link label for the built-in account roles overview.", "concise heading", 16, null, null),
         M("admin.roles.subtitle", "Built-in account roles and the Admin permissions they grant.", "Admin", "Body", "Subtitle under the Roles page heading.", "concise admin copy", 76, null, null),
-        M("admin.roles.accountCount", "{count} account(s)", "Admin", "Value", "Number of accounts currently assigned to a built-in role.", "compact metadata", 24, new Dictionary<string, string> { ["count"] = "Number of accounts." }, null),
         M("admin.roles.fixed", "Fixed", "Admin", "Status", "Marks the Owner role as immutable.", "compact status", 12, null, null),
         M("admin.roles.noAdminPolicies", "No Admin permissions", "Admin", "Value", "Shown for a role that has no named Admin authorization policies.", "compact status", 28, null, null),
         M("admin.roles.editMediaDefaults", "Edit media defaults", "Admin", "Link", "Open the media capability matrix for role defaults.", "concise navigation action", 26, null, null),
