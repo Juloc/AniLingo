@@ -8,6 +8,14 @@ Use one folder per substantial screen. `SPEC.md` is the binding screen-specific 
 
 Agents must not redesign an approved screen during implementation without updating its spec and approval.
 
+## Original Jularr mascot
+
+Canonical visual reference:
+- `docs/assets/original-j/jularr-mascot-reference.png`
+- rules: `docs/assets/original-j/README.md`
+
+Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime girl, it must use that canonical character identity. Different poses, expressions, crops and screen-appropriate props are allowed; replacing her with a different character is not. The mascot is optional and Clean does not use her by default.
+
 ## User screen contracts
 
 - `home/SPEC.md`
