@@ -2412,6 +2412,7 @@ public static class UiTranslationResources
         M("admin.system.wakeOnLanSaved", "Wake-on-LAN settings saved.", "Admin", "Status", "Confirmation after saving Wake-on-LAN settings for a library root.", "concise confirmation", 36, null, ["Wake-on-LAN"]),
         M("admin.system.warningsCount", "{count} warning(s).", "Admin", "Status", "Count of warnings from the last completed library scan.", "compact status", 28, new Dictionary<string, string> { ["count"] = "Number of warnings." }, null),
         M("admin.user.account", "Account", "Admin", "Heading", "Heading of the account details panel on the single-user page.", "concise section heading", 16, null, null),
+        M("admin.user.access", "Access", "Admin", "Heading", "Heading of the role, status and media-capability panel on the single-user page.", "concise section heading", 16, null, null),
         M("admin.user.activeAt", "Active {time} UTC", "Admin", "Status", "Shows the last activity timestamp of a user account.", "compact status", 26, new Dictionary<string, string> { ["time"] = "Last activity timestamp." }, ["UTC"]),
         M("admin.user.approveEnable", "Approve / enable", "Admin", "Button", "Approve and enable a pending or disabled user account.", "concise admin action", 24, null, null),
         M("admin.user.backToUsers", "Back to users", "Admin", "Link", "Link from the single-user page back to the Users list.", "concise navigation action", 22, null, null),
