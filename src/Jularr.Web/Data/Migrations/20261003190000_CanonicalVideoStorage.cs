@@ -146,6 +146,9 @@ public partial class CanonicalVideoStorage : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.DropForeignKey(
+            name: "FK_StoredFiles_MediaAssets_MediaAssetId",
+            table: "StoredFiles");
         migrationBuilder.DropTable(name: "MediaAssets");
         migrationBuilder.DropCheckConstraint(name: "CK_StoredFiles_SizeBytes", table: "StoredFiles");
         migrationBuilder.DropForeignKey(name: "FK_StoredFiles_Episodes_EpisodeId", table: "StoredFiles");

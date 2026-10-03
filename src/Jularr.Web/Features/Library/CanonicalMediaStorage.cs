@@ -128,7 +128,7 @@ public sealed class CanonicalMediaStorageService(AppDbContext db)
             .Select(x => x.WorkEpisodeId!.Value)
             .Distinct()
             .ToArray();
-        var episodeRows = episodeIds.Length == 0
+        List<VideoEpisodeRow> episodeRows = episodeIds.Length == 0
             ? []
             : await db.WorkEpisodes
                 .AsNoTracking()
