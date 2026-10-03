@@ -4,13 +4,18 @@ Status: planning baseline. This document defines information architecture, navig
 
 ## 1. UX principles
 
-- Clean, compact Fluent 2 / Windows 11-inspired Jularr design language.
+- One shared Jularr UX/layout system with two visual skins: **Clean** and **Original Jularr**.
+- Clean is the compact Fluent 2 / Windows 11-inspired neutral baseline and never uses decorative Japanese/anime background artwork.
+- Original Jularr applies the established Japanese ink/watercolor/cherry-blossom visual treatment over the same layout/components.
 - No unnecessary explanatory text, duplicated headings or nested pages when a direct interaction works.
 - Media is the visual focus; administration is information-dense but structured.
 - User UI and Admin UI are distinct modes.
 - Responsive behavior is intentional for Desktop, Tablet, Mobile and TV.
-- Light and dark themes are first-class.
-- User-selectable accent/theme colors use shared design tokens; derived colors must remain accessible.
+- Light, Dark and System brightness modes are first-class for both visual skins.
+- User-selectable accent/theme colors use shared semantic design tokens; derived colors must remain accessible.
+- Clean defaults to the purple Jularr accent/mark; Original Jularr defaults to the established red/pink accent/mark.
+- Accent changes may hue-shift permitted branded/decorative tokens consistently, but must not recolor third-party provider logos or semantic error/success meaning.
+- Clean and Original are skins, not separate page implementations or information architectures.
 - Every screen defines loading, empty, partial, error and ready states.
 - Permission-restricted actions disappear from UI but are also enforced server-side.
 - Never expose half-implemented controls.
@@ -51,6 +56,34 @@ Remote-first primary destinations:
 - Profile
 
 Learning appears when the TV interaction is meaningful; detailed learning workflows may hand off to phone/tablet.
+
+## 2a. Login and Profile selection
+
+Binding specification: `docs/mockups/login-profile-selection/SPEC.md`.
+
+Jularr distinguishes Account authentication from the active personal Profile:
+
+```text
+Login -> Profile selection when needed -> consumer app
+```
+
+- Account owns authentication/security, linked login identities and account-level authorization.
+- Profile owns personal media state/preferences such as progress, ratings, history, Learning and personal Connections.
+- One Account may expose multiple Profiles when instance policy allows it.
+- A single usable Profile may open directly on Desktop/Mobile; TV prioritizes explicit Profile selection on shared screens.
+- `Switch profile` keeps the Account session; Logout ends it.
+- Profile switching never merges progress/history/preferences.
+
+Login is intentionally sparse: branding, credentials, primary Sign in, configured external login providers and optional Passkey/recovery actions. Do not show welcome/marketing copy.
+
+External login providers are capability-driven. Examples include Plex, Jellyfin, Trakt, AniList, MAL or Google when the adapter, instance configuration and policy actually enable Login. Provider identities resolve to an internal Jularr Account and never replace its internal ID.
+
+Login capability is separate from personal synchronization Connections. A provider can support Login, sync, both or neither.
+
+Visual rules:
+- Clean Login: plain Light/Dark background, purple default accent, no decorative background artwork.
+- Original Jularr Login: same controls/layout with Japanese watercolor/cherry-blossom skin and red/pink default accent.
+- Both use the same semantic tokens and support accent hue shifting.
 
 ## 3. Search and Discover
 
@@ -306,7 +339,7 @@ Module availability resolves as:
 
 A profile module toggle can only narrow availability. It cannot enable an instance-disabled or unauthorized module. Turning a module Off preserves its stored state and does not stop shared instance work required by other users.
 
-Appearance supports Light/Dark/System and configurable accent/color scheme through shared tokens.
+Appearance supports Visual style (Clean / Original Jularr), Light/Dark/System and configurable accent/color scheme through shared tokens. Visual style changes skin/branding only; it never changes page structure or feature availability.
 
 ## 15. Add media flow
 

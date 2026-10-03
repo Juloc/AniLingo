@@ -28,6 +28,7 @@ Agents must not redesign an approved screen during implementation without updati
 - `request-status-details/SPEC.md` — consumer Request status/detail sheet
 - `language-edition-selector/SPEC.md` — shared language/Edition dialog/sheet
 - `person-creator/SPEC.md` — secondary Person/Creator view
+- `login-profile-selection/SPEC.md` — account login, external identities and Profile selection
 
 ## Admin screen contracts
 

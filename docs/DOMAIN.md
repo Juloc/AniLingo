@@ -215,12 +215,15 @@ Wanted -> Search -> Candidate scoring -> Grab -> Download -> Import -> Version/A
 
 Anime, TV, Movies, Books, Manga and Light Novels must not each implement a separate acquisition engine.
 
-## 11. User/profile state
+## 11. Accounts, Profiles and user state
 
-Shared media data and personal state must remain separate.
+Authentication/account state, personal Profile state and shared media data must remain separate.
 
 Canonical concepts:
-- `Profile`
+- `Account` — Jularr-owned authentication/security identity
+- `AccountLoginIdentity` — linked external/local login identity for an Account
+- `Profile` — personal media-state/preferences context owned/available to an Account
+- `ProfileConnection` — optional external service connection used for profile sync/import/write-back
 - `MediaProgress`
 - `PlaybackHistory`
 - `Bookmark`
@@ -230,6 +233,29 @@ Canonical concepts:
 - `UserMediaPreference`
 - `PlaybackPreference`
 - `ReaderPreference`
+
+### Account vs Profile
+
+Jularr always owns the internal Account identity.
+
+An Account may authenticate through:
+- local credentials;
+- passkeys/security keys;
+- one or more configured external login providers.
+
+External identities such as Plex/Jellyfin/Trakt/AniList/MAL/Google are linked identities/evidence and never become the canonical Account ID.
+
+One Account may own one or more Profiles when instance policy allows it. Login establishes the Account session; Profile selection chooses the active personal context.
+
+Profile-scoped state includes progress, history, ratings, personal lists/collections where applicable, playback/reader preferences, Learning state and personal service Connections.
+
+Account-scoped state includes authentication methods, security/recovery, account roles/capabilities and account-level sessions.
+
+A provider may expose both Login and Connection/synchronization capabilities, but these remain separate relationships. Authenticating through a provider must not silently enable all sync/write-back capabilities.
+
+Profile switching never merges or copies personal state implicitly.
+
+A Profile PIN is an optional selection guard only. It is not an Account authentication factor or replacement for server-side Account authorization.
 
 ### Universal user ratings
 
