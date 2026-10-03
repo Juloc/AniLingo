@@ -132,6 +132,28 @@ Rows scroll horizontally. Selecting a row title opens the corresponding filtered
 
 Discovery includes items not yet in the local library. Detail pages clearly distinguish available, requested/downloading and discover-only states.
 
+## 3a. Media Preview / Quick View
+
+Binding specification: `docs/mockups/media-preview/SPEC.md`.
+
+Media Preview is an optional cinematic Quick View used mainly in Discover/Search, recommendations and TV browsing. It is not a mandatory intermediate page.
+
+Desktop cards do not expand/reflow on hover. A secondary Quick View action opens the Preview; ordinary card activation opens Detail.
+
+Video Preview:
+- wide hero/trailer;
+- autoplay only after Preview is actually open/visible;
+- muted by default;
+- one active trailer maximum;
+- external trailer embed preferred over proxying public trailers through Jularr;
+- fallback is backdrop, then cover-derived presentation.
+
+Reading Preview uses the same shell but does not force video. It shows cover/backdrop, concise metadata, language/Edition context, short synopsis, progress/next structure where relevant, and Read/Continue/Request.
+
+Preview actions reuse canonical Play/Read/Listen/Request contracts. Trailer playback is promotional and does not create an ActiveSession or MediaProgress.
+
+Clean and Original Jularr use identical structure/behavior; only visual skin tokens differ.
+
 ## 4. Home
 
 Home is personalized, not a duplicate library index.
