@@ -24,7 +24,13 @@ The dialog never contains media search/title selection.
 
 ## 2. Identity contract
 
-The calling surface must provide a safely resolved canonical Work/target before Request opens.
+The calling surface must provide a safely resolved canonical request target before Request opens.
+
+Target kinds:
+- watch/read/listen media -> canonical Work plus optional structure/Edition intent;
+- Games -> canonical Game target owned by the Games module.
+
+The shared Request UI does not make Game a Work.
 
 If a provider result is not yet resolved, canonical identity resolution happens before the dialog opens.
 
@@ -133,6 +139,18 @@ No structural Scope selector by default. The target is the Work/desired Edition.
 ### Audiobook
 
 No chapter-level acquisition Scope in the normal Request flow. The target is the Work/audiobook Edition.
+
+### Games
+
+Games uses the same one-page Request and approval semantics.
+
+V1 Games Request is normally a simple target request:
+- canonical Game identity;
+- platform/region/language preference only when the Games acquisition contract genuinely requires it;
+- no Season/Volume/Chapter Scope tree;
+- no emulator/runtime/BIOS choices in Request.
+
+Runtime/BIOS/playability are Games/Admin concerns after acquisition, not consumer Request fields.
 
 ## 7. Included content tree
 
@@ -298,8 +316,8 @@ AniList/MAL never owns the canonical Request or Jularr personal-state model.
 A Request stores user intent around canonical media:
 
 - requester/profile;
-- canonical Work;
-- optional canonical structural target(s);
+- typed canonical target (`Work` for normal media, `Game` for Games);
+- optional canonical structural/Edition target(s) for media where applicable;
 - Scope;
 - included units when Custom;
 - requested language;
@@ -322,7 +340,7 @@ Request
 
 An auto-approved privileged Request can create/update Wanted immediately, but it is still a Request from the consumer UI.
 
-Never create duplicate canonical Works.
+Never create duplicate canonical Works or Games.
 
 ## 15. Multi-user deduplication
 
