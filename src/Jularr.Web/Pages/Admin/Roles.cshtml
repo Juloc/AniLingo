@@ -27,7 +27,7 @@
             <div class="panel-heading">
                 <div>
                     <h2>@ui[AccountRoles.LabelKey(role.Role)]</h2>
-                    <span>@ui.Format("admin.roles.accountCount", ("count", role.AccountCount))</span>
+                    <span>@role.AccountCount · @ui["admin.users.accounts"]</span>
                 </div>
                 @if (isOwner)
                 {
