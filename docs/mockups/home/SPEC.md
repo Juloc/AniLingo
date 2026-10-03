@@ -105,8 +105,10 @@ Keep it compact:
 - short description/subtitle
 - progress when applicable;
 - for Games, do not invent completion percentage: use last-played/save context instead
-- primary action: Continue / Play / Read / Listen
-- small secondary action such as details/add
+- primary action: Continue / Play / Read / Listen when available; Request when the surfaced item is unavailable and requestable
+- small secondary action such as Details or a personal-state action
+
+Do not use a generic `Add` acquisition action. Request/acquisition and Watchlist/Favorite/Collection state are separate concerns.
 
 Do not show library counts, server stats, download state or technical media diagnostics in the normal Home Hero.
 
