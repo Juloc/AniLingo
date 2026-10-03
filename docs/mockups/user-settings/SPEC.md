@@ -518,7 +518,7 @@ Examples:
 - releases/calendar
 - requested media status
 - download/import completion where user-visible
-- friend/social activity
+- friend/social activity only when a real Friends/social capability exists
 - Learning reminders
 - account/security
 
@@ -642,7 +642,7 @@ Only when Friends/social features exist:
 - activity visibility
 - Ratings visibility
 - Stats visibility
-- friend/discovery visibility
+- friend/discovery visibility only when a real Friends/social capability exists
 
 Use understandable choices such as:
 - Private
