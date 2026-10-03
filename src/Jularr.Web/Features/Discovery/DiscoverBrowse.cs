@@ -215,7 +215,9 @@ public static class DiscoverScopes
     public static bool Includes(DiscoveryCategory scope, DiscoveryCategory row) => scope switch
     {
         DiscoveryCategory.All => true,
-        DiscoveryCategory.BooksAndLightNovels => row is DiscoveryCategory.Book or DiscoveryCategory.LightNovel,
+        DiscoveryCategory.BooksAndLightNovels => row is DiscoveryCategory.Book
+            or DiscoveryCategory.LightNovel
+            or DiscoveryCategory.BooksAndLightNovels,
         _ => scope == row
     };
 }
