@@ -64,6 +64,138 @@ public sealed class BookCoverArtworkTests
     }
 
     [TestMethod]
+    public async Task TargetedEpubImportUpdatesExistingWorkWithoutCreatingDuplicate()
+    {
+        await using var fixture = await Fixture.CreateAsync(withLibraryRoot: false);
+        await using var original = new MemoryStream(
+            new EpubTestBuilder
+            {
+                Title = "Dune",
+                Author = "Frank Herbert",
+                Language = "en",
+                Identifier = "urn:uuid:dune-original"
+            }
+                .Chapter("c1.xhtml", "Book One", "Original chapter text.")
+                .BuildBytes());
+
+        var workId = await fixture.Service.ImportUploadedEpubAsync(
+            original,
+            "dune.epub",
+            CancellationToken.None);
+
+        var work = await fixture.Db.NovelWorks.SingleAsync(x => x.Id == workId);
+        work.MetadataProvider = BookCatalogService.CatalogRequestProvider;
+        work.MetadataExternalId = "ol-dune";
+        work.MetadataTitle = "Dune";
+        await fixture.Db.SaveChangesAsync();
+
+        var replacementPath = Path.Combine(fixture.TempRoot, "dune-retail.epub");
+        await File.WriteAllBytesAsync(
+            replacementPath,
+            new EpubTestBuilder
+            {
+                Title = "Dune",
+                Author = "Frank Herbert",
+                Language = "en",
+                Identifier = "urn:uuid:dune-retail"
+            }
+                .Chapter("c1.xhtml", "Book One", "Replacement chapter text.")
+                .BuildBytes());
+
+        var imported = await fixture.Service.ImportBooksFromPathAsync(
+            replacementPath,
+            "download",
+            new BookImportHint(
+                "ol-dune",
+                "Dune",
+                "Frank Herbert",
+                null,
+                ExistingWorkId: workId),
+            singleBook: true,
+            CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { workId }, imported.ToArray());
+        Assert.AreEqual(1, await fixture.Db.NovelWorks.CountAsync());
+
+        fixture.Db.ChangeTracker.Clear();
+        var preserved = await fixture.Db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == workId);
+        Assert.AreEqual(BookCatalogService.CatalogRequestProvider, preserved.MetadataProvider);
+        Assert.AreEqual("ol-dune", preserved.MetadataExternalId);
+        Assert.AreEqual("Dune", preserved.MetadataTitle);
+        Assert.AreEqual("EPUB:en", preserved.Format);
+
+        var editions = await fixture.Db.BookEditions
+            .AsNoTracking()
+            .Where(x => x.WorkId == workId)
+            .ToArrayAsync();
+        Assert.AreEqual(2, editions.Length);
+        Assert.AreEqual(1, editions.Count(x => x.IsPrimary));
+
+        var chapter = await fixture.Db.NovelChapters
+            .AsNoTracking()
+            .SingleAsync(x => x.WorkId == workId && x.Number == 1);
+        StringAssert.Contains(chapter.OriginalText, "Replacement chapter text.");
+    }
+
+    [TestMethod]
+    public async Task TargetedPdfImportKeepsExistingCatalogIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync(withLibraryRoot: false);
+        await using var original = new MemoryStream(
+            new EpubTestBuilder
+            {
+                Title = "Dune",
+                Author = "Frank Herbert",
+                Language = "en",
+                Identifier = "urn:uuid:dune-before-pdf"
+            }
+                .Chapter("c1.xhtml", "Book One", "Original chapter text.")
+                .BuildBytes());
+
+        var workId = await fixture.Service.ImportUploadedEpubAsync(
+            original,
+            "dune.epub",
+            CancellationToken.None);
+        var work = await fixture.Db.NovelWorks.SingleAsync(x => x.Id == workId);
+        work.MetadataProvider = BookCatalogService.CatalogRequestProvider;
+        work.MetadataExternalId = "ol-dune";
+        work.MetadataTitle = "Dune";
+        await fixture.Db.SaveChangesAsync();
+
+        var pdfPath = Path.Combine(fixture.TempRoot, "dune.pdf");
+        await File.WriteAllTextAsync(pdfPath, "%PDF-1.4\n%%EOF\n");
+
+        var imported = await fixture.Service.ImportPdfFileAsync(
+            pdfPath,
+            "dune.pdf",
+            "download",
+            new BookImportHint(
+                "ol-dune",
+                "Dune",
+                "Frank Herbert",
+                null,
+                ExistingWorkId: workId),
+            CancellationToken.None);
+
+        Assert.AreEqual(workId, imported);
+        Assert.AreEqual(1, await fixture.Db.NovelWorks.CountAsync());
+
+        fixture.Db.ChangeTracker.Clear();
+        var preserved = await fixture.Db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == workId);
+        Assert.AreEqual(BookCatalogService.CatalogRequestProvider, preserved.MetadataProvider);
+        Assert.AreEqual("ol-dune", preserved.MetadataExternalId);
+        Assert.AreEqual("Dune", preserved.MetadataTitle);
+        StringAssert.StartsWith(preserved.Format, "PDF:");
+
+        var primary = await (
+            from edition in fixture.Db.BookEditions.AsNoTracking()
+            join file in fixture.Db.BookFiles.AsNoTracking() on edition.Id equals file.EditionId
+            where edition.WorkId == workId && edition.IsPrimary && file.IsPrimary
+            select file).SingleAsync();
+        Assert.AreEqual(BookFileFormats.Pdf, primary.Format);
+    }
+
+    [TestMethod]
     public async Task NoLibraryRootConfiguredKeepsUsingDataCovers()
     {
         await using var fixture = await Fixture.CreateAsync(withLibraryRoot: false);
