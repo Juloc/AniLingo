@@ -8,6 +8,7 @@ using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Presentation;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
@@ -36,6 +37,7 @@ public sealed class SeriesModel(
     public bool IsOwner => account.IsOwner;
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
     public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
+    public IReadOnlyList<PresentationSection<MangaChapterItem>> PresentationSections { get; private set; } = [];
 
     /// <summary>
     /// Language availability for this series (#426). The header already states the chapter count
@@ -111,6 +113,8 @@ public sealed class SeriesModel(
         ExternalProgress = await aniListAccount.GetMangaProgressSummaryAsync(
             id,
             cancellationToken);
+        var presentationGroups = await new PresentationGroupStore(db).ListForWorkAsync(PresentationMediaType.Manga, id, cancellationToken);
+        PresentationSections = PresentationGrouping.Arrange(presentationGroups, Series.Chapters, chapter => chapter.VolumeNumber, Ui.Format("library.presentation.otherHeading", ("units", Ui["library.presentation.volumes"])));
 
         return Page();
     }

@@ -2,7 +2,7 @@
 @model Jularr.Web.Pages.Library.PresentationGroupsModel
 @{
     var ui = Model.Ui;
-    ViewData["Title"] = ui.Format("library.presentation.pageTitle", ("anime", Model.AnimeTitle));
+    ViewData["Title"] = ui.Format("library.presentation.pageTitle", ("work", Model.WorkTitle));
 }
 
 @section Head {
@@ -11,9 +11,9 @@
 
 <header class="page-header">
     <div>
-        <a class="back-link" href="/Library/Anime/@Model.AnimeId">&larr; @Model.AnimeTitle</a>
+        <a class="back-link" href="@Model.BackUrl">&larr; @Model.WorkTitle</a>
         <h1>@ui["library.presentation.title"]</h1>
-        <p>@ui["library.presentation.description"]</p>
+        <p>@ui.Format("library.presentation.description", ("units", Model.Units))</p>
     </div>
 </header>
 
@@ -22,10 +22,10 @@
     <p class="metadata-error" style="color:inherit">@Model.StatusMessage</p>
 }
 
-@if (Model.EpisodeCount == 0)
+@if (Model.GroupableItemCount == 0)
 {
     <section class="panel">
-        <p class="muted">@ui["library.presentation.noEpisodes"]</p>
+        <p class="muted">@ui.Format("library.presentation.noItems", ("units", Model.Units))</p>
     </section>
 }
 else
@@ -35,7 +35,7 @@ else
             <div class="panel-heading">
                 <h2>@ui["library.presentation.editHeading"]</h2>
             </div>
-            <form method="post" asp-route-id="@Model.AnimeId" class="form-stack">
+            <form method="post" asp-route-id="@Model.WorkId" asp-route-media="@Model.MediaRouteValue" class="form-stack">
                 @for (var i = 0; i < Model.Groups.Count; i++)
                 {
                     var group = Model.Groups[i];
@@ -71,7 +71,7 @@ else
                                 var range = group.Ranges[j];
                                 <div class="presentation-editor-range">
                                     <label>
-                                        <span>@ui["library.presentation.rangeFrom"]</span>
+                                        <span>@ui.Format("library.presentation.rangeFrom", ("units", Model.Units))</span>
                                         <input type="number"
                                                name="Groups[@i].Ranges[@j].Start"
                                                value="@(range.Start?.ToString())"
@@ -107,7 +107,7 @@ else
             </div>
             @if (Model.Preview.Count == 0)
             {
-                <p class="muted">@ui["library.presentation.previewEmpty"]</p>
+                <p class="muted">@ui.Format("library.presentation.previewEmpty", ("units", Model.Units))</p>
             }
             else
             {
@@ -116,16 +116,16 @@ else
                     <details class="presentation-group" open>
                         <summary class="presentation-group-summary">
                             <span class="presentation-group-name">@groupSection.Name</span>
-                            <span class="presentation-group-count">@ui.Format("library.presentation.episodeCount", ("count", groupSection.Items.Count))</span>
+                            <span class="presentation-group-count">@ui.Format("library.presentation.itemCount", ("count", groupSection.Items.Count), ("units", Model.PreviewItemUnits))</span>
                         </summary>
                         <div class="episode-list">
-                            @foreach (var episode in groupSection.Items)
+                            @foreach (var item in groupSection.Items)
                             {
                                 <div class="episode-row-shell">
                                     <div class="episode-row">
-                                        <div class="episode-number">E@(episode.Number.ToString("00"))</div>
+                                        <div class="episode-number">@item.UnitLabel</div>
                                         <div class="episode-main">
-                                            <strong>S@(episode.SeasonNumber.ToString("00")) · @episode.Title</strong>
+                                            <strong>@item.Title</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -134,7 +134,7 @@ else
                     </details>
                 }
             }
-            <p class="presentation-reference">@ui.Format("library.presentation.reference", ("count", Model.EpisodeCount), ("first", Model.FirstEpisode), ("last", Model.LastEpisode))</p>
+            <p class="presentation-reference">@ui.Format("library.presentation.reference", ("count", Model.GroupableUnitCount), ("units", Model.Units), ("first", Model.FirstUnit), ("last", Model.LastUnit))</p>
         </section>
     </div>
 }
