@@ -17,6 +17,7 @@ Provider Settings is the shared Admin control surface for external sources/servi
 It covers provider configuration, capabilities, priority, filters, health, rate limits, statistics, tests and logs without giving every adapter a completely separate UI.
 
 Provider families:
+- Identity / Login
 - Indexer / Search
 - Metadata
 - Subtitles
@@ -37,6 +38,7 @@ It does not own:
 - dedicated AI task policy
 
 Family responsibilities:
+- Identity/Login -> external authentication and Account identity linking, only when an adapter explicitly supports it
 - Indexer/Search -> normalized ReleaseCandidates for Acquisition
 - Metadata -> identity/metadata evidence
 - Subtitle -> subtitle candidates/assets
@@ -57,6 +59,7 @@ Desktop uses:
 
 Primary families:
 - Alle
+- Identität / Login
 - Indexer / Suche
 - Metadaten
 - Untertitel
@@ -127,6 +130,7 @@ Do not ask the user to invent implementation IDs.
 
 Schema-driven provider fields may include:
 - endpoint/base URL
+- Login enabled / auto-provision policy where the Identity adapter supports it
 - API key
 - username/password
 - timeout
@@ -226,6 +230,20 @@ Indexer/Search examples:
 A provider may have different priority for different capabilities/content types.
 
 Priority semantics must be explicit.
+
+### Identity / Login capabilities
+
+Identity/Login providers may expose:
+- Account sign-in;
+- link/unlink external login identity;
+- optional account auto-provisioning;
+- optional profile Connection/sync capabilities as a separate capability set.
+
+Examples can include Plex, Jellyfin, Trakt, AniList, MAL, Google and future adapters, but only actual adapter capabilities may be enabled.
+
+Admin decides which configured providers appear on Login. Auto-provisioning must use explicit conservative default roles/capabilities and may never grant Owner/Admin implicitly.
+
+A provider's Login capability is distinct from a user's Profile Connection/synchronization configuration.
 
 ## Filter & Search
 
@@ -397,6 +415,8 @@ Required:
 
 - Provider/native IDs are provenance/evidence, not canonical Work identity.
 - Provider adapters return normalized application contracts.
+- Identity/Login providers resolve to internal Jularr Accounts; provider IDs never become canonical Account/Profile IDs.
+- Login and Profile Connection/sync are separate provider capabilities.
 - UI does not use provider-native DTOs as the product model.
 - No provider owns a parallel media hierarchy.
 - Search/indexer results remain external candidates until Acquisition resolves them.
