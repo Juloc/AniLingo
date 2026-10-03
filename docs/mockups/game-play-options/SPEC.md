@@ -1,6 +1,6 @@
 # Game Play Options Dialog
 
-Status: planned UX direction. Visual mockup pending approval.
+Status: UX and visual direction approved for Desktop, Tablet, Mobile and TV. The owner will upload the approved mockup image into this folder.
 
 Shared contract: `docs/mockups/games/SPEC.md`.
 Game Detail: `docs/mockups/game-detail/SPEC.md`.
@@ -252,6 +252,41 @@ If no valid launch target remains:
 - authorized Admin may get a deep link to relevant remediation.
 
 Normal users never receive BIOS/runtime configuration forms here.
+
+## Approved visual composition
+
+The approved mockup defines these platform layouts:
+
+### Desktop
+- centered modal over the existing Game Detail page;
+- compact Game cover/title summary;
+- release choices first;
+- runtime choices only when genuinely ambiguous;
+- optional `Für dieses Spiel merken`;
+- `Abbrechen` + `Spielen/Fortsetzen` in the footer.
+
+### Tablet
+- same modal hierarchy at comfortable touch size;
+- no extra wizard/navigation layer;
+- same choice semantics as Desktop.
+
+### Mobile
+- bottom sheet over Game Detail;
+- compact Game summary;
+- stacked release/runtime options;
+- large touch targets;
+- primary `Spielen/Fortsetzen` action at the bottom.
+
+### TV
+- centered focusable overlay;
+- only the ambiguous choices;
+- large row targets and strong focus state;
+- primary action reachable by gamepad/remote;
+- no small dropdowns or dense metadata.
+
+The visual example may contain illustrative runtime labels such as a concrete emulator/runtime name. Consumer implementation should prefer product-facing labels such as `Im Browser` unless the concrete runtime name is itself intentionally user-visible and useful. Internal adapter/core names remain hidden.
+
+The mockup is the visual reference; this text spec defines behavior and wins on conflict.
 
 ## Visual direction
 
