@@ -172,23 +172,26 @@ Cards show only useful glanceable information: artwork, title, progress and a sm
 
 ## 5. Library
 
-One Library supports watch/read/listen media types.
+Binding specification: `docs/mockups/library/SPEC.md`.
 
-Games is intentionally a separate top-level consumer destination. This is a navigation/interaction exception only: Games still reuses global Search/Discover, Request, Acquisition, Storage, Activity/History and profile infrastructure.
+Library is the profile-facing catalog for media with durable Jularr Library/monitoring context. Discover/Search remains the place for finding new media.
 
-Desktop/tablet:
-- title + compact controls
-- type switch/filter: All, Anime, Series, Movies, Manga, Books/Light Novels, Audiobooks
-- optional user preference to combine or separate related types
-- filters/sort/view controls
-- responsive grid/list presentation
+Structure:
+- one Library destination;
+- internal `Library | Collections` switch;
+- media-type scope: All, Anime, Series, Movies, Manga, Light Novels, Books, Audiobooks;
+- Search within Library;
+- Filter;
+- Sort;
+- Grid/List where useful.
 
-Mobile:
-- compact filter chips/dropdown
-- poster grid optimized for thumb use
-- no desktop table squeezed onto phone
+Consumer Library does not expose a generic Add/import menu. New media comes through Discover -> Request. Manual file/folder import and repair are Admin flows.
 
-Library cards use one shared visual grammar with media-specific secondary information.
+Cards reuse one shared media grammar: poster/cover, title, one useful progress/status line, preferred-language availability and optional progress bar. Normal card activation opens Detail. Cards do not expand/reflow on hover; optional Quick View uses the shared Media Preview contract.
+
+Library must not become an Admin dashboard: no statistics sidebar, active-genre panel, release/download internals or duplicated Home-style Continue shelf.
+
+Mobile uses a two-column poster/cover grid where width permits. TV is remote-first with large posters and strong focus treatment, not a scaled Desktop grid.
 
 ## 5a. Collections
 
