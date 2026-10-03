@@ -577,6 +577,7 @@ builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcqu
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.MovieAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.TvAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.AudiobookAcquisitionRegistration>();
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.BookAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.MediaAcquisitionRegistry>();
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
