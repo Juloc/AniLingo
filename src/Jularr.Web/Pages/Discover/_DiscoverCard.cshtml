@@ -3,15 +3,25 @@
 @model (DiscoverCardView Card, UiTextBundle Ui)
 @* One title of Discover (docs/mockups/discover): dominant artwork, title, a compact type and year line and one
    language or request indicator. The card is deliberately simpler than a Library card: no progress. The rich
-   preview (a hover popover on a pointer, a bottom sheet on touch) is the inert template below, cloned by
-   wwwroot/js/discover.js when it opens. Styles: wwwroot/css/discover-browse.css. *@
+   preview opens explicitly as the stable detail sheet; hovering never resizes the card or opens another surface.
+   The inert template below is cloned by wwwroot/js/discover.js when requested. Styles: wwwroot/css/discover-browse.css. *@
 @{
     var card = Model.Card;
     var ui = Model.Ui;
     var linkTarget = card.HrefIsExternal ? "_blank" : null;
     var linkRel = card.HrefIsExternal ? "noopener noreferrer" : null;
 }
-<article class="dc-card@(card.IsLocal ? " is-local" : "")" data-dc-card>
+<article class="dc-card@(card.IsLocal ? " is-local" : "")"
+         data-dc-card
+         data-dc-category="@card.Category"
+         data-dc-provider="@card.Provider"
+         data-dc-external-id="@card.ExternalId"
+         data-dc-title="@card.Title"
+         data-dc-subtitle="@card.NativeTitle"
+         data-dc-author="@card.Author"
+         data-dc-cover="@card.PosterUrl"
+         data-dc-request-id="@card.RequestId"
+         data-dc-request-status="@card.RequestStatus">
     @* The whole card opens the title through the stretched title link; the artwork link is only for pointers. *@
     <a class="dc-art" href="@card.Href" target="@linkTarget" rel="@linkRel" tabindex="-1" aria-hidden="true">
         @if (card.PosterUrl is { } poster)
@@ -28,6 +38,23 @@
         <h3 class="dc-card-title"><a href="@card.Href" target="@linkTarget" rel="@linkRel" data-dc-title-link>@card.Title</a></h3>
         <p class="dc-card-meta">@card.Meta</p>
         <partial name="_DiscoverState" model="card.State" />
+
+        @if (!card.IsLocal && card.RequestId is { } cardRequestId)
+        {
+            <span class="dc-card-action"
+                  data-dc-card-request-slot
+                  data-dc-live-request="@cardRequestId"
+                  data-dc-live-status="@card.RequestStatus">
+            </span>
+        }
+        else if (!card.IsLocal && card.AddAction.Length > 0)
+        {
+            <span class="dc-card-action" data-dc-card-request-slot>
+                <button type="button" class="button button-primary dc-card-request" data-dc-card-add>
+                    @ui[card.AddAction == "add" ? "discover.card.add" : "discover.card.request"]
+                </button>
+            </span>
+        }
     </div>
 
     <button type="button" class="dc-card-preview" data-dc-preview
@@ -40,8 +67,11 @@
              data-category="@card.Category"
              data-provider="@card.Provider"
              data-external-id="@card.ExternalId"
+             data-request-id="@card.RequestId"
+             data-request-status="@card.RequestStatus"
              data-title="@card.Title"
              data-native-title="@card.NativeTitle"
+             data-author="@card.Author"
              data-cover="@card.PosterUrl"
              data-format="@card.Format"
              data-status="@card.RawStatus"
@@ -110,6 +140,14 @@
                             <partial name="_DiscoverIcon" model='"play"' />
                             <span>@card.PlayLabel</span>
                         </a>
+                    }
+                    else if (card.RequestId is { } requestId)
+                    {
+                        <span class="dc-pv-add"
+                              data-dc-add-slot
+                              data-dc-live-request="@requestId"
+                              data-dc-live-status="@card.RequestStatus">
+                        </span>
                     }
                     else if (card.AddAction.Length > 0)
                     {
