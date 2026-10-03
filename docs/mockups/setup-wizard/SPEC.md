@@ -96,6 +96,17 @@ Options:
 - Bestehende Installation migrieren
 - optional: Einstellungen/Backup wiederherstellen when supported
 
+### Backup vs migration routing
+
+The Setup-Art choices are entry points into existing owners, not duplicate restore logic.
+
+- a recognized current/versioned Jularr backup archive opens/reuses **Backup & Restore**;
+- a legacy `AcquisitionBackupBundle` uses the Backup & Restore legacy Acquisition-only flow;
+- old Jularr data/layout that is not a supported backup archive uses **Migration Center**;
+- Sonarr/Radarr/Readarr/Plex/Jellyfin/Emby/folder/JSON/CSV sources use **Migration Center**.
+
+The same artifact must not be offered simultaneously as both "restore" and "migration".
+
 ### Neue Instanz
 
 Continue with clean configuration.
@@ -133,15 +144,19 @@ Fields:
 
 ### Module activation
 
-Instance-level feature switches.
+Render the same canonical instance modules exposed by Admin -> Instance. Do not maintain a second Setup-only module list.
 
-Examples:
-- Series/Anime media support
-- Movies
-- Manga
-- Books
-- Audiobooks
-- Learning
+Current `dev` module contract includes:
+- Anime;
+- Movie;
+- TV;
+- Manga;
+- Novel;
+- Book;
+- Audiobook;
+- Learning;
+- Acquisition;
+- Tracking.
 
 Additional concepts such as Games, Requests, Native Downloader, AI or Generic Downloads appear as independent module switches **only after** their complete canonical instance runtime gate exists. Setup Wizard must not invent switches that Admin -> Instance cannot actually enforce.
 
