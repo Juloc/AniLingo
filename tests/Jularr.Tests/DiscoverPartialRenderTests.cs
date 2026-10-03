@@ -31,6 +31,7 @@ public sealed class DiscoverPartialRenderTests
             "1",
             title,
             null,
+            null,
             href,
             href.StartsWith("http", StringComparison.Ordinal),
             poster,
@@ -39,6 +40,7 @@ public sealed class DiscoverPartialRenderTests
             2023,
             null,
             isLocal,
+            null,
             null,
             null,
             new DiscoverStateView(kind, state, label, null),
@@ -99,6 +101,17 @@ public sealed class DiscoverPartialRenderTests
 
         StringAssert.Contains(html, "href=\"https://anilist.co/anime/1\" target=\"_blank\" rel=\"noopener noreferrer\"");
         StringAssert.Contains(html, "<span class=\"dc-initial\">F</span>");
+    }
+
+    [TestMethod]
+    public async Task ARequestableTitleOffersTheActionDirectlyOnTheStableCard()
+    {
+        var html = await RenderAsync(CardView, (Card(), Ui));
+        var visible = html[..html.IndexOf("<template", StringComparison.Ordinal)];
+
+        StringAssert.Contains(visible, "data-dc-card-add");
+        Assert.IsTrue(Regex.IsMatch(visible, @">\s*Request\s*</button>"));
+        StringAssert.Contains(visible, "data-dc-provider=\"anilist\"");
     }
 
     [TestMethod]
