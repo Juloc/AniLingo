@@ -473,6 +473,11 @@ The approved Learning Home visual reference for this specification is **Original
 
 ### Original Jularr binding visual direction
 
+Canonical mascot reference when a mascot/companion character is used:
+`docs/assets/original-j/jularr-mascot-reference.png`
+
+The mascot is optional on Learning Home. If present, use the same canonical character as Lesson/Review and Error States; do not invent a different anime girl for the dashboard.
+
 Use:
 - warm off-white/paper surfaces;
 - subtle ink/wash texture in page/background regions;
@@ -486,7 +491,8 @@ Do not:
 - let petals/ink overlap labels, inputs, progress or buttons;
 - make every card ornamental;
 - encode product state solely through red/pink decoration;
-- hard-code anime characters or a specific franchise as permanent Jularr branding.
+- hard-code third-party anime/franchise characters as permanent Jularr branding;
+- replace the canonical Jularr mascot with a different Original J character when a mascot is intentionally used.
 
 ### Clean parity
 
