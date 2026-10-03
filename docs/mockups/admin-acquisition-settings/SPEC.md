@@ -802,13 +802,26 @@ Acquisition Profile may only choose a supported preferred acquisition path/routi
 ## Relationship to Storage / Import
 
 Storage owns:
-- Mounts
-- LibraryRoots
-- workspaces
+- Mounts;
+- LibraryRoots;
+- Native Download Workspaces;
+- Generic Downloads Roots;
+- default LibraryRoot per content/media type;
+- effective LibraryRoot import placement policy: HardlinkOrCopy / Hardlink / Copy / Move.
 
-Acquisition Profile does not store arbitrary filesystem paths.
+A Work may hold an explicit target-root override through the canonical library/monitoring contract.
 
-Import/naming policy may be referenced by a separate canonical routing/import policy if needed; do not expand Acquisition Profile into a filesystem configuration object.
+Acquisition Profile does not store:
+- arbitrary filesystem paths;
+- LibraryRoot routing tables;
+- Hardlink/Copy/Move policy;
+- remote-path mappings.
+
+External downloader path translation belongs to the specific Downloader external-client adapter.
+
+Migration/coexistence path translation belongs to the relevant Migration/integration adapter.
+
+There is no separate permanent `Import & Routing` Admin page. Physical placement is resolved from Storage + Work target-root state after Acquisition has already selected the release.
 
 ## Current backend migration path
 
@@ -992,6 +1005,10 @@ Unsupported.
 - No provider credentials in Acquisition Profiles.
 - No downloader server settings in Acquisition Profiles.
 - No Storage paths in Acquisition Profiles.
+- No Hardlink/Copy/Move setting in Acquisition Profiles.
+- No final LibraryRoot routing table in Acquisition Profiles.
+- No remote-path mapping in Acquisition Profiles.
+- No separate permanent Import & Routing page.
 - No target/identity mismatch overridden by score.
 - No silent cross-profile edits to shared rule definitions.
 - No silent Sonarr-import guess that converts ambiguous negative scores to Reject.
