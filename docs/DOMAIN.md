@@ -214,7 +214,7 @@ Metadata conflicts must be correctable. Provider evidence never replaces canonic
 Acquisition is media-independent.
 
 Core concepts:
-- `WantedItem`: desired Work/unit/Edition/language/quality
+- `WantedItem`: desired canonical acquisition target/language/quality; for normal media this is Work/unit/Edition. Games remains a separate Games-owned identity and enters shared Acquisition through a typed target/application adapter rather than being modeled as a Work.
 - `ReleaseCandidate`: transient/indexer result
 - `DownloadJob`: accepted candidate handed to a download client
 - `ImportJob`: downloaded material awaiting identification/import
@@ -409,9 +409,11 @@ A provider outage must not make an already-synced Linked Collection unreadable.
 
 Ambiguous provider identity is retained as provider evidence/mapping work; Jularr must not silently merge Works from title similarity alone.
 
-Discovery results are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
+Discovery results for normal media are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
 
-Recommendations should also return canonical/resolvable Work references.
+Games is an explicit domain exception: Games discovery resolves to the Games module's canonical Game identity, not Work. Shared Search/Request presentation may carry a typed canonical target so this does not create a second acquisition/search stack.
+
+Recommendations should return canonical/resolvable target references owned by the relevant domain.
 
 ## 17. Storage
 
