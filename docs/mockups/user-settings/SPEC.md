@@ -1,343 +1,683 @@
 # User Settings — Clean Design
 
-Status: **planned UX baseline; integrated into the shared Profile / Account shell**.
+Status: **binding planning specification; no dedicated mockup required before implementation**.
 
-User Settings is not a separate disconnected application area. It is the **Settings tab** inside the shared Profile/Account page defined by `docs/mockups/profile-activity/SPEC.md`.
+User Settings is the **Settings tab** inside the shared Profile / Account page defined by `docs/mockups/profile-activity/SPEC.md`.
 
-## Shared account shell
+The implementation should use the normal Jularr form/list components. A separate visual mockup is only needed later if the implemented result is unsatisfactory or a page introduces a genuinely new interaction pattern.
 
-Above the Settings tab, keep the same account chrome used by Activity / Stats / Ratings / Friends:
+## 1. Shared Account shell
+
+The Settings landing page keeps the same shared profile chrome as the other account tabs:
 
 - profile hero/banner
 - avatar + nickname
-- Edit Profile action
+- Edit Profile
 - compact lifetime mini stats
 - activity heatmap
 - tabs: `Activity · Stats · Ratings · Friends · Settings`
 
-Settings does not create another profile header or duplicate account navigation.
+Settings must not create a second account shell.
 
-On Desktop the sidebar account button at the bottom remains the primary account entry. Its `…` popover may deep-link directly to Settings or a specific account tab.
+Desktop entry:
+- bottom sidebar account control: avatar/initials + nickname + `…`
+- clicking avatar/name opens the Profile/Account page
+- `…` opens a small account popover with direct links to Activity, Stats, Ratings, Friends, Settings and Logout
 
-## Purpose
+Mobile entry:
+- Profile remains the account destination in bottom navigation
+- Settings is a tab/section inside Profile
 
-Settings answers one question: **How should Jularr behave for this profile/account?**
+## 2. Settings landing page
 
-Server-wide configuration, storage, acquisition, global providers, downloader configuration and user administration belong to Admin.
+The Settings tab itself is a searchable list of setting pages.
 
-## Settings landing
+Order:
 
-The Settings tab is a compact searchable list of setting areas, not one giant form.
+1. search
+2. General
+3. Media
+4. Personal features
+5. Account
+6. Logout
+7. Jularr version/build
 
-Recommended Desktop structure:
+Do not show every individual setting on the landing page.
 
-1. Settings search
-2. grouped setting rows
-3. account actions at the bottom
-4. Jularr version/build information
+### Setting-page row
 
-Each row contains:
+Every row uses the same component:
 
-- small icon
-- title
-- one short summary
-- current high-level value only when useful
-- chevron/open affordance
+- small leading icon
+- page title
+- one-line description
+- optional compact current-state summary
+- chevron
 
-Do not use dashboard-stat cards for normal settings.
+Example:
 
-## Setting areas
+```text
+Playback
+Autoplay, skip behavior, quality and speed
+                                      >
+```
 
-### General
+No large dashboard tiles.
 
-#### Appearance
-- System / Light / Dark
-- accent/theme tokens
-- density where supported
-- reduced motion / animation preference where supported
+### Groups
 
-#### Language & Region
+#### General
+- Appearance
+- Language & Region
+- Accessibility
+
+#### Media
+- Library & Display
+- Playback
+- Audio & Subtitles
+- Reader
+- Ratings
+
+#### Personal features
+- Learning
+- Notifications
+- AI & Personal Providers
+- Connections
+
+#### Account
+- Devices & Sessions
+- Profile & Privacy
+- Account & Security
+
+## 3. Standard setting-page layout
+
+Every setting page follows one layout contract.
+
+### Header
+- contextual Back
+- page title
+- optional one-line description only when needed
+- no duplicate page title lower down
+
+### Content
+- one or more `SettingGroup` sections
+- groups separated by spacing and optional short heading
+- no nested card-inside-card layouts
+- controls aligned consistently
+
+### Setting row
+A normal row contains:
+
+- label
+- optional concise description
+- control on the right on Desktop
+- control below/right on Mobile when width requires it
+
+Supported shared row types:
+
+- Toggle
+- Segmented choice
+- Single select
+- Multi-select / ordered language list
+- Slider + numeric value
+- Text field
+- Secret field
+- Action row
+- Destructive action row
+- Read-only information row
+
+Do not invent page-specific control styles for equivalent settings.
+
+### Save behavior
+Use immediate persistence for simple reversible preferences.
+
+Use explicit `Save` only for:
+- credential/provider forms
+- several fields that must change atomically
+- security-sensitive changes
+- forms requiring validation/test before commit
+
+Show save errors locally.
+
+### Mobile
+- one column
+- controls can move below labels
+- selects may use bottom sheets
+- no desktop settings table squeezed onto phone
+
+### Deep navigation
+A setting page is one level below Settings.
+
+Do not create:
+`Settings → Playback → Advanced → Codec → More`.
+
+If a complex item needs editing, use a dialog/sheet or one focused editor reached from the setting page.
+
+## 4. Appearance
+
+Purpose: visual application appearance only.
+
+### Theme
+- System
+- Light
+- Dark
+
+Use segmented choice or radio group.
+
+### Accent
+- Jularr default
+- supported accent presets
+- custom accent only if the shared token system supports it safely
+
+Show a small live preview, not a separate preview page.
+
+### Interface density
+- Comfortable
+- Compact
+
+Only expose this if shared components actually support both densities.
+
+### Visual effects
+- background/transparency effects where supported
+- reduce visual effects only if separate from accessibility motion settings
+
+Do not duplicate `Reduced motion`; that belongs to Accessibility.
+
+## 5. Language & Region
+
+### Interface
 - UI language
-- preferred metadata/title language
-- locale
+- locale/region
+
+### Media metadata
+- preferred title/metadata language
+- optional fallback language
+- title presentation preference where globally applicable:
+  - Preferred
+  - Original
+  - Romanized
+
+Do not create provider-specific language settings here.
+
+### Time & numbers
 - timezone
-- date/time format
-- number format
+- 12/24-hour clock or locale default
+- date format or locale default
+- number format or locale default
 
-#### Accessibility
-- text scaling where supported
-- reduced motion
-- contrast/accessibility preferences
-- subtitle accessibility defaults where appropriate
+Timezone changes affect Calendar/activity display only; stored canonical timestamps remain unchanged.
 
-### Media
+## 6. Accessibility
 
-#### Library & Display
-- library layout preferences
-- card/list density
-- title display preference
-- combine/separate related media-type presentation where supported
-- default sorting/filter behavior where it is genuinely persistent
+### Motion
+- Reduce motion
 
-#### Playback
-- autoplay
-- next-episode behavior
-- intro/outro skip preference when supported
-- default quality constraints
+### Text / interface
+- text scaling if supported independently from OS/browser scaling
+- larger interface targets where supported
+
+### Contrast
+- high-contrast preference where supported
+- stronger focus indicators where needed
+
+### Media accessibility defaults
+Only preferences that apply across clients:
+- prefer SDH/CC subtitles
+- prefer audio description where available
+
+Detailed subtitle styling remains under Audio & Subtitles.
+
+Do not duplicate OS accessibility controls that Jularr cannot meaningfully override.
+
+## 7. Library & Display
+
+### Library presentation
+- default view: Grid / List
+- card size/density where supported
+- remember last selected view/filter
+
+### Titles
+- use the shared title preference from Language & Region
+- per-page override only where explicitly supported; no duplicate global setting
+
+### Grouping
+- combine/separate related reading types where product behavior supports it
+- presentation-group display preferences where useful
+
+### Progress display
+- show/hide progress on library cards
+- show/hide completed items only if this is a genuine persistent preference
+
+Do not store a separate preference for every individual Library filter unless there is a real use case.
+
+## 8. Playback
+
+This page contains consumer playback behavior, not transcoder/server settings.
+
+### Continue / autoplay
+- Resume from last position
+- Autoplay next episode
+- autoplay countdown duration if autoplay is enabled
+
+### Skip behavior
+When media segments exist:
+- Intro: Never / Show button / Auto-skip
+- Recap: Never / Show button / Auto-skip
+- Outro/Credits: Never / Show button / Auto-skip
+
+Do not invent segment timestamps here. Settings only choose behavior for known segments.
+
+### Playback defaults
+- default playback speed
+- default quality: Auto or user-visible quality cap where supported
+- prefer original quality only as a user-facing choice, never expose Direct Play/Remux/Transcode rules
+
+### Completion / resume
+If configurable:
 - resume behavior
-- playback-speed default
+- completion threshold
 
-#### Audio & Subtitles
-- preferred audio languages
-- preferred subtitle languages
-- subtitle mode/defaults
-- forced/SDH preferences
-- subtitle appearance where client permits
+Use safe bounded presets rather than arbitrary technical values unless a real product need exists.
 
-#### Reader
-- typography defaults
-- theme/background
-- text size/spacing
-- page/scroll mode
-- Manga direction and fit behavior
-- TTS defaults where supported
+### Platform notes
+Device-specific behavior may override unsupported settings, but the effective result should be understandable.
 
-#### Ratings
-- choose the profile's rating input/display system
+## 9. Audio & Subtitles
+
+### Audio
+- ordered preferred audio languages
+- prefer original language when available
+- prefer audio description when available
+
+### Subtitle behavior
+- Off
+- Automatic
+- Always
+- Forced only
+
+### Subtitle languages
+- ordered preferred subtitle languages
+- fallback language
+- prefer SDH/CC
+- forced subtitle preference
+
+### Subtitle appearance
+Where the client supports custom subtitles:
+- text size
+- font family from supported set
+- text/background opacity
+- edge/shadow style
+- vertical position when safe
+
+Use a small sample preview in the same page.
+
+Do not expose codec/container/track-index internals.
+
+## 10. Reader
+
+### Reading mode
+- Paged
+- Continuous scroll
+
+### Text
+For text-capable books/novels:
+- font family
+- font size
+- line height
+- paragraph spacing
+- page/column width
+
+### Reader theme
+- System
+- Light
+- Sepia
+- Dark
+
+This is a content-reading theme and may differ from application Appearance.
+
+### Manga/comic behavior
+- reading direction: Auto / LTR / RTL
+- fit: Width / Height / Page
+- single page / spread where supported
+
+### Interaction
+- tap-zone behavior where supported
+- remember reader controls state only when useful
+
+### TTS
+Where available:
+- voice
+- speed
+- pitch only if supported cleanly
+
+Do not create separate Manga Settings and Book Settings pages when shared Reader settings suffice.
+
+## 11. Ratings
+
+Purpose: choose how the profile enters and sees ratings.
+
+### Rating system
+Exactly one active display/input system:
+
 - Three-level thumbs: Down / Up / Double Up
 - 5 stars
 - 0–10 integer
 - 0.0–10.0 decimal
 - 0–100
 
-The setting changes presentation/input only. Canonical `UserRating` values remain normalized and are never migrated when the user changes scale.
+Show a live preview of the selected shared `RatingControl`.
 
-### Personal features
+### Behavior
+- changing the system does not rewrite canonical `UserRating`
+- existing ratings are converted only for display
+- no rating remains distinct from minimum rating
+- all rating surfaces use this same preference
 
-#### Learning
-- enable/disable personal Learning experience where instance policy allows
-- learning language/preferences
-- review/session defaults
-- media-derived learning preferences
+Optional:
+- show ratings on Library/Discover cards, only if that display option is later useful
 
-#### Notifications
-- release/activity notification preferences
-- channels available to this profile
-- quiet hours where the notification system supports them
-- notification categories
+Do not add per-media rating systems.
 
-#### AI & Personal Providers
-- personal AI provider/model configuration where instance policy permits
-- personal provider credentials remain write-only/masked
-- model/task preference
-- test connection
+## 12. Learning
 
-Server/shared AI policy stays in Admin.
+Only visible when the instance enables Learning and the profile may use it.
 
-#### Connections
-- connected external media accounts/providers
-- progress/rating sync preferences where supported
-- friend/social connections to external platforms where supported
-- disconnect/reconnect actions
+### Personal Learning
+- enable/show Learning for this profile where personal opt-out is supported
+- target/learning languages
+- preferred explanation language
 
-External provider identity never replaces canonical Jularr profile/media identity.
+### Reviews
+- default review/session size where supported
+- review reminders if Notifications supports them
+
+### Media learning
+- enable media-derived learning interactions
+- subtitle/reader learning interaction preferences
+
+No XP/gamification configuration unless that product direction is explicitly added later.
+
+## 13. Notifications
+
+This page configures delivery preferences, not release/acquisition logic.
+
+### Channels
+Only show configured/available channels:
+- In-app
+- Push
+- Email
+- other supported adapters
+
+### Categories
+Examples:
+- releases/calendar
+- requested media status
+- download/import completion where user-visible
+- friend/social activity
+- Learning reminders
+- account/security
+
+### Quiet hours
+- enabled
+- start
+- end
+- timezone follows Language & Region unless explicitly overridden
+
+### Delivery mode
+Where supported:
+- Immediate
+- Digest
+
+Instance-disabled channels do not appear as broken toggles.
+
+## 14. AI & Personal Providers
+
+Only visible when personal AI/providers are allowed by instance policy.
+
+### Provider list
+Each configured personal provider row shows:
+- provider name
+- connected/configured state
+- selected default model where applicable
+- Test
+- Edit
+- Remove
+
+### Add/Edit provider
+Focused form:
+- provider type
+- endpoint only where applicable
+- API key/secret as write-only
+- model discovery/selection
+- Test connection
+- Save
+
+### Task preferences
+Where supported:
+- translation model
+- explanation/learning model
+- other personal task defaults
+
+Server/shared AI configuration remains Admin-only.
+
+Never reveal stored secret values after save.
+
+## 15. Connections
+
+External user-facing account integrations.
+
+Examples may include AniList, MAL or future compatible services; only actually implemented connectors appear.
+
+### Connection row
+- service
+- connected account identity
+- status
+- Connect / Reconnect / Disconnect
+
+### Sync options per connection
+Only supported capabilities appear:
+- progress sync
+- rating sync
+- list/watchlist sync
+- friend/social import/linking
+
+For bidirectional sync, define conflict policy explicitly rather than silently overwriting newer Jularr state.
+
+External IDs never replace canonical Work/Profile identity.
+
+## 16. Devices & Sessions
+
+Own devices and own sessions only.
+
+### Current device
+Show first:
+- friendly name
+- client/platform
+- last active
+- current indicator
+- Rename where supported
+
+### Active sessions
+- media title/context
+- progress
+- device
+- last active
+- Resume/Open
+- terminate own session where supported
+
+No IP/codec/transcode diagnostics.
+
+### Other devices
+- friendly name
+- platform/client
+- last active
+- offline-download state where supported
+- Rename
+- Sign out/Revoke
+
+Optional inactive devices can be collapsed.
+
+This page owns device/session management; Activity tab does not duplicate Current Session cards.
+
+## 17. Profile & Privacy
+
+### Profile
+- nickname/display name
+- avatar
+- banner
+- short bio/about where supported
+
+Editing avatar/banner may open a media picker/crop dialog.
+
+### Visibility
+Only when Friends/social features exist:
+- profile visibility
+- activity visibility
+- Ratings visibility
+- Stats visibility
+- friend/discovery visibility
+
+Use understandable choices such as:
+- Private
+- Friends
+- Instance users / Public only if the product actually supports those scopes
+
+### History/privacy
+- clear Activity history
+- clear search history where stored
+- reset recommendations/profile signals only if such a feature exists
+
+Clearing history must not automatically reset MediaProgress.
+
+Destructive actions require confirmation with explicit scope.
+
+## 18. Account & Security
+
+Authentication/account controls only.
 
 ### Account
-
-#### Devices & Sessions
-- own devices only
-- current device
-- active personal sessions
-- rename device where supported
-- sign out/revoke device
-- offline/download device state where supported
-
-#### Profile & Privacy
-- profile visibility where social features exist
-- friend/discovery preferences
-- activity visibility
-- review/rating visibility
-- history/privacy controls
-
-#### Account & Security
 - account email/identifier
-- password/authentication actions
-- active sign-ins
-- security/recovery options where supported
-- delete/deactivate account only with explicit confirmation and correct ownership policy
+- account ownership/profile relation where useful
 
-## Rating preference contract
+### Authentication
+Depending on supported auth:
+- change password
+- passkeys/security keys
+- two-factor authentication
+- recovery options
 
-`RatingDisplayPreference` is profile-scoped.
+### Sign-in security
+- recent sign-ins/security events where available
+- link to Devices & Sessions rather than duplicating the full device list
 
-It never changes database schema and never rewrites existing ratings.
+### Account actions
+- sign out all devices
+- deactivate/delete account only when the account model supports it
 
-All shared rating controls must read this preference so the same representation appears consistently in:
+Destructive account actions:
+- separate danger section
+- explicit confirmation
+- re-authentication where appropriate
+- explain whether profile data, ratings, history and progress are deleted
 
-- media detail pages
-- Profile > Ratings
-- rating dialogs/popovers
-- search/library surfaces where ratings are shown
+## 19. Settings search
 
-If an external service uses a different score format, provider adapters convert to/from canonical `UserRating`.
-
-## Settings search
-
-Search must find both setting-page titles and individual setting names.
+Search indexes:
+- setting page names
+- group names
+- individual setting labels
+- useful synonyms
 
 Examples:
+- `rating` → Ratings
+- `subtitle` → Audio & Subtitles
+- `timezone` → Language & Region
+- `autoplay` → Playback
+- `AniList` → Connections when available
 
-- searching `rating` opens/highlights Ratings
-- searching `subtitle` can find Audio & Subtitles
-- searching `timezone` can find Language & Region
+Selecting a result opens the owning setting page and focuses/highlights the row.
 
-Search results deep-link to the correct setting group rather than duplicating the setting in a second UI.
+Search never creates a second editable copy of the setting.
 
-## Desktop
+## 20. Account footer
 
-Settings tab landing remains inside the full Profile/Account page.
+At the end of Settings landing:
 
-Recommended layout:
-
-- shared profile hero + mini stats + heatmap
-- shared account tabs
-- below tabs: Settings search
-- single wide or two-column grouped list depending on available width
-- no permanent secondary left settings rail unless the number of settings later makes it clearly superior
-
-Opening a setting area may use a focused subpage within the same Account shell.
-
-For deep setting pages, the large hero may collapse to a compact account header after navigation/scroll so the actual settings are not pushed too far down. This collapse must not create a second navigation model.
-
-## Mobile
-
-Profile remains the bottom-nav destination.
-
-Settings tab shows:
-
-- shared compact profile header
-- account tabs or a compact tab selector
-- Settings search
-- stacked setting rows
-- Logout
-- version/build text
-
-Opening a setting area uses a dedicated full-width mobile subpage with contextual Back.
-
-Do not squeeze desktop two-column forms onto Mobile.
-
-## Tablet
-
-Portrait follows Mobile list/subpage behavior.
-
-Landscape may use list + selected setting pane where it improves efficiency.
-
-## TV
-
-Only settings meaningful on TV are exposed:
-
-- appearance where applicable
-- playback
-- audio/subtitles
-- basic profile switching/account
-
-Do not expose security forms, provider secrets, broad device administration or complex AI configuration on TV.
-
-## Save behavior
-
-Prefer immediate save for simple reversible preferences.
-
-Use explicit Save only when:
-
-- several fields form one atomic configuration
-- validation/testing is required
-- credentials/provider setup is being edited
-
-Never show a permanent unsaved state for simple toggles if immediate persistence is safe.
-
-Provide local validation messages next to the affected setting.
-
-## Policy-disabled settings
-
-Instance policy may make some personal features unavailable.
-
-When a setting is unavailable because the instance disables the capability:
-
-- omit it when the user cannot use it at all;
-- otherwise show a concise policy explanation only when the user needs to understand why it cannot be changed.
-
-Do not expose Admin policy internals.
-
-## Account actions footer
-
-At the bottom of Settings:
-
-- `Logout` as a clear but non-dominant destructive/account action
-- optional `Switch profile` where applicable
+- `Logout`
+- optional `Switch profile`
 - `Jularr vX.Y.Z`
 - build identifier only when useful for support
 
-Version information is informational and visually quiet.
+Logout is also available from the Desktop account popover.
 
-## Light / Dark
+## 21. Policy behavior
 
-Both themes are first-class.
+Instance policy always wins.
 
-Appearance changes should preview/apply safely without making the Settings page unreadable mid-change.
+If a whole capability is unavailable:
+- hide its setting page.
 
-## Loading / Empty / Error
+If a user can see a feature but cannot change one policy-controlled value:
+- show the effective value with a short explanation.
 
-- render the shared account shell independently from settings data
-- skeleton only the affected setting list/group
-- provider-test state stays local to that provider
-- one failing optional integration must not break the whole Settings tab
-- failed save shows local retry/error
+Do not expose raw policy names, authorization internals or Admin configuration.
 
-## Privacy / security
+## 22. Loading / errors
 
-- secrets are masked/write-only
-- security-sensitive changes require appropriate re-authentication where supported
-- own devices/sessions only
-- no other users' account data
-- permissions enforced server-side
+Settings shell and page navigation should load independently.
 
-## Navigation / back
+- skeleton only the setting page/list that is loading
+- local save failure stays on the affected row/form
+- provider Test has Running / Success / Failure locally
+- one failed optional integration does not break all Settings
+- invalid data never silently resets to defaults
 
-Deep setting page Back returns to Settings with:
+## 23. Navigation / Back
 
-- search/filter state preserved
-- scroll position preserved where practical
-- shared Profile/Account tab state preserved
+- Settings landing preserves search and scroll state
+- setting-page Back returns to Settings landing
+- direct deep links to each setting page are valid
+- Mobile uses normal contextual Back
+- browser/system Back matches visible Back behavior
 
-Direct deep links to a setting page are allowed.
+## 24. Light / Dark
 
-## Must not implement
+Every standard setting component must work in Light and Dark through shared tokens.
 
-- no separate disconnected Settings shell
-- no second profile hero inside Settings
-- no one-page form wall
+Appearance changes can apply immediately.
+
+No setting page requires its own bespoke theme styling.
+
+## 25. Mockup policy
+
+**No dedicated Settings mockup is required before implementation.**
+
+The standard component contract in this SPEC is sufficient for the first implementation because Settings is intentionally a conventional list/form surface.
+
+Create a mockup later only when:
+- implementation review finds the hierarchy unsatisfactory;
+- a new non-standard interaction is introduced;
+- Mobile/Tablet behavior cannot be resolved from shared components;
+- the owner requests a visual redesign.
+
+This exception does not waive final UX review before merging a materially different Settings implementation.
+
+## 26. Must not implement
+
+- no disconnected Settings shell
+- no second profile/account navigation system
+- no giant one-page form
+- no per-setting sub-subpage maze
 - no Admin/server settings
-- no indexer/downloader/storage/root-folder configuration
-- no global provider/API credentials
-- no arbitrary raw YAML/JSON configuration
-- no duplicate ownership of the same preference across multiple pages
-- no separate rating persistence per selected display system
-- no hard-coded `IsAdmin` UI branching where capability/policy should be used
-- no giant tile dashboard for settings
+- no indexer/downloader/storage/root configuration
+- no global provider credentials
+- no raw YAML/JSON editor
+- no duplicated preference ownership
+- no per-media rating persistence
+- no server/transcode internals in Playback
+- no other users' Devices/Sessions
+- no provider secret readback
+- no giant dashboard tiles
+- no bespoke control design for each page
 
-## Mockup deliverables
-
-First review:
-
-1. Desktop Light Settings tab inside the approved Profile hero/account shell.
-2. Mobile Light Settings tab/list.
-3. One focused subpage example, preferably Playback or Appearance.
-4. Rating-system selector state.
-
-Later:
-
-- Dark derivation
-- provider test/error state
-- Account & Security confirmation state
-
-Text specification wins over mockup imagery on conflict.
+Text specification wins over implementation interpretation if a conflict appears.

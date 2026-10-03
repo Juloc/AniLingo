@@ -16,6 +16,7 @@ namespace Jularr.Web.Pages.Books;
 
 public sealed class IndexModel(
     BookCatalogService books,
+    BookSearchCoordinator bookSearch,
     CurrentAccountContext account,
     AppDbContext db,
     DownloadClientStore downloadClients,
@@ -293,21 +294,30 @@ public sealed class IndexModel(
         }
 
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        IReadOnlyList<BookCatalogItem> found;
+        BookSearchResponse searchResult;
         try
         {
-            found = await books.SearchAsync(query, cancellationToken);
+            searchResult = await bookSearch.SearchAsync(query, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
             return new JsonResult(new { results = Array.Empty<object>(), error = ui["books.index.searchUnavailable"] });
         }
 
+        var availabilityById = searchResult.Items.ToDictionary(
+            result => result.Book.Id,
+            result => result.Availability,
+            StringComparer.Ordinal);
+        var found = searchResult.Items
+            .Select(result => result.Book)
+            .Take(24)
+            .ToArray();
+
         var hardcover = await new BookHardcoverAccountStore(
                 dataProtectionProvider)
             .LoadAsync(account.ProfileId, cancellationToken);
         var items = (await books.EnrichHardcoverStatesAsync(
-                found.Take(24).ToArray(),
+                found,
                 hardcover,
                 cancellationToken))
             .ToArray();
@@ -334,10 +344,30 @@ public sealed class IndexModel(
                         ? ui[listStateKey]
                         : null,
                     freeEdition = item.CanAcquire,
+                    availability = availabilityById.TryGetValue(item.Id, out var availability)
+                        ? new
+                        {
+                            directOrFree = availability.DirectOrFree,
+                            opds = availability.Opds,
+                            usenet = availability.Usenet,
+                            usenetCandidates = availability.EligibleUsenetReleases
+                        }
+                        : new
+                        {
+                            directOrFree = item.CanAcquire,
+                            opds = false,
+                            usenet = false,
+                            usenetCandidates = 0
+                        },
                     state = StateJson(state),
                     // Only worth a picker once more than one provider record contributed (#405).
                     editions = item.Editions.Count > 1 ? item.Editions.Select(EditionJson) : null
                 };
+            }),
+            warnings = searchResult.Warnings.Select(warning => new
+            {
+                source = warning.Source,
+                warning.Message
             })
         });
     }

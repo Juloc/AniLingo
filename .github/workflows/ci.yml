@@ -451,6 +451,8 @@ jobs:
       - publish
       - release
     uses: ./.github/workflows/android.yml
+    with:
+      release: true
     secrets: inherit
     permissions:
       contents: write

@@ -1,7 +1,18 @@
 package de.juloc.jularr.tv
 
-class TvSessionCookieStore {
+class TvSessionCookieStore(
+    private val onCookiesChanged: ((Map<String, String>) -> Unit)? = null,
+) {
     private val cookies = linkedMapOf<String, String>()
+
+    @Synchronized
+    fun loadCookies(map: Map<String, String>) {
+        cookies.clear()
+        cookies.putAll(map)
+    }
+
+    @Synchronized
+    fun getRawCookies(): Map<String, String> = HashMap(cookies)
 
     @Synchronized
     fun accept(setCookieHeaders: List<String>) {
@@ -25,6 +36,7 @@ class TvSessionCookieStore {
                 cookies[name] = value
             }
         }
+        onCookiesChanged?.invoke(cookies)
     }
 
     @Synchronized
@@ -42,6 +54,7 @@ class TvSessionCookieStore {
     @Synchronized
     fun clear() {
         cookies.clear()
+        onCookiesChanged?.invoke(emptyMap())
     }
 
     @Synchronized

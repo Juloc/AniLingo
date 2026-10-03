@@ -17,8 +17,16 @@ class TvMainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val settings = TvServerSettings(applicationContext)
-        val cookies = TvSessionCookieStore()
-        val controller = TvAppController(settings) { origin ->
+        val sessionStore = TvSessionStore(applicationContext)
+        val cookies = TvSessionCookieStore { updatedCookies ->
+            sessionStore.updateCookiesForActiveSession(updatedCookies)
+        }
+
+        val controller = TvAppController(
+            settings = settings,
+            sessionStore = sessionStore,
+            cookiesStore = cookies,
+        ) { origin ->
             HttpJularrClientApi(
                 origin = origin,
                 requestHeaders = cookies::requestHeaders,
@@ -34,6 +42,7 @@ class TvMainActivity : ComponentActivity() {
                     controller = controller,
                     settings = settings,
                     cookies = cookies,
+                    sessionStore = sessionStore,
                     player = player,
                     onFinish = ::finish,
                 )

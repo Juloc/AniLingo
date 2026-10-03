@@ -4,12 +4,14 @@ import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,8 +20,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -28,8 +33,8 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,18 +42,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Button
@@ -89,7 +96,7 @@ fun TvPlayerScreen(
 ) {
     val context = LocalContext.current
     val design = remember { TvPlayerDesignLoader.load(context) }
-    var uiState by remember { mutableStateOf(TvPlayerUiState()) }
+    var uiState by remember { mutableStateOf(TvPlayerUiState(controlsVisible = true)) }
     var controlsInteractionRevision by remember { mutableIntStateOf(0) }
     val playerFocus = remember { FocusRequester() }
     val primaryControlFocus = remember { FocusRequester() }
@@ -121,7 +128,7 @@ fun TvPlayerScreen(
                 onSeeked(positionMs, durationMs, player.player.isPlaying)
             }
 
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            override fun onPlayerError(error: PlaybackException) {
                 onPlaybackFailure(player.player.currentPosition.coerceAtLeast(0))
             }
         }
@@ -152,10 +159,6 @@ fun TvPlayerScreen(
         )
     }
 
-    // Keep remote focus inside the player: the primary transport control while the
-    // control bar is shown, otherwise the player surface itself. Hiding the controls
-    // (Back or auto-hide) removes the focused button; without this the D-pad keys
-    // would no longer reach the player key handler.
     LaunchedEffect(uiState.controlsVisible, uiState.learningLayer, companionVisible) {
         if (companionVisible) return@LaunchedEffect
         val target = if (uiState.controlsVisible &&
@@ -415,6 +418,7 @@ fun TvPlayerScreen(
                             ),
                         )
                     },
+                    onExit = onExit,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -515,8 +519,10 @@ private fun PlayerControls(
     onForwardTen: () -> Unit,
     onRepeatLine: () -> Unit,
     onLearn: () -> Unit,
+    onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val focusColor = rememberTvFocusColor()
     val progress = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -528,12 +534,33 @@ private fun PlayerControls(
             .background(design.overlay)
             .padding(horizontal = 48.dp, vertical = 32.dp),
     ) {
+        // Top Header: Back Arrow Button + Series/Episode Title + Time
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            var backFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (backFocused) Color(0xFF5B46F6) else Color(0xFF1E2230))
+                    .tvFocusIndication(backFocused, focusColor, CircleShape)
+                    .clickable(onClick = onExit)
+                    .reportFocus { backFocused = it },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
             Text(
                 text = episodeTitle,
                 color = design.subtitleText,
@@ -548,57 +575,115 @@ private fun PlayerControls(
             )
         }
 
+        // Center Transport Controls: Rewind 10s | Play/Pause | Forward 10s
         Row(
             modifier = Modifier.align(Alignment.Center),
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(onClick = onBackTen) {
+            var backTenFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (backTenFocused) Color(0xFF5B46F6) else Color(0xFF1E2230))
+                    .tvFocusIndication(backTenFocused, focusColor, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onBackTen)
+                    .reportFocus { backTenFocused = it },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Replay10,
                     contentDescription = "Back 10 seconds",
-                    modifier = Modifier.size(30.dp),
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
                 )
             }
-            Button(
-                onClick = onPlayPause,
-                modifier = Modifier.focusRequester(primaryControlFocus),
+
+            var playFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (playFocused) Color(0xFF5B46F6) else Color(0xFF2E2270))
+                    .focusRequester(primaryControlFocus)
+                    .tvFocusIndication(playFocused, focusColor, RoundedCornerShape(16.dp))
+                    .clickable(onClick = onPlayPause)
+                    .reportFocus { playFocused = it },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(38.dp),
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp),
                 )
             }
-            Button(onClick = onForwardTen) {
+
+            var forwardTenFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (forwardTenFocused) Color(0xFF5B46F6) else Color(0xFF1E2230))
+                    .tvFocusIndication(forwardTenFocused, focusColor, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onForwardTen)
+                    .reportFocus { forwardTenFocused = it },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Forward10,
                     contentDescription = "Forward 10 seconds",
-                    modifier = Modifier.size(30.dp),
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
 
+        // Bottom Controls: Scrub Bar + Track Selector Buttons
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Interactive Scrub Bar
+            var scrubFocused by remember { mutableStateOf(false) }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .background(design.muted.copy(alpha = 0.34f)),
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(Color(0xFF1E2230))
+                    .tvFocusIndication(scrubFocused, focusColor, RoundedCornerShape(7.dp))
+                    .clickable(onClick = onPlayPause)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown) {
+                            when (event.key) {
+                                Key.DirectionLeft -> {
+                                    onBackTen()
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    onForwardTen()
+                                    true
+                                }
+                                else -> false
+                            }
+                        } else false
+                    }
+                    .reportFocus { scrubFocused = it },
+                contentAlignment = Alignment.CenterStart,
             ) {
                 Box(
                     modifier = Modifier
+                        .fillMaxHeight()
                         .fillMaxWidth(progress)
-                        .height(6.dp)
-                        .background(design.accent),
+                        .background(Color(0xFF7B61FF)),
                 )
             }
 
+            // Bottom Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -609,7 +694,7 @@ private fun PlayerControls(
                         Icon(
                             imageVector = Icons.Filled.Replay,
                             contentDescription = "Repeat line",
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(22.dp),
                         )
                         Text("  Repeat line")
                     }
@@ -752,55 +837,25 @@ private fun applyEffects(
     onExit: () -> Unit,
     cue: SubtitleCue?,
     focusedWordIndex: Int,
-    onOpenOnPhone: (Long?, String?) -> Unit,
+    onOpenOnPhone: (cueId: Long?, termId: String?) -> Unit,
 ) {
     for (effect in effects) {
         when (effect) {
-            TvPlayerEffect.TogglePlayback -> {
-                if (player.player.isPlaying) player.player.pause() else player.player.play()
-            }
-
-            is TvPlayerEffect.SeekBy -> {
-                val duration = player.player.duration
-                val target = (player.player.currentPosition + effect.deltaMs).coerceAtLeast(0)
-                player.player.seekTo(
-                    if (duration > 0) target.coerceAtMost(duration) else target,
-                )
-            }
-
+            TvPlayerEffect.TogglePlayback -> if (player.player.isPlaying) player.player.pause() else player.player.play()
             TvPlayerEffect.PausePlayback -> player.player.pause()
             TvPlayerEffect.ResumePlayback -> player.player.play()
-            TvPlayerEffect.ExitPlayer -> onExit()
-            TvPlayerEffect.OpenOnPhone -> onOpenOnPhone(
-                cue?.id,
-                cue?.tokens?.getOrNull(focusedWordIndex)?.termId,
+            is TvPlayerEffect.SeekBy -> player.player.seekTo(
+                (player.player.currentPosition + effect.deltaMs)
+                    .coerceAtLeast(0)
+                    .coerceAtMost(player.player.duration.coerceAtLeast(0)),
             )
+            TvPlayerEffect.ExitPlayer -> onExit()
+            TvPlayerEffect.OpenOnPhone -> {
+                val termId = cue?.tokens?.getOrNull(focusedWordIndex)?.termId
+                onOpenOnPhone(cue?.id, termId)
+            }
         }
     }
-}
-
-private fun formatTime(valueMs: Long): String {
-    val totalSeconds = valueMs.coerceAtLeast(0) / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
-    } else {
-        "%d:%02d".format(minutes, seconds)
-    }
-}
-
-private fun trackLabel(
-    tracks: List<MediaTrack>,
-    selectedId: String?,
-    fallback: String,
-): String {
-    val track = tracks.firstOrNull { it.id == selectedId } ?: return fallback
-    return track.title
-        ?: track.language?.uppercase()
-        ?: track.codec?.uppercase()
-        ?: track.id
 }
 
 private fun nextTrackId(
@@ -808,8 +863,9 @@ private fun nextTrackId(
     selectedId: String?,
 ): String? {
     if (tracks.isEmpty()) return null
-    val index = tracks.indexOfFirst { it.id == selectedId }
-    return tracks[(index + 1).mod(tracks.size)].id
+    val currentIndex = tracks.indexOfFirst { it.id == selectedId }
+    val nextIndex = if (currentIndex < 0) 0 else (currentIndex + 1) % tracks.size
+    return tracks[nextIndex].id
 }
 
 private fun nextSubtitleTrackId(
@@ -818,7 +874,23 @@ private fun nextSubtitleTrackId(
 ): String? {
     if (tracks.isEmpty()) return null
     if (selectedId == null) return tracks.first().id
-    val index = tracks.indexOfFirst { it.id == selectedId }
-    if (index < 0 || index == tracks.lastIndex) return null
-    return tracks[index + 1].id
+    val currentIndex = tracks.indexOfFirst { it.id == selectedId }
+    if (currentIndex < 0 || currentIndex == tracks.lastIndex) return null
+    return tracks[currentIndex + 1].id
+}
+
+private fun trackLabel(
+    tracks: List<MediaTrack>,
+    selectedId: String?,
+    fallback: String,
+): String =
+    selectedId?.let { id ->
+        tracks.firstOrNull { it.id == id }?.let { it.title ?: it.language ?: it.id }
+    } ?: fallback
+
+private fun formatTime(valueMs: Long): String {
+    val totalSeconds = valueMs.coerceAtLeast(0) / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }

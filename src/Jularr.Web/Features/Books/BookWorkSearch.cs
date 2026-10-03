@@ -147,7 +147,9 @@ public static partial class BookWorkSearch
     /// or a catalog listing with neither (#405 "language/format when known").
     /// </summary>
     private static string EditionFormat(BookCatalogItem item) =>
-        item.CanAcquire ? EditionFormatEpub
+        item.CanAcquire
+            || item.SourceUrl.StartsWith("opds://", StringComparison.OrdinalIgnoreCase)
+            ? EditionFormatEpub
         : item.CanPreview ? EditionFormatText
         : EditionFormatListing;
 
