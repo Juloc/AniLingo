@@ -371,6 +371,19 @@ button, input { font: inherit; }
 .inline-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .inline-actions form { margin: 0; }
 
+.role-overview-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; margin-bottom: 16px;
+}
+.role-overview-card { min-width: 0; }
+.role-overview-card .panel-heading > div { min-width: 0; }
+.role-overview-card .panel-heading span { color: var(--muted); font-size: 11px; }
+.role-overview-card > p { margin: 0 0 14px; }
+.role-policy-list {
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    margin-bottom: 16px;
+}
+
 .capability-matrix-scroll {
     max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain;
 }
