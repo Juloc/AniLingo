@@ -276,9 +276,9 @@ Candidate states include:
 
 - Available
 - Monitored
-- Requested / Wanted
+- Requested
 - Missing
-- Downloading / Importing
+- Downloading / Preparing
 - Needs attention
 
 The exact final state list, grouping and naming are **not merge-approved yet** and require final owner review during implementation.
@@ -311,11 +311,11 @@ Relevant consumer semantics include:
 - Available
 - Partial
 - Monitored
-- Requested / Wanted
-- Waiting
-- Searching
+- Requested
+- Waiting for approval
+- Looking for media
 - Downloading
-- Importing
+- Preparing
 - Missing
 - Needs attention
 
