@@ -55,7 +55,7 @@ Use three primary tabs:
    - cancelled work
    - past import outcomes
 
-Do not create separate top-level tabs for Running, Failed, Imports and History when the same information can be expressed through Activity / To-Do / History plus filters.
+Do not create separate top-level tabs for Running, Failed or Imports when the same information can be expressed through Activity / To-Do / History plus filters.
 
 Filters may still expose states such as Running, Failed, Queued, Importing, Downloading, Completed and Cancelled.
 
