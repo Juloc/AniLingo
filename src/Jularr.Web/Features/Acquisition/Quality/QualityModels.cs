@@ -91,6 +91,11 @@ public static class ReleaseQuality
 {
     public static string GetKey(ReleaseInfo release)
     {
+        if (!string.IsNullOrWhiteSpace(release.DocumentFormat))
+        {
+            return release.DocumentFormat.Trim().ToUpperInvariant();
+        }
+
         var source = release.Source switch
         {
             ReleaseSource.WebDl or ReleaseSource.WebRip => "WEB",

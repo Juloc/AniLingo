@@ -118,13 +118,15 @@ public sealed class GenericMonitoringTests
             new AnimeAcquisitionRegistration(),
             new MovieAcquisitionRegistration(),
             new TvAcquisitionRegistration(),
-            new AudiobookAcquisitionRegistration()
+            new AudiobookAcquisitionRegistration(),
+            new BookAcquisitionRegistration()
         });
 
         Assert.AreEqual(MonitoringGranularity.Episode, registry.MonitoringGranularityFor(MediaAcquisitionKind.Anime));
         Assert.AreEqual(MonitoringGranularity.Episode, registry.MonitoringGranularityFor(MediaAcquisitionKind.Tv));
         Assert.AreEqual(MonitoringGranularity.Item, registry.MonitoringGranularityFor(MediaAcquisitionKind.Movie));
         Assert.AreEqual(MonitoringGranularity.Item, registry.MonitoringGranularityFor(MediaAcquisitionKind.Audiobook));
+        Assert.AreEqual(MonitoringGranularity.Item, registry.MonitoringGranularityFor(MediaAcquisitionKind.Book));
     }
 
     // ---- Store: one file per media type, no cross-kind bleed -----------------------------------

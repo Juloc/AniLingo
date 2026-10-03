@@ -75,4 +75,12 @@ public sealed record ReleaseInfo(
     string? ImdbId,
     string ReleaseKey,
     double Confidence,
-    IReadOnlyList<ReleaseEvidence> Evidence);
+    IReadOnlyList<ReleaseEvidence> Evidence)
+{
+    /// <summary>
+    /// Optional non-video container/document quality supplied by a media-specific parser.
+    /// The shared scene parser leaves this null; Books use values such as EPUB/PDF so the generic
+    /// quality-profile engine does not collapse reading releases into UNKNOWN-UNKNOWN.
+    /// </summary>
+    public string? DocumentFormat { get; init; }
+}
