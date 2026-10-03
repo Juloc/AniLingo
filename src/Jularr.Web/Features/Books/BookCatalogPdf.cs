@@ -14,7 +14,8 @@ public sealed record BookImportHint(
     string CatalogId,
     string Title,
     string? Author,
-    string? CoverImageUrl);
+    string? CoverImageUrl,
+    Guid? ExistingWorkId = null);
 
 /// <summary>
 /// The file Jularr keeps for a Books work (today: the PDF of a PDF book). <see cref="PageCount"/>
@@ -115,7 +116,8 @@ public sealed partial class BookCatalogService
                     sourceKind,
                     sourceKind + "://" + Uri.EscapeDataString(fileName),
                     cancellationToken,
-                    preserveSourceFiles ? Path.GetFullPath(file) : null));
+                    preserveSourceFiles ? Path.GetFullPath(file) : null,
+                    files.Length == 1 ? hint?.ExistingWorkId : null));
             }
             catch (IOException)
             {
@@ -278,35 +280,59 @@ public sealed partial class BookCatalogService
         CancellationToken cancellationToken)
     {
         var sourceKey = CleanSourceKey("pdf-" + contentHash[..48]);
-        var existing = await db.NovelWorks
-            .AsNoTracking()
-            .Where(x => x.SourceProvider == ImportedBookProvider && x.SourceKey == sourceKey)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (existing is Guid existingId)
+        NovelWork? work;
+        if (hint?.ExistingWorkId is Guid targetWorkId)
         {
-            return existingId;
+            work = await db.NovelWorks
+                .SingleOrDefaultAsync(
+                    x => x.Id == targetWorkId
+                        && x.SourceProvider == ImportedBookProvider,
+                    cancellationToken)
+                ?? throw new InvalidOperationException("The target Books work no longer exists.");
+        }
+        else
+        {
+            work = await db.NovelWorks
+                .SingleOrDefaultAsync(
+                    x => x.SourceProvider == ImportedBookProvider
+                        && x.SourceKey == sourceKey,
+                    cancellationToken);
+            if (work is not null)
+            {
+                return work.Id;
+            }
+
+            var title = FirstNonEmpty(hint?.Title, UsablePdfTitle(
+                sizeBytes <= PdfDocumentReader.MaxReadBytes
+                    ? PdfDocumentReader.Read(await File.ReadAllBytesAsync(storedPath, cancellationToken)).Title
+                    : null)) ?? TitleFromFileName(fileName);
+            work = new NovelWork
+            {
+                SourceProvider = ImportedBookProvider,
+                SourceKey = sourceKey,
+                SourceUrl = Truncate(sourceKind + "://" + Uri.EscapeDataString(fileName), 2048),
+                Title = Truncate(title, 500),
+                Author = TruncateNullable(hint?.Author, 300),
+                MetadataTitle = Truncate(title, 500),
+                CoverImageUrl = null,
+                MetadataStatus = "IMPORTED",
+                ImportedAt = DateTime.UtcNow
+            };
+            db.NovelWorks.Add(work);
         }
 
         var content = sizeBytes <= PdfDocumentReader.MaxReadBytes
             ? PdfDocumentReader.Read(await File.ReadAllBytesAsync(storedPath, cancellationToken))
             : PdfDocumentContent.Empty;
-        var title = FirstNonEmpty(hint?.Title, UsablePdfTitle(content.Title)) ?? TitleFromFileName(fileName);
-        var work = new NovelWork
+        if (string.IsNullOrWhiteSpace(work.Author))
         {
-            SourceProvider = ImportedBookProvider,
-            SourceKey = sourceKey,
-            SourceUrl = Truncate(sourceKind + "://" + Uri.EscapeDataString(fileName), 2048),
-            Title = Truncate(title, 500),
-            Author = TruncateNullable(FirstNonEmpty(hint?.Author, content.Author), 300),
-            MetadataTitle = Truncate(title, 500),
-            CoverImageUrl = null,
-            Format = BookFileFormats.Pdf + ":" + NormalizeSourceLanguage(content.Language),
-            MetadataStatus = "IMPORTED",
-            ImportedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        db.NovelWorks.Add(work);
+            work.Author = TruncateNullable(FirstNonEmpty(hint?.Author, content.Author), 300);
+        }
+
+        work.SourceUrl = Truncate(sourceKind + "://" + Uri.EscapeDataString(fileName), 2048);
+        work.Format = BookFileFormats.Pdf + ":" + NormalizeSourceLanguage(content.Language);
+        work.MetadataStatus = "IMPORTED";
+        work.UpdatedAt = DateTime.UtcNow;
 
         if (await TryPersistPreferredCoverAsync(
                 work.Id,
