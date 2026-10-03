@@ -72,6 +72,8 @@ Readings/furigana/transliteration and the AI sentence explainer are gated by `to
 
 Kana practice uses the same model: every Kana symbol is a `Script` unit with a stable ID (`KanaCatalog.IdFor`), a `ja` variant and a `ja-Latn` romaji variant. A profile practices them in its non-primary `ja → ja-Latn` course named "Kana", created on first practice, so Japanese words are never saved into it implicitly. Kana cards are regular cards and appear in Reviews while that course is enabled. The Kana trainer page itself is available only while the ScriptTrainer capability resolves on and the profile has an enabled course with `ja` as source language (the Japanese toolkit is the one that supports `ScriptTrainer`); see `LearningModuleResolver`.
 
+Binding UX specification: `docs/mockups/script-trainer/SPEC.md`. The product concept is generic Script Trainer; Japanese Kana is the current concrete toolkit. Overview, Practice, Feedback and Summary are sequential states of one trainer flow. Interactive handwriting assessment is not implied by the existing Kana model and stays hidden until a real stroke/evaluation capability is defined.
+
 ## Reviews and offline sync
 
 FSRS replays each card's own review history (`LearningCardReviews`). The Review page, the offline review queue in the browser and the sync endpoint address cards by `CardId`.
