@@ -355,6 +355,12 @@ User Learning home:
 - media-derived learning
 - progress
 
+Vocabulary / Sentences:
+- binding specification: `docs/mockups/vocabulary-sentences/SPEC.md`
+- one shared Learning Library shell with Vocabulary and Sentences tabs
+- Vocabulary remains canonical LearningUnit/Variant/Card state
+- Sentences reuses canonical LearningContext/Sentence Practice data rather than inventing a second sentence store
+
 Course detail:
 - binding specification: `docs/mockups/course-detail/SPEC.md`
 - canonical Curriculum -> Level -> Chapter -> Lesson structure
