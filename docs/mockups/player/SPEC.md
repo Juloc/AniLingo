@@ -738,6 +738,7 @@ The screen consumes view data derived from:
 - profile/user Auto-Skip playback preferences;
 - subtitle cues / learning capability;
 - client feature capabilities;
+- asymmetric manual seek policy: **SeekBackSeconds = 10** and **SeekForwardSeconds = 30**;
 - preparing/acquisition state when Play triggered missing-media acquisition.
 
 The Player must not query legacy Anime/Episode-only tables as its permanent source of truth.
@@ -764,6 +765,7 @@ The Player must not query legacy Anime/Episode-only tables as its permanent sour
 - No client-guessed intro/outro/chapter boundaries.
 - No Auto-Skip enabled by default.
 - No Auto-Skip without a canonical eligible segment marker.
+- No single symmetric seek-step setting that forces backward and forward to use the same duration; the canonical Player contract must support 10 seconds backward and 30 seconds forward independently.
 
 ## 24. Mockup acceptance checklist
 
