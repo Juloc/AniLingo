@@ -171,7 +171,7 @@ The detailed platform contract belongs to issue #403; UX baseline:
 ### Mobile
 - single tap toggles controls only
 - large central Play/Pause
-- double tap left/right: -10/+10 seconds
+- double tap left/right: -10/+30 seconds
 - left vertical gesture: brightness where supported
 - right vertical gesture: volume where supported
 - pinch + Fit/Fill/Zoom
