@@ -19,7 +19,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 ## User screen contracts
 
 - `home/SPEC.md`
-- `library/README.md` — current binding draft; normalize to `SPEC.md` after approval
+- `library/SPEC.md` — binding cross-media Library contract
 - `collection-detail-edit/SPEC.md` — Manual/Smart/Linked Collections, rule builder and linked sync
 - `discover/SPEC.md`
 - `anime-series-detail/SPEC.md`
@@ -45,6 +45,14 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `continuation-surfaces/SPEC.md` — persistent Now Playing and Continue Reading surfaces
 - `error-permission-states/SPEC.md` — shared 404/403/module/resource/session/500 states
 - `media-preview/SPEC.md` — cinematic Quick View for discovery/recommendations
+- `games/SPEC.md` — shared Games UX contract
+- `games-library/SPEC.md` — Games Library/Home
+- `game-detail/SPEC.md` — Game detail
+- `game-play-options/SPEC.md` — per-title play/runtime options
+- `game-player/SPEC.md` — browser game-player shell
+- `game-player-nintendo-ds/SPEC.md` — Nintendo DS player composition
+- `game-player-playstation/SPEC.md` — PlayStation player composition
+- `game-touch-controls/SPEC.md` — mobile/touch controls
 
 ## Admin screen contracts
 
@@ -78,6 +86,12 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `admin-general-settings/SPEC.md` — instance identity, language/locale/timezone and metadata/regional defaults
 - `admin-appearance/SPEC.md` — instance default visual style, profile override policy, Admin density shortcut and theme preview
 - `admin-notifications/SPEC.md` — instance notification channels, canonical events and delivery diagnostics
+- `admin-games/SPEC.md` — Games admin overview
+- `admin-games-runtimes/SPEC.md` — runtime inventory/configuration
+- `admin-games-runtime-editor/SPEC.md` — runtime editor
+- `admin-games-bios/SPEC.md` — BIOS/firmware inventory
+- `admin-games-bios-editor/SPEC.md` — BIOS/firmware editor
+- `admin-games-import-resolution/SPEC.md` — unresolved game import mapping
 - `setup-wizard/SPEC.md`
 
 ## Planning references
