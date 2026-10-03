@@ -189,6 +189,7 @@ Boundary rules:
 - cross-media is normal Collection behavior, not a separate Collection type;
 - franchise/adaptation grouping uses canonical Work relations through Smart/derived views;
 - CollectionEntry stores WorkId, never provider identity as canonical membership;
+- Games is outside the V1 Work-based Collection boundary; adding it later requires an explicit typed cross-domain collection contract;
 - Smart render/preview performs no provider network calls;
 - Linked render performs no provider network calls;
 - Linked sync persists provider list/item evidence first, resolves to canonical Work IDs, then updates local membership;
