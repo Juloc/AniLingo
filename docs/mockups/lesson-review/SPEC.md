@@ -367,36 +367,23 @@ No second TTS implementation.
 
 ## 19. XP during sessions
 
-XP appears as restrained feedback:
-- small +XP on meaningful completed exercise/review;
-- section total;
-- session total.
+Binding activity/gamification policy: `docs/LEARNING_GAMIFICATION.md`.
 
-Avoid large animations after every tap.
+When profile gamification is enabled, XP appears as restrained feedback:
+- small +XP on meaningful completed work;
+- section/session total.
 
-### Anti-farming
+When gamification is Off, no new XP is awarded and XP UI disappears; Lesson/Review behavior and core activity/time tracking remain unchanged.
 
-Repeated trivial actions must not generate unlimited XP.
-
-XP policy can consider:
-- exercise difficulty/type;
-- correctness;
-- first completion;
-- repeated optional practice;
-- Hint use;
-- session completion.
-
-FSRS rating and XP remain separate values.
+Repeated trivial/Extra Practice actions must not generate unlimited XP. One versioned backend XP policy owns awards. FSRS rating and XP remain separate values.
 
 ## 20. Daily Goal / Streak interaction
 
-Lesson/Review updates the Daily Goal as activity is completed.
+Daily Goal/Streak exist only under the binding gamification contract.
 
-The session shell may show a compact Daily Goal progress indicator, but must not distract from the exercise.
+When enabled, Lesson/Review activity can advance the Daily Goal and the shell may show compact goal progress. A completed goal produces a brief Summary moment; Streak is derived from completed Daily Goal history.
 
-When a session completes the Daily Goal:
-- show a brief completion moment in Session Summary;
-- mark today's Streak day complete.
+When gamification is Off, hide Daily Goal/Streak presentation without changing Lesson/Review completion.
 
 Do not interrupt an exercise mid-answer with a large Streak animation.
 
@@ -405,13 +392,13 @@ Do not interrupt an exercise mid-answer with a large Streak animation.
 Both Lesson and Review end with a consistent summary language.
 
 ### Lesson
-- XP;
-- time;
+- XP when gamification is enabled;
+- active learning time;
 - accuracy;
 - exercises;
 - new vocabulary/concepts;
 - course progress;
-- Daily Goal;
+- Daily Goal when gamification is enabled;
 - next recommendation.
 
 ### Review
