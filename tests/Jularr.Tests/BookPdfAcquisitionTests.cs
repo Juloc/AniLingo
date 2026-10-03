@@ -10,6 +10,8 @@ using Jularr.Web.Features.Acquisition.Health;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Quality;
+using Jularr.Web.Features.Acquisition.Release;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Auth;
@@ -632,6 +634,11 @@ public sealed class BookPdfAcquisitionTests
                 });
             collection.AddSingleton<IDownloadClient>(provider => new SabnzbdDownloadClient(provider.GetRequiredService<ISabnzbdClient>()));
             collection.AddSingleton<IndexerSearchCoordinator>();
+            collection.AddSingleton<IMediaAcquisitionRegistration, BookAcquisitionRegistration>();
+            collection.AddSingleton<MediaAcquisitionRegistry>();
+            collection.AddSingleton(provider => new QualityProfileStore(
+                new DirectoryInfo(Path.Combine(data.FullName, "quality-profiles")),
+                provider.GetRequiredService<MediaAcquisitionRegistry>()));
             collection.AddSingleton<BookSearchCoordinator>();
             collection.AddSingleton<DownloadClientSelector>();
             collection.AddSingleton<DownloadClientSubmissionService>();
