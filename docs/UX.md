@@ -51,6 +51,8 @@ Bottom navigation optimized for frequent use:
 
 Search is globally accessible from the top/app bar. Activity belongs under Profile rather than occupying bottom navigation.
 
+Games does not consume a Mobile bottom-navigation slot. When Games is available, its dedicated route is reached contextually from Home Games/Continue Playing content, global Search/Discover Games context, Game Detail/back-navigation or deep links. Home must keep Games discoverable even when the profile has no recent Game activity.
+
 ### TV
 Remote-first primary destinations:
 - Home

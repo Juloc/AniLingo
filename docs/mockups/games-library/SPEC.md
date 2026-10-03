@@ -185,6 +185,21 @@ Do not squeeze Desktop filters into the TV layout.
 
 ## Mobile
 
+### Mobile navigation entry
+
+The fixed Mobile bottom navigation remains:
+`Home · Library · Calendar · Learning · Profile`.
+
+Games is a dedicated route, but not a permanent bottom-nav slot.
+
+Entry can come from:
+- Home Games / Continue Playing row or Games shortcut/row;
+- global Search/Discover with Games context;
+- Game Detail/back-navigation;
+- deep link.
+
+When Games is available and there is no recent Game activity, Home still exposes a lightweight Games entry so the local Games library is discoverable.
+
 Use:
 - compact header/search;
 - platform/sort filter sheet;

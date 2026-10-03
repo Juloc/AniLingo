@@ -16,7 +16,14 @@ Shared Jularr infrastructure may search, acquire, download and hand off a comple
 
 Games is a deliberate exception to the normal shared Library navigation.
 
-Primary consumer navigation includes a dedicated `Games` destination alongside Home and Library. Games is not a type tab inside the normal Library.
+Games has a dedicated consumer destination and is not a type tab inside the normal Library.
+
+Platform navigation:
+- Desktop/wide Tablet: Games may be a permanent primary/sidebar destination alongside Home and Library.
+- TV: Games may be a primary destination when available.
+- Mobile: Games is **not** a permanent bottom-navigation item. The fixed bottom bar is `Home · Library · Calendar · Learning · Profile`.
+
+Mobile enters the dedicated Games destination contextually through Home Games/Continue Playing surfaces, global Search/Discover with Games context, Game Detail/back-navigation and deep links. Home must keep Games reachable even when there is no recent play activity, without replacing the Learning bottom-nav slot.
 
 This is a UX/navigation boundary only. It does **not** create a second search, request, acquisition, downloader, storage or activity architecture.
 
