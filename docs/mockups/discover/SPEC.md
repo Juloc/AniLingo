@@ -180,7 +180,9 @@ This specification is binding for Discover/Search UX. Coding agents must not tur
 
 ## Canonical media identity and Anime search mode
 
-Search and Discover must use Jularr's canonical media identity rather than exposing provider records as separate library identities.
+Search and Discover must use the owning domain's canonical identity rather than exposing provider records as separate product identities.
+
+For watch/read/listen media, the canonical identity is Work. The Work/Season/Episode rules below apply to those media. Games is the explicit isolated-domain exception defined later in this spec and resolves to canonical Game identity instead of Work.
 
 - The default model is **Work -> Season -> Episode** for Series/Anime. AniList is a metadata/presentation provider layered on top of that model, not a second library model.
 - One canonical Anime work may map to multiple AniList media entries (for example separate seasons, parts/cours, specials or sequels where the provider splits them differently).
@@ -259,6 +261,8 @@ Provider-specific records, regional releases or ROM variants must not become dup
 Opening a local Game goes to Game Detail.
 
 Opening a non-local Game uses the same canonical Game Detail / shared Request behavior as the rest of Jularr.
+
+Media Preview / Quick View is not required for Games in V1; a Game card may open Game Detail directly unless a future Games-specific preview is explicitly approved.
 
 ### Shared request/acquisition
 
