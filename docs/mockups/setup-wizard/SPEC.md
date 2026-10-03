@@ -1,27 +1,463 @@
 # Setup Wizard — V1
 
-Status: planning baseline for mockups. Show only for an unconfigured/new instance or explicit admin re-entry.
+Status: approved planning direction; current Setup Wizard mockup is the visual baseline, with the first three screens and final two screens consolidated as described below.
+
+Global UX rules: `docs/UX.md`.
+
+If an image and this specification conflict, this specification wins.
 
 ## Purpose
+
 Establish a safe minimal Jularr instance without exposing every advanced setting.
 
-## Page structure
-Welcome -> database/system validation -> owner account -> instance/region -> storage root(s) -> optional provider/download configuration -> initial media scan/import choice -> review -> finish.
+The wizard is shown:
+- on a fresh/unconfigured instance;
+- when setup was not completed;
+- when an authorized admin explicitly reopens it.
 
-## Data / information
-Environment readiness, PostgreSQL connectivity, owner/profile, locale/timezone, permitted LibraryRoots, optional provider health and migration/import choices.
+The wizard writes the same underlying settings used by the normal Admin pages. It does not own a duplicate configuration model.
 
-## Actions
-Validate, configure minimum required values, test connections, skip optional integrations, finish and enter user/admin UI.
+## Final page structure
+
+1. **Start & System**
+2. **Setup-Art**
+3. **Instanz & Module**
+4. **Storage & Library Roots**
+5. **Downloader / Usenet**
+6. **Provider**
+7. **AI**
+8. **Bestehende Medien / Migration**
+9. **Zusammenfassung, Test & Fertig**
+
+Steps are adaptive:
+- disabled modules remove irrelevant steps;
+- migration can prefill later configuration;
+- optional integrations can be skipped;
+- completed setup can be resumed after interruption.
+
+## 1. Start & System
+
+This combines the previous:
+- Willkommen
+- Systemprüfung
+- Admin Konto
+
+into one compact first screen.
+
+### Welcome
+
+Show only a short setup introduction and what will be configured.
+
+No separate decorative welcome page.
+
+### System readiness
+
+Run automatically and show compact status rows:
+- PostgreSQL reachable
+- schema/migration state
+- writable application/data directory
+- configured container mounts visible
+- available storage
+- app version
+- required background services/readiness
+
+States:
+- OK
+- Warning
+- Blocking error
+
+Blocking failures prevent continuation.
+Warnings remain visible but may allow continuation.
+
+### First Owner/Admin
+
+On the same screen, when no owner exists:
+- username
+- display name
+- optional e-mail
+- password
+- password confirmation
+- language
+- timezone
+
+This account receives the initial owner/admin capabilities.
+
+If an owner already exists:
+- do not create another;
+- show the existing owner state;
+- skip the account form.
+
+No broad permissions are granted to later users by default.
+
+## 2. Setup-Art
+
+Options:
+- Neue Instanz
+- Bestehende Installation migrieren
+- optional: Einstellungen/Backup wiederherstellen when supported
+
+### Neue Instanz
+
+Continue with clean configuration.
+
+### Migration
+
+Choose a supported source, for example:
+- old Jularr
+- Sonarr
+- Radarr
+- Jellyfin
+- Plex
+- Emby
+- folder structure
+- JSON/CSV
+
+Migration uses the dedicated Migration Center contracts.
+
+The setup wizard may launch/host the initial migration flow, but it does not duplicate migration semantics.
+
+Imported configuration remains reviewable in later setup steps.
+
+## 3. Instanz & Module
+
+Fields:
+- instance name
+- default language
+- region
+- timezone
+- optional appearance baseline
+
+### Module activation
+
+Instance-level feature switches.
+
+Examples:
+- Series/Anime media support
+- Movies
+- Manga
+- Books
+- Audiobooks
+- Games/Software where supported
+- Requests
+- Learning
+- Native Downloader
+- AI
+- Generic Downloads
+
+Rules:
+- module state controls feature availability and navigation;
+- disabled modules hide their later setup steps;
+- module switches remain editable later in Instance Settings;
+- disabling a module must not silently delete its data.
+
+The wizard must not invent feature-specific storage/settings outside their owning modules.
+
+## 4. Storage & Library Roots
+
+Show detected/allowed mounts.
+
+For each mount:
+- path/identity
+- free space
+- writable/readable state
+- status
+
+Admin selects which mounts Jularr may use.
+
+### Library Roots
+
+Create logical LibraryRoots:
+- name
+- path
+- supported content types
+- status
+
+Examples:
+- Anime
+- Series
+- Movies
+- Manga
+- Books
+
+One physical mount may contain multiple LibraryRoots.
+
+### Optional storage roles
+
+Depending on enabled modules:
+- Native Download Workspace
+- Generic Downloads Root
+- optional future backup/cache/transcode roles
+
+Path selection uses the safe Storage path browser.
+
+Validate:
+- path exists
+- readable
+- writable
+- available free space where measurable
+- path does not conflict with another role unexpectedly
+
+## 5. Downloader / Usenet
+
+Only shown when Native Downloader or an external download client is enabled.
+
+### Native Usenet
+
+Minimal first-run fields:
+- server
+- port
+- TLS
+- username
+- password
+- connections
+- selected Download Workspace
+
+Actions:
+- connection test
+- optional simple transfer/read test
+
+Do not expose all advanced processing/scheduler/cache settings here.
+
+### External client
+
+Optional alternative/compatibility path:
+- client type
+- endpoint
+- authentication
+- category mapping
+- remote path mapping where necessary
+- test
+
+Native downloader remains the normal first-class Jularr path.
+
+## 6. Provider
+
+Configure only providers needed to make the enabled instance usable.
+
+Families may include:
+- Metadata
+- Indexer/Search
+- Subtitles
+- Translation
+- Reading Sources
+
+Show:
+- provider
+- enabled
+- health
+- required/optional state
+- test action
+
+The wizard should clearly distinguish:
+- required for the enabled feature set
+- recommended
+- optional
+
+Advanced priorities, capability matrices, rate limits and provider-specific tuning remain in Admin Provider settings.
+
+Secrets are masked/write-only.
+
+## 7. AI
+
+Only shown if AI is enabled.
+
+Allow:
+- provider selection
+- endpoint/credentials
+- model discovery
+- simple default model assignment
+
+Suggested simple categories:
+- Text
+- Vision
+- Image
+
+Optional:
+- prefer local provider
+
+Complex task routing, fallback rules, budgets and generated-content policy remain in Admin AI.
+
+AI may be skipped if instance policy permits configuration later.
+
+## 8. Bestehende Medien / Migration
+
+Options:
+- Keine bestehenden Medien
+- Vorhandene LibraryRoots scannen
+- Migration aus anderem System fortsetzen
+
+### Existing Library scan
+
+Options may include:
+- analyze files
+- use metadata/provider IDs
+- inspect sidecars
+- probe media
+- mark uncertain mappings for review
+
+Unresolved folders/files are sent into the dedicated Library Reconciliation flow.
+
+Do not silently rename/move files during setup.
+
+### Migration
+
+If setup was started with migration:
+- show current migration state
+- continue unresolved mapping
+- show imported settings/profiles/monitoring where relevant
+- allow return to the dedicated Migration Center for complex conflicts
+
+## 9. Zusammenfassung, Test & Fertig
+
+This combines the previous:
+- Zusammenfassung & Test
+- Fertig
+
+into one final screen.
+
+### Configuration summary
+
+Show compact rows:
+- System
+- Owner/Admin
+- Instance & Modules
+- Storage
+- Downloader
+- Providers
+- AI
+- Existing media/migration
+
+Each row:
+- status
+- concise detail
+- edit action
+
+### Final tests
+
+Run:
+- database readiness
+- Storage read/write
+- LibraryRoot validation
+- downloader health if enabled
+- required provider health
+- AI provider/model health if enabled
+- unresolved blocking migration/setup conflicts
+
+Result states:
+- Passed
+- Warning
+- Failed
+
+Blocking failures prevent finishing.
+
+### Complete setup
+
+When all required checks pass:
+- `Setup abschließen`
+
+The same screen transitions to the finished state:
+- setup completed
+- configuration saved
+- tests passed / warnings count
+- modules enabled
+- libraries prepared
+
+Primary action:
+- `Zu Jularr`
+
+Secondary:
+- `Setup erneut öffnen`
+
+No separate final page is necessary.
+
+## Resume behavior
+
+The wizard is resumable.
+
+Persist:
+- completed step
+- current step
+- validated settings
+- pending warnings
+- migration reference if one exists
+
+On reopening:
+- continue from the last incomplete meaningful step;
+- rerun readiness checks that may have become stale.
+
+Do not rely only on browser-local state.
+
+## Validation behavior
+
+Validation happens both:
+- inside the relevant step;
+- once again in the final system test.
+
+A successful earlier test does not permanently suppress a later failure.
+
+## Ownership boundaries
+
+Setup Wizard orchestrates configuration but does not own the underlying data.
+
+Ownership remains:
+- Accounts -> owner/admin
+- Instance Settings -> instance/module switches
+- Storage -> mounts/roles/LibraryRoots
+- Downloader -> native/external downloader configuration
+- Providers -> provider configuration
+- AI -> AI provider/model/task settings
+- Migration -> external/legacy migration
+- Library Reconciliation -> ambiguous filesystem mapping
 
 ## Light / Dark
-Both first-class; theme can be selected during setup but defaults remain usable.
+
+Both first-class.
+
+Theme may be selectable during setup, but setup must remain usable without choosing a theme.
 
 ## Platforms
-Desktop/tablet primary; mobile supported for simple setup. TV setup is not required beyond pairing/server selection in native client flows.
 
-## States
-Fresh instance, validation warning/error, storage unavailable, optional provider failure, resumable incomplete setup, completed.
+### Desktop
+Primary setup experience.
+
+### Tablet
+Fully supported with stacked sections.
+
+### Mobile
+Supported for basic setup, but complex Storage/Migration mapping may use full-screen pages and should not squeeze desktop tables.
+
+### TV
+Initial server pairing/client selection may exist elsewhere; the full Admin setup wizard is not required on TV.
+
+## Required states
+
+- fresh instance
+- existing owner
+- system check running
+- blocking system failure
+- non-blocking warning
+- module disabled
+- storage unavailable
+- insufficient permissions
+- provider unavailable
+- downloader connection failed
+- AI skipped/disabled
+- migration in progress
+- migration conflict
+- media scan running
+- resumable incomplete setup
+- final validation failed
+- completed
 
 ## Must not implement
-No SQLite production setup path, no requirement to configure every provider, no arbitrary filesystem access, no default broad permissions for non-owner users, no media-type-specific database setup.
+
+- No separate decorative Welcome page when Start/System can contain it.
+- No separate final success page when final validation/results can transition in place.
+- No SQLite production setup path.
+- No duplicate setup-only settings model.
+- No arbitrary unrestricted filesystem access.
+- No requirement to configure every optional provider.
+- No default broad permissions for non-owner users.
+- No media-type-specific database setup.
+- No silent file rename/move during setup.
+- No permanent dependency on setup wizard after completion.
