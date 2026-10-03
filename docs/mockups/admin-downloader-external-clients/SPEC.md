@@ -52,17 +52,47 @@ Secrets are masked/write-only.
 
 ## Remote path mapping
 
-Needed when external client and Jularr see different filesystem paths.
+Needed only when this external client and Jularr see the same underlying storage under different path prefixes.
+
+Example:
+
+`/downloads/complete/tv` reported by the external client
+→ `/media/downloads/complete/tv` as visible to Jularr.
+
+Remote path mappings are owned **per external client adapter**. Do not create a second global Acquisition/Import mapping list.
 
 Mapping fields:
 - external/remote path prefix
-- Jularr-local permitted path
-- optional host/client scope
+- Jularr-local target selected from permitted Storage
+- optional media/category scope when one client exposes different mounts per category
+
+The local side should be selected through Storage-aware controls rather than unrestricted filesystem text entry.
+
+### Matching semantics
+
+Use one canonical shared path-mapping implementation:
+- longest matching remote prefix wins;
+- path-boundary aware matching;
+- deterministic ordering;
+- slash/backslash normalization where applicable;
+- no mapping means the reported path remains unchanged.
+
+### Live test
+
+The editor provides a test input:
+
+`reported path → resolved Jularr path → reachable/unreachable`
+
+The test uses the exact same resolver as completed-download import.
 
 Validation:
-- local side must resolve inside a permitted Storage Mount
-- overlapping mappings must be deterministic
-- unmapped completed path blocks import and creates actionable To-Do
+- local side must resolve inside a permitted Storage Mount;
+- overlapping mappings must remain deterministic;
+- resolved target must not escape the configured local root;
+- unmapped/unreadable completed path blocks import and creates actionable To-Do;
+- test failures do not mutate Storage.
+
+The native Jularr downloader does not use these mappings in normal operation.
 
 ## Category mapping
 
@@ -120,6 +150,8 @@ Additional:
 
 - No external client requirement for normal Jularr operation.
 - No arbitrary local path outside Storage.
+- No duplicate global remote-path mapping page.
+- No remote-path mapping for the native downloader.
 - No cleartext API keys after save.
 - No assumption every client supports identical actions.
 - No torrent-client UI unless separately approved.
