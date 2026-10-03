@@ -80,6 +80,8 @@ Library is a real destination and is not merged into Home.
 
 Collections remains an internal Library subview.
 
+Games does not occupy a permanent Mobile bottom-navigation slot. When Games is available, its dedicated route is reached contextually through Home Games/Continue Playing surfaces, global Search/Discover Games context, Game Detail/back-navigation and deep links. Home must keep the Games destination discoverable even when there is no recent Game activity.
+
 Admin/settings/detail workflows use contextual navigation rather than trying to fit desktop sidebar structures into the bottom bar.
 
 ### TV
