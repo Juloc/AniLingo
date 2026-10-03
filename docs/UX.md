@@ -823,6 +823,37 @@ Current implementation has a real **In-App** sink only. Push/Digest exist in the
 
 Profile Notification Settings continue to own each user's event preferences. Activity/History remain operational-job surfaces and are not duplicated by notification delivery history.
 
+## 27e. Admin Backup & Restore
+
+Binding specification:
+- `docs/mockups/admin-backup-restore/SPEC.md`
+
+Backup & Restore manages versioned Jularr **application-state** backups, automatic scheduling/retention, validation and compatibility-aware restore.
+
+Normal backups include canonical database/application/configuration state and explicitly registered durable non-database state. They do **not** copy canonical media payload files.
+
+Backup destinations are Storage-owned Backup Targets. Restore uses preflight + semantic preview + explicit confirmation, creates a verified Pre-Restore safety backup before destructive mutation, validates after restore and reports partial/failure states explicitly. Legacy Acquisition-only backup bundles are migration inputs, not a second permanent backup system.
+
+## 27f. Admin Migration Center
+
+Binding specification:
+- `docs/mockups/admin-migration/SPEC.md`
+
+Migration Center is the preview-first import/handover surface for older Jularr data and supported external managers/media servers.
+
+It normalizes source state into canonical Jularr contracts:
+- Media Core / Library;
+- Storage LibraryRoots;
+- Monitoring/Wanted;
+- Acquisition Profiles + shared Release Rules;
+- Accounts/Profile progress where the source supports them.
+
+Source-specific path translation belongs to that migration/coexistence adapter and resolves only into permitted Storage. External downloader mappings remain with Downloader → Externe Clients. There is no standalone global Import & Routing/Remote Path Mapping destination.
+
+Dry Run is mandatory before persistent migration. Unsupported or ambiguous source semantics remain visible in preview/report rather than being silently guessed.
+
+The existing Sonarr coexistence safety behavior remains preserved until the general cross-source ownership/coexistence product contract is explicitly approved.
+
 ## 28. Responsive profiles
 
 ### Mobile
