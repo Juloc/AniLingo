@@ -487,7 +487,7 @@ Browser and phone native player behavior:
 
 - single tap video: show/hide controls
 - double tap left video zone: -10 seconds
-- double tap right video zone: +10 seconds
+- double tap right video zone: +30 seconds
 - drag/scrub timeline: seek
 - tap Japanese subtitle: Learn current line
 - tap word in learning sheet: word details
