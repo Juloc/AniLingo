@@ -343,7 +343,7 @@ It may show a small set such as:
 - XP today/week;
 - Review accuracy.
 
-Do not show a full analytics chart on Learning Home. Detailed charts, heatmaps and trends belong to Progress/Stats.
+Do not show a full analytics chart on Learning Home. Detailed charts and trends belong to the binding Progress/Achievements surface: `docs/mockups/progress-achievements/SPEC.md`.
 
 ## 15. Learning tools
 
