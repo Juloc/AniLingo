@@ -29,6 +29,7 @@ Whenever an Original Jularr mockup intentionally uses the Jularr mascot/anime gi
 - `reader/SPEC.md`
 - `calendar/SPEC.md`
 - `learning-home/SPEC.md`
+- `course-detail/SPEC.md` — Learning curriculum / Chapter / Lesson navigator
 - `lesson-review/SPEC.md`
 - `user-settings/SPEC.md`
 - `profile-activity/SPEC.md`
