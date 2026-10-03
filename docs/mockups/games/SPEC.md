@@ -128,7 +128,7 @@ They get no direct PostgreSQL, Jularr configuration/secrets or unrelated library
 Every relevant surface must account for:
 - available/playable
 - available but no compatible runtime
-- requested/downloading/importing
+- requested/downloading/preparing
 - metadata incomplete
 - missing BIOS/firmware
 - runtime unavailable/degraded
