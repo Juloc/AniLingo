@@ -21,6 +21,8 @@ When Learning is unavailable at either hard gate:
 
 A personal Off never disables shared instance Learning data/work needed by other users.
 
+Binding Learning system contracts: `docs/LEARNING_PEDAGOGY.md`, `docs/LEARNING_EXERCISES.md`, `docs/LEARNING_PROGRESS.md`, `docs/LEARNING_PRACTICE_REVIEW.md`, `docs/LEARNING_GAMIFICATION.md`.
+
 V1 includes:
 - Learning Dashboard;
 - structured courses;
@@ -129,6 +131,8 @@ It combines:
 The card may use an Original J themed illustration/background in Original Jularr, but the progress data and CTA must remain readable independently of that artwork.
 
 ### Combined Daily Goal
+
+Canonical goal, active-time and streak semantics are defined in `docs/LEARNING_GAMIFICATION.md`.
 
 The user may configure a preferred target using combinations of:
 - XP;
