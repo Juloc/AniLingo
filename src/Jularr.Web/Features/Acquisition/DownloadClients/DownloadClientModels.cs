@@ -172,7 +172,8 @@ public sealed record DownloadOperationDetails(
             ClientEntryId,
             AcquisitionAccessNames.Kind(MediaKind),
             string.IsNullOrWhiteSpace(Category) ? null : Category.Trim(),
-            Import),
+            Import,
+            string.IsNullOrWhiteSpace(TargetKey) ? null : TargetKey.Trim()),
         JsonOptions);
 
     public static bool TryParse(string? json, out DownloadOperationDetails? details)
@@ -195,7 +196,8 @@ public sealed record DownloadOperationDetails(
                 persisted.ClientEntryId,
                 AcquisitionAccessNames.ParseKind(persisted.MediaKind),
                 string.IsNullOrWhiteSpace(persisted.Category) ? null : persisted.Category.Trim(),
-                persisted.Import);
+                persisted.Import,
+                string.IsNullOrWhiteSpace(persisted.TargetKey) ? null : persisted.TargetKey.Trim());
             return true;
         }
         catch (JsonException)
