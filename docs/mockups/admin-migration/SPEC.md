@@ -92,6 +92,18 @@ The existing Sonarr safety behavior remains the implementation baseline for the 
 
 Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
 
+### Monitoring state during handover
+
+When a Work changes from **Extern verwaltet** to **Jularr verwaltet**, Jularr imports the source monitoring state into the canonical Jularr monitoring model where a safe semantic equivalent exists.
+
+Rules:
+- Work/Season/Episode monitoring granularity is preserved where supported;
+- the handover preview shows the exact monitoring changes before commit;
+- unsupported source monitoring semantics are shown as warnings and are not guessed;
+- ownership mode and monitoring state remain separate concepts;
+- changing ownership must not silently broaden monitoring beyond the source state;
+- explicit Jularr monitoring choices made after migration are not later overwritten by read-only source observation.
+
 ### Handover confirmation
 
 For integrations that can change source monitoring, switching to **Jularr verwaltet** shows a concise handover confirmation.
