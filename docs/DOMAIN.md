@@ -395,6 +395,8 @@ Cross-media is a normal Collection capability, not a separate kind. Franchise/ad
 
 A `CollectionEntry` references a local Work ID. It never stores provider IDs as canonical media identity or duplicates canonical title/progress/rating metadata as a source of truth.
 
+Games does not enter this Work-based Collection model in V1. Games owns `Game` identity outside MediaCore; future cross-domain Collections require an explicit typed target contract rather than coercing Game into Work.
+
 Linked Collection sync follows:
 
 ```text
