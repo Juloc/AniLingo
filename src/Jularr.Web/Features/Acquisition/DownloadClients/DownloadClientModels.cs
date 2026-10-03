@@ -159,7 +159,8 @@ public sealed record DownloadOperationDetails(
     Guid ClientEntryId,
     MediaAcquisitionKind MediaKind,
     string? Category,
-    DownloadImportDetails? Import = null)
+    DownloadImportDetails? Import = null,
+    string? TargetKey = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -211,7 +212,8 @@ public sealed record DownloadOperationDetails(
         Guid ClientEntryId,
         string MediaKind,
         string? Category,
-        DownloadImportDetails? Import = null);
+        DownloadImportDetails? Import = null,
+        string? TargetKey = null);
 }
 
 public sealed record DownloadClientSubmitResult(
