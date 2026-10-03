@@ -157,7 +157,16 @@ If a complex item needs editing, use a dialog/sheet or one focused editor reache
 
 Purpose: visual application appearance only.
 
-### Theme
+### Visual style
+- Clean
+- Original Jularr
+
+Clean is the neutral/minimal skin and uses no decorative Japanese/anime application backgrounds.
+Original Jularr is the Japanese ink/watercolor/cherry-blossom skin over the same components/layout.
+
+Changing visual style must not change navigation, feature availability or page structure.
+
+### Brightness
 - System
 - Light
 - Dark
@@ -165,9 +174,13 @@ Purpose: visual application appearance only.
 Use segmented choice or radio group.
 
 ### Accent
-- Jularr default
+- Jularr default for the selected visual style
 - supported accent presets
 - custom accent only if the shared token system supports it safely
+
+Clean defaults to purple. Original Jularr defaults to the established red/pink treatment.
+
+Accent changes use semantic design tokens and may hue-shift permitted branded/decorative elements coherently. Do not recolor third-party provider logos or semantic success/warning/error colors merely to match the accent.
 
 Show a small live preview, not a separate preview page.
 
@@ -464,9 +477,11 @@ Never reveal stored secret values after save.
 
 ## 15. Connections
 
-External user-facing account integrations.
+External **Profile Connections** for sync/import/write-back.
 
-Examples may include AniList, MAL or future compatible services; only actually implemented connectors appear.
+Examples may include Plex, Jellyfin, Trakt, AniList, MAL or future compatible services; only actually implemented connectors appear.
+
+A Connection is not automatically an Account login identity. The same provider may expose Login capability, Connection capability, both or neither. Signing in through a provider does not silently enable profile sync.
 
 ### Connection row
 - service
@@ -565,6 +580,11 @@ Depending on supported auth:
 - passkeys/security keys
 - two-factor authentication
 - recovery options
+- linked Login identities/providers
+
+Linked Login identities belong to the Account. Removing one must not strand the Account without a valid authentication/recovery path.
+
+Profile PIN management is separate from Account authentication and only protects Profile activation/switching.
 
 ### Sign-in security
 - recent sign-ins/security events where available
