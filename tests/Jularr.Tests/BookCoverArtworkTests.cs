@@ -138,6 +138,64 @@ public sealed class BookCoverArtworkTests
     }
 
     [TestMethod]
+    public async Task TargetedPdfImportKeepsExistingCatalogIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync(withLibraryRoot: false);
+        await using var original = new MemoryStream(
+            new EpubTestBuilder
+            {
+                Title = "Dune",
+                Author = "Frank Herbert",
+                Language = "en",
+                Identifier = "urn:uuid:dune-before-pdf"
+            }
+                .Chapter("c1.xhtml", "Book One", "Original chapter text.")
+                .BuildBytes());
+
+        var workId = await fixture.Service.ImportUploadedEpubAsync(
+            original,
+            "dune.epub",
+            CancellationToken.None);
+        var work = await fixture.Db.NovelWorks.SingleAsync(x => x.Id == workId);
+        work.MetadataProvider = BookCatalogService.CatalogRequestProvider;
+        work.MetadataExternalId = "ol-dune";
+        work.MetadataTitle = "Dune";
+        await fixture.Db.SaveChangesAsync();
+
+        var pdfPath = Path.Combine(fixture.TempRoot, "dune.pdf");
+        await File.WriteAllTextAsync(pdfPath, "%PDF-1.4\n%%EOF\n");
+
+        var imported = await fixture.Service.ImportPdfFileAsync(
+            pdfPath,
+            "dune.pdf",
+            "download",
+            new BookImportHint(
+                "ol-dune",
+                "Dune",
+                "Frank Herbert",
+                null,
+                ExistingWorkId: workId),
+            CancellationToken.None);
+
+        Assert.AreEqual(workId, imported);
+        Assert.AreEqual(1, await fixture.Db.NovelWorks.CountAsync());
+
+        fixture.Db.ChangeTracker.Clear();
+        var preserved = await fixture.Db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == workId);
+        Assert.AreEqual(BookCatalogService.CatalogRequestProvider, preserved.MetadataProvider);
+        Assert.AreEqual("ol-dune", preserved.MetadataExternalId);
+        Assert.AreEqual("Dune", preserved.MetadataTitle);
+        StringAssert.StartsWith(preserved.Format, "PDF:");
+
+        var primary = await (
+            from edition in fixture.Db.BookEditions.AsNoTracking()
+            join file in fixture.Db.BookFiles.AsNoTracking() on edition.Id equals file.EditionId
+            where edition.WorkId == workId && edition.IsPrimary && file.IsPrimary
+            select file).SingleAsync();
+        Assert.AreEqual(BookFileFormats.Pdf, primary.Format);
+    }
+
+    [TestMethod]
     public async Task NoLibraryRootConfiguredKeepsUsingDataCovers()
     {
         await using var fixture = await Fixture.CreateAsync(withLibraryRoot: false);
