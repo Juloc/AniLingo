@@ -1467,7 +1467,7 @@ public sealed partial class BookCatalogService(
         var targeted = existingWorkId is Guid;
         var work = targeted
             ? await db.NovelWorks.SingleOrDefaultAsync(
-                x => x.Id == existingWorkId
+                x => x.Id == existingWorkId!.Value
                     && x.SourceProvider == ImportedBookProvider,
                 cancellationToken)
             : await db.NovelWorks.SingleOrDefaultAsync(
@@ -1540,7 +1540,9 @@ public sealed partial class BookCatalogService(
             cancellationToken);
         work.CoverImageUrl = storedCover || hadLocalCover
             ? $"/Books/Cover/{work.Id}"
-            : null;
+            : targeted
+                ? work.CoverImageUrl
+                : null;
 
         work.Format = "EPUB:" + NormalizeSourceLanguage(
             parsed.Language);
