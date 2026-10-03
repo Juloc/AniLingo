@@ -405,6 +405,12 @@ Tags should be informational and not visually dominant in user UI.
 
 ---
 
+## Operational-record boundary
+
+**Jobs & Nutzung** is a domain-focused projection of AI execution plus AI-specific usage/cost telemetry. It must not create a second global Activity/History job store.
+
+Canonical operational state remains shared with Activity / To-Do / History; AI may keep additional AI-specific usage/provenance records where required.
+
 ## 6. Jobs & Nutzung
 
 ### Purpose
