@@ -6,11 +6,20 @@ Status: **binding V1 planning specification for Learning Home mockups**. This in
 
 Learning is an optional Jularr product area.
 
-An instance owner must be able to disable Learning completely when Jularr is used mainly as a media/request/Arr-stack replacement. When disabled:
-- Learning navigation disappears;
-- Learning dashboard/widgets disappear;
-- Learning-specific Player/Reader actions disappear unless a separately enabled language-tool policy explicitly permits them;
-- Learning-specific jobs/background work do not run unnecessarily.
+An instance owner must be able to disable Learning completely when Jularr is used mainly as a media/request/Arr-stack replacement.
+
+When the instance enables Learning, each permitted profile can also turn the **Learning module On or Off for itself** from User Settings → Modules & Features.
+
+Precedence:
+`instance Learning -> authorization -> profile Learning module preference -> detailed Learning capabilities/settings`.
+
+When Learning is unavailable at either hard gate:
+- Learning navigation/dashboard/widgets disappear for the affected scope/profile;
+- Learning-specific Player/Reader actions disappear;
+- profile-specific Learning jobs/notifications/sync do not run unnecessarily;
+- stored courses, cards, progress and settings are preserved.
+
+A personal Off never disables shared instance Learning data/work needed by other users.
 
 V1 includes:
 - Learning Dashboard;
@@ -343,9 +352,16 @@ The user must not need Settings to discover how to start.
 
 ### Learning disabled
 If instance policy disables Learning completely:
-- hide Learning nav;
+- hide Learning nav for everyone;
 - hide dashboard/widgets;
+- stop instance/profile Learning work according to the module gate;
 - do not render dead module cards.
+
+If the instance enables Learning but the current profile turns its Learning module Off:
+- hide Learning nav/dashboard/widgets for that profile;
+- hide Player/Reader Learning entry points for that profile;
+- preserve all Learning state;
+- expose the personal Learning toggle only through User Settings → Modules & Features so it can be turned back On.
 
 ### Gamification disabled
 Courses, Lessons, Reviews, Vocabulary, Sentences and Media Learning continue normally.

@@ -75,16 +75,71 @@ Requirements:
 - preserve positioning/styling where supported and appropriate;
 - embedded, external and generated subtitle provenance is not shown as permanent badges.
 
-### Layer C — interactive learning subtitle layer
+### Layer C — optional interactive Learning layer
 
-When learning mode is enabled, interactive cues sit in their own hit-test layer.
+Learning is an **optional live Player mode**, not a replacement Player and not a permanent modification of normal playback.
 
-Rules:
-- remain visible when normal player controls auto-hide;
+The Learning control exists only when all of these are true:
+- the **instance Learning module** is enabled;
+- the current **profile has Learning enabled for itself**;
+- the profile is permitted to use the relevant Learning capabilities;
+- the current content exposes usable Learning/subtitle data for the requested interaction.
+
+If any of those conditions is false:
+- no Learning toggle is shown;
+- no hidden Learning hit targets remain active;
+- no Learning panel, cue styling or gesture override affects playback;
+- the Player behaves exactly like the normal non-Learning Player.
+
+### Normal mode vs Learning mode
+
+**Learning Off** is the normal Player:
+- normal subtitles behave normally;
+- Learning cues are not interactive;
+- no Learning popover/sheet/sidebar is present;
+- normal click/tap/seek behavior is unchanged;
+- Learning must not reserve extra layout space or alter playback controls beyond the availability of the toggle itself.
+
+**Learning On** activates only the Learning presentation/interaction layer:
+- interactive cues become available;
+- word/sentence inspection becomes available;
+- Save / Learn / Known / Ignore and other permitted Learning actions can be used;
+- Learning subtitles remain visible when transient playback controls auto-hide.
+
+The user can toggle Learning **On/Off while playback is running**.
+
+Toggling Learning must **not**:
+- recreate the PlaybackPlan;
+- recreate the ActiveSession;
+- seek or reset playback position;
+- change selected audio/subtitle tracks;
+- change quality, speed or display mode;
+- mark progress/completion differently by itself.
+
+Turning Learning Off:
+- closes any open Learning popover/sheet/panel;
+- removes Learning hit targets immediately;
+- returns subtitle interaction to normal playback behavior;
+- preserves the same ActiveSession and position.
+
+Turning Learning On:
+- enables the Learning layer in-place;
+- does not pause playback merely because the mode was enabled;
+- does not force the user into an inspector or lesson.
+
+### Initial Player state
+
+The default session state is **Learning Off** so normal watching is never implicitly replaced by study behavior.
+
+A future explicit user preference such as `Start Player in Learning mode` may opt into another initial state. Do not infer the initial state from historic Learning cards or merely from Learning being enabled for the profile.
+
+### Learning interaction rules
+
+When Learning mode is On:
 - tapping a term/sentence must never trigger generic player tap/click gestures;
-- opening a word/sentence detail must preserve playback position, selected tracks and paused/playing state;
-- returning closes the learning detail without recreating the playback session;
-- if learning text is unavailable, normal playback remains fully usable.
+- opening a word/sentence detail preserves playback position, selected tracks and the pre-detail paused/playing state;
+- closing the detail returns to the same ActiveSession;
+- if Learning data becomes unavailable, normal playback remains fully usable.
 
 Desktop can use a compact anchored popover/side panel. Tablet landscape may use a side sheet. Mobile uses a bottom sheet. TV uses a remote-focusable overlay/panel with large targets and no pointer assumptions.
 
@@ -123,7 +178,7 @@ Controls auto-hide only during active playback and only when no menu, sheet, lea
 
 Menus never navigate away from the active Player.
 
-Shared menu groups:
+Shared menu/action groups:
 - Audio;
 - Subtitles;
 - Quality;
@@ -131,7 +186,15 @@ Shared menu groups:
 - Fit / Fill / Zoom;
 - Chapters / skip segments where available;
 - Diagnostics in overflow;
-- Learning toggle/tools only when capability and content allow it.
+- **Learning On/Off** as a real playback-mode toggle when instance + profile + capability + content allow it.
+
+Learning is a relatively frequent mode switch when available and must not be buried only in deep Settings:
+- Desktop: direct action in the right-side Player action group;
+- Tablet: direct action in the settings/action row below the timeline;
+- Mobile: compact direct Learning action while chrome is visible; the general Settings gear remains for low-frequency settings;
+- TV: direct focusable Learning action in the settings row.
+
+The toggle uses an explicit selected/on state (`aria-pressed` or platform equivalent) and a clear label/icon; it must not look like a one-shot command.
 
 Only one secondary panel should be open at a time.
 
@@ -751,8 +814,11 @@ The Player must not query legacy Anime/Episode-only tables as its permanent sour
 - No arbitrary filesystem path or FFmpeg command supplied by the client.
 - No `iOS = transcode`, `MKV = transcode` or similar hard-coded platform decision matrix in UI code.
 - No desktop “single click toggles controls” behavior; desktop single click on unobstructed video is Play/Pause.
-- No learning subtitle hit target that falls through to generic player gestures.
-- No hiding learning subtitles merely because transient player controls hide.
+- No Learning subtitle hit target that falls through to generic player gestures.
+- No hiding Learning subtitles merely because transient player controls hide.
+- No permanent Learning behavior, hit target, spacing or forced pause while Learning mode is Off.
+- No Learning toggle when the instance or profile has Learning disabled or the current content cannot support it.
+- No PlaybackPlan/ActiveSession recreation merely to toggle Learning On/Off.
 - No TV mouse/hover assumptions.
 - No dense technical codec/bitrate panel in the default Player.
 - No admin release/indexer/download information in normal playback UI.
@@ -771,7 +837,10 @@ The Player must not query legacy Anime/Episode-only tables as its permanent sour
 
 A Player mockup is acceptable only when:
 - media remains visually primary;
-- normal, subtitle and learning layers are visibly separable;
+- normal, subtitle and Learning layers are visibly separable;
+- Learning Off is behaviorally equivalent to the normal Player except for the optional visible toggle;
+- Learning can be switched On/Off live without recreating or changing the playback session;
+- Learning controls appear only after instance gate + profile opt-in + permission/capability + content eligibility resolve true;
 - Desktop click behavior can be implemented without ambiguity;
 - Mobile gesture/tap regions do not conflict with learning subtitles;
 - Desktop transport remains centered independently from left-side volume and right-side settings;

@@ -207,9 +207,16 @@ Technical Direct Play/Remux/Transcode diagnostics stay outside normal user contr
 
 ## 9. Learning subtitles
 
-Player controls, normal subtitles and interactive learning subtitles are separate layers.
+Player controls, normal subtitles and interactive Learning subtitles are separate layers.
 
-Learning subtitles:
+Learning in the Player is an optional live mode:
+- Learning UI exists only when the instance enables Learning, the current profile has Learning personally enabled, permissions/capabilities allow it and the content supports it;
+- when available, the Player exposes an explicit **Learning On/Off** toggle during playback;
+- **Learning Off is normal playback**: no Learning hit targets, forced pauses, extra layout reservation or altered gestures;
+- switching Learning On/Off does not recreate the PlaybackPlan/ActiveSession, seek, change tracks/quality or otherwise restart playback;
+- turning Learning Off closes Learning details and returns immediately to normal Player interaction.
+
+When Learning is On, interactive subtitles:
 - remain visible while player controls hide;
 - never accidentally trigger generic player tap gestures;
 - allow word/sentence interaction;
@@ -288,10 +295,16 @@ Sections:
 - Playback
 - Audio & subtitles
 - Reader
+- **Modules & Features** — personal On/Off for instance-enabled, permitted optional modules
 - Learning
 - AI / personal provider
 - Devices
 - Account/security
+
+Module availability resolves as:
+`instance module -> authorization/capability -> profile module preference -> detailed feature setting`.
+
+A profile module toggle can only narrow availability. It cannot enable an instance-disabled or unauthorized module. Turning a module Off preserves its stored state and does not stop shared instance work required by other users.
 
 Appearance supports Light/Dark/System and configurable accent/color scheme through shared tokens.
 
