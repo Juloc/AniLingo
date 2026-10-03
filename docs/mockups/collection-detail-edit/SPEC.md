@@ -372,7 +372,7 @@ Use the shared normalized Media Facts/projections.
 ### Availability
 - local;
 - complete/partial/missing;
-- requested/wanted;
+- requested / active acquisition;
 - monitored where canonical product semantics support it.
 
 ### Video / technical / language
