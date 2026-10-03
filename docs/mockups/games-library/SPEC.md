@@ -1,139 +1,231 @@
-# Games — Library/Home — Planning Direction
+# Games — Library/Home
 
-Status: navigation/product direction approved; detailed visual mockup pending review.
+Status: approved product/UX direction; approved visual reference will be uploaded by the owner into this folder.
 
 Shared contract: `docs/mockups/games/SPEC.md`.
+Games architecture: #725.
+UX planning: #729.
+Initial browser runtime: #771.
 
 ## Purpose
 
-Primary consumer Games destination.
+`/Games` is Jularr's dedicated consumer Games destination.
 
-Games is a dedicated top-level consumer area, not a `Games` type tab inside the normal Library. It still reuses Jularr's shared shell, cards, Search/Discover, Request, profile and acquisition infrastructure.
+Games is intentionally not a type tab inside the normal media Library. It still uses the shared Jularr shell, Search/Discover, Request, profile, Activity, Acquisition, Downloader and Storage infrastructure.
 
-## Desktop/tablet structure
+## Desktop composition
 
-Initial page order:
+Order:
 
-1. page header / compact controls
-2. `Continue Playing`, only when the current profile has resumable game activity
-3. Games library grid/list
-4. platform/filter/sort controls integrated into the library toolbar
+1. normal Jularr app shell with Games selected;
+2. compact Games header;
+3. local library search + platform filter + sort + view controls;
+4. `Continue Playing`, only when the current profile has resumable game activity;
+5. `Deine Spiele` library grid/list.
 
-Do not create a second dashboard full of statistics.
+Do not add a statistics/sidebar dashboard.
 
-## Header and controls
+## Header
 
-Plan for:
-- title: `Games`
-- local library search/filter
-- platform filter
-- sort
-- grid/list toggle where useful
-- global Search/Discover remains the entry point for finding/requesting games not yet owned
+Show:
+- `Games`;
+- short secondary line where useful;
+- local search: `Spiele durchsuchen…`;
+- platform filter, default `Alle Plattformen`;
+- sort;
+- grid/list toggle only if list view remains useful after implementation.
 
-No permanent downloader/import buttons in the consumer header.
+No consumer Add, Downloader, BIOS or Runtime configuration button.
+
+Finding/requesting new Games uses global Search/Discover + the shared Request flow.
 
 ## Continue Playing
 
-Show only when useful.
+Render only when at least one current-profile Game has resumable/recent play state.
 
-Each item may show:
-- cover/artwork
-- title
-- platform
-- last played / save availability when meaningful
-- `Continue`
+Use wider landscape cards than the normal library grid.
 
-Do not invent media-style percentage progress for games.
+Show:
+- artwork;
+- Game title;
+- platform;
+- concise last-played/save context;
+- `Continue`.
 
-Home may also show a shared `Continue Playing` row; the Games page remains the full Games collection.
+Do not invent percentage completion for games.
 
-## Games library
+`Continue` launches directly only when one valid LaunchPlan can be resolved without user choice. Otherwise it opens Play Options.
 
-Default presentation is cover/grid-first.
+Home may independently surface a smaller shared `Continue Playing` row.
 
-One card represents the canonical Game, not one ROM/file.
+## Deine Spiele
 
-Card information stays compact:
-- cover
-- title
-- primary platform or compact platform summary
-- `Play` / `Continue` only when launch is unambiguous and available
-- concise unavailable state only when useful
+Default view is cover/grid-first.
 
-Do not create a badge wall for region, revision, runtime, BIOS, hashes or file formats.
+One card represents one canonical `Game`, not one ROM/file.
 
-Multiple GameReleases/regions/revisions are handled on Game Detail.
+Show only glanceable information:
+- cover/artwork;
+- title;
+- primary platform or compact platform summary;
+- optional direct `Play`/`Continue` only when unambiguous;
+- concise unavailable state only when actionable.
 
-## Platform filtering
+Do not place region, revision, runtime, BIOS, checksum or file-format badge walls on cards.
+
+Multiple local releases are handled on Game Detail.
+
+## Platform filter
 
 Platform is the primary Games-specific filter.
 
-Do not use a permanent horizontal tab for every possible console once the platform count grows.
-
 Desktop/tablet:
-- compact platform selector/filter
-- common/recent platforms may optionally surface as quick choices
+- one compact selector;
+- optionally a few recent/common quick choices if the final mockup benefits from them.
 
-TV may use horizontal platform rows because that interaction fits remote navigation better.
+Do not create permanent tabs for every possible system.
 
-## Availability
+## Sort
 
-The Games collection primarily represents locally available/imported Games.
+Initial useful choices:
+- last played;
+- title;
+- recently added;
+- platform.
 
-Requested/downloading/importing states may be surfaced contextually when the Game is already known, but the page must not become a second Wanted/Downloader queue.
+Avoid speculative sort modes.
 
-Discovery/request of missing games remains in shared Search/Discover + Request.
+## Availability and acquisition
+
+The Games collection is primarily locally available/imported Games.
+
+A known Game may show a compact requested/downloading/importing state, but this page is never a second Wanted/Downloader queue.
+
+Missing/new Games are found through global Search/Discover.
 
 ## Navigation
 
-- card -> Game Detail
-- unambiguous Play/Continue -> launch directly
-- ambiguous release/runtime -> Game Play Options dialog
-- unavailable/missing game -> shared Search/Request path where appropriate
+- Game card -> Game Detail;
+- direct Play/Continue -> LaunchPlan when unambiguous;
+- ambiguous playable choice -> Play Options;
+- Search new Game -> global Search/Discover with Games filter;
+- acquisition/technical failures -> shared Activity/To-Do.
+
+## Read model
+
+The page should consume a dedicated Games read model rather than raw persistence/runtime DTOs.
+
+Conceptually:
+
+```text
+GamesPage
+- query/filter/sort
+- continuePlaying[]
+- games[]
+- totalCount
+- availablePlatforms[]
+
+GameCard
+- GameId
+- Title
+- Artwork
+- PlatformSummary
+- Availability
+- LaunchCapability
+- OptionalRecentPlay
+
+ContinueGameCard
+- GameId
+- GameReleaseId
+- Title
+- Artwork
+- Platform
+- LastPlayedAt
+- SaveAvailable
+- LaunchCapability
+```
+
+`LaunchCapability` is a small application result such as:
+- PlayNow
+- NeedsChoice
+- Unavailable(reason)
+
+It must not expose EmulatorJS/native runtime implementation details to the page.
+
+## Runtime relationship
+
+#771 defines EmulatorJS as the first low-friction browser runtime.
+
+The Games page does not instantiate EmulatorJS or construct core/file URLs.
+
+Flow:
+
+```text
+Games page
+ -> Play/Continue
+ -> Games application service resolves GameRelease
+ -> runtime capability resolver
+ -> LaunchPlan
+ -> Game Player
+```
+
+This keeps EmulatorJS replaceable and allows later runtimes without changing the library page.
 
 ## TV direction
 
-The dedicated Games destination is first-class on TV.
+Games is first-class on TV.
 
-TV layout may differ from Desktop:
-- large focusable game cards
-- `Continue Playing` first
-- horizontal rows such as platform collections
-- remote/gamepad focus navigation
-- clear controller/session state only when entering play
+TV may render the same content model differently:
+- Continue Playing first;
+- large focusable cards;
+- horizontal platform rows;
+- remote/gamepad focus navigation.
 
-Do not squeeze the Desktop grid/filter toolbar onto TV.
+Do not squeeze Desktop filters into the TV layout.
 
 ## Mobile
 
-Mobile remains useful for:
-- browsing Games
-- detail/request
-- continuing browser-compatible games where supported
-- later acting as a paired TV controller
+Use:
+- compact header/search;
+- platform/sort filter sheet;
+- thumb-friendly grid;
+- horizontal Continue Playing.
 
-Use compact filters and a thumb-friendly grid/list.
+Phone-as-controller is a separate later game-session mode, not a Games-library interaction.
 
-Phone-controller mode is a separate play-session capability, not normal Games-page navigation.
+## Required states
 
-## Boundaries
+- loading;
+- empty library;
+- no search/filter results;
+- Continue Playing absent;
+- local Game but no playable runtime;
+- requested/downloading/importing;
+- metadata/artwork partial;
+- error/offline;
+- permission denied.
 
-- no downloader controls
-- no BIOS configuration
-- no runtime administration
-- no raw file browser
-- no separate acquisition engine
-- no duplicate Search/Discover catalogue
-- Request uses the shared Request flow
+Empty library primary action:
+- `Spiele suchen` -> global Search/Discover filtered to Games.
 
-## Open for visual review
+## Visual direction
 
-Still decide in the first mockup:
-- exact Desktop header composition
-- exact Continue Playing card size
-- grid card density/aspect ratio
-- platform filter presentation
-- whether list view is useful enough to keep
-- empty/loading/error states
-- responsive breakpoints
+Use the existing Jularr design system, not a new gaming theme.
+
+Both existing skins use the same information architecture:
+- Clean: dark/purple visual skin;
+- Jularr Original: light Japanese watercolor/cherry-blossom skin with red accent.
+
+The owner's approved Games mockup will be uploaded into this folder. Text spec wins on conflict.
+
+## Must not implement
+
+- no Games type tab inside normal Library;
+- no separate Games Search/Request engine;
+- no downloader queue;
+- no BIOS/runtime Admin controls;
+- no raw paths/files;
+- no per-ROM duplicate cards;
+- no fake game progress percentage;
+- no controller pairing on the library page;
+- no EmulatorJS-specific page logic.
