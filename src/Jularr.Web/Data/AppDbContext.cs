@@ -6,6 +6,7 @@ using Jularr.Web.Features.Audiobooks;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Collections;
+using Jularr.Web.Features.Games;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Learning.Curriculum;
@@ -39,6 +40,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         v => DateTime.Parse(v, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToUniversalTime());
 
     public DbSet<LibraryRoot> LibraryRoots => Set<LibraryRoot>();
+    public DbSet<Game> Games => Set<Game>();
+    public DbSet<GameTitle> GameTitles => Set<GameTitle>();
+    public DbSet<GameExternalIdentity> GameExternalIdentities => Set<GameExternalIdentity>();
+    public DbSet<GameArtwork> GameArtworks => Set<GameArtwork>();
+    public DbSet<GamePlatform> GamePlatforms => Set<GamePlatform>();
+    public DbSet<GameRelease> GameReleases => Set<GameRelease>();
+    public DbSet<GameReleaseHash> GameReleaseHashes => Set<GameReleaseHash>();
+    public DbSet<GameReleaseFile> GameReleaseFiles => Set<GameReleaseFile>();
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
@@ -158,6 +167,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.WakeBroadcastAddress).HasMaxLength(64);
             entity.HasIndex(x => x.Path).IsUnique();
         });
+
+        GamesModelConfiguration.Configure(modelBuilder);
 
         modelBuilder.Entity<LibraryReconciliationPlan>(entity =>
         {
