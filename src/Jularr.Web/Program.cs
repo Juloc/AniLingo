@@ -339,6 +339,7 @@ builder.Services.AddSingleton<MediaOptimizationQueue>();
 builder.Services.AddScoped<MediaContainerOptimizer>();
 builder.Services.AddScoped<IMediaFileReplacementParticipant, AcquisitionMediaReplacementParticipant>();
 builder.Services.AddHostedService<MediaOptimizationRecoveryService>();
+builder.Services.AddScoped<LibraryRootRoutingService>();
 builder.Services.AddSingleton<LibraryScanCoordinator>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
 builder.Services.AddHostedService<LibraryWatchService>();

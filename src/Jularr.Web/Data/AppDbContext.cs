@@ -40,6 +40,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         v => DateTime.Parse(v, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToUniversalTime());
 
     public DbSet<LibraryRoot> LibraryRoots => Set<LibraryRoot>();
+    public DbSet<LibraryRootContentAssignment> LibraryRootContentAssignments => Set<LibraryRootContentAssignment>();
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameTitle> GameTitles => Set<GameTitle>();
     public DbSet<GameExternalIdentity> GameExternalIdentities => Set<GameExternalIdentity>();
@@ -163,9 +164,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(120);
             entity.Property(x => x.Path).HasMaxLength(2048);
+            entity.Property(x => x.PlacementPolicy).HasConversion<int>();
             entity.Property(x => x.WakeMacAddress).HasMaxLength(32);
             entity.Property(x => x.WakeBroadcastAddress).HasMaxLength(64);
             entity.HasIndex(x => x.Path).IsUnique();
+        });
+
+        modelBuilder.Entity<LibraryRootContentAssignment>(entity =>
+        {
+            entity.HasKey(x => new { x.LibraryRootId, x.ContentType });
+            entity.Property(x => x.ContentType).HasConversion<int>();
+            entity.HasOne<LibraryRoot>()
+                .WithMany()
+                .HasForeignKey(x => x.LibraryRootId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => new { x.ContentType, x.IsDefault });
+            entity.HasIndex(x => x.ContentType)
+                .IsUnique()
+                .HasFilter("\"IsDefault\" = TRUE");
         });
 
         GamesModelConfiguration.Configure(modelBuilder);
