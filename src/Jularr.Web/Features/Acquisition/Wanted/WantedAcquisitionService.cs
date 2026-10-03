@@ -26,6 +26,20 @@ public interface IWantedRequestHandler
 }
 
 /// <summary>
+/// Request-independent monitored media behind the shared Wanted scheduler. Implementations refresh
+/// their media inventory, plan bounded searches and submit accepted releases; they do not own a
+/// timer or hosted service.
+/// </summary>
+public interface IMonitoredWantedHandler
+{
+    MediaAcquisitionKind Kind { get; }
+
+    Task<int> ProcessAsync(
+        DateTime nowUtc,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Generic durable Wanted lifecycle for request-backed media.
 ///
 /// It deliberately does not talk to SABnzbd directly. The shared download monitor projects
@@ -112,8 +126,29 @@ public sealed class WantedAcquisitionService(
                     ? group.Single()
                     : throw new InvalidOperationException(
                         $"More than one Wanted handler is registered for {group.Key}."));
+        var monitoredHandlers = services
+            .GetServices<IMonitoredWantedHandler>()
+            .GroupBy(handler => handler.Kind)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count() == 1
+                    ? group.Single()
+                    : throw new InvalidOperationException(
+                        $"More than one monitored Wanted handler is registered for {group.Key}."));
 
         var advanced = 0;
+        foreach (var handler in monitoredHandlers.Values)
+        {
+            if (instance is not null
+                && !instance.IsEnabled(AcquisitionInstanceModules.For(handler.Kind)))
+            {
+                continue;
+            }
+
+            advanced += await handler.ProcessAsync(
+                nowUtc,
+                cancellationToken);
+        }
         foreach (var handler in handlers.Values)
         {
             if (instance is not null

@@ -181,6 +181,26 @@ public sealed class WantedAcquisitionTests
     }
 
     [TestMethod]
+    public async Task SharedWantedPassRunsMonitoredHandlerWithoutARequest()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var monitored = new RecordingMonitoredWantedHandler();
+        var services = fixture.Services(
+            new RecordingWantedHandler(),
+            new RecordingImportAdapter(CompletedDownloadImportResult.Completed("unused")),
+            new FixedLocationResolver("/unused"),
+            monitored);
+
+        var advanced = await WantedAcquisitionService.ProcessOnceAsync(
+            services,
+            DateTime.UtcNow,
+            CancellationToken.None);
+
+        Assert.AreEqual(1, advanced);
+        Assert.AreEqual(1, monitored.Passes);
+    }
+
+    [TestMethod]
     public async Task UnsuitableCompletedReleaseReturnsToWantedHandler()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -455,6 +475,21 @@ public sealed class WantedAcquisitionTests
         }
     }
 
+    private sealed class RecordingMonitoredWantedHandler : IMonitoredWantedHandler
+    {
+        public MediaAcquisitionKind Kind => MediaAcquisitionKind.Book;
+
+        public int Passes { get; private set; }
+
+        public Task<int> ProcessAsync(
+            DateTime nowUtc,
+            CancellationToken cancellationToken)
+        {
+            Passes++;
+            return Task.FromResult(1);
+        }
+    }
+
     private sealed class RecordingImportAdapter(
         CompletedDownloadImportResult result,
         MediaAcquisitionKind kind = MediaAcquisitionKind.Manga)
@@ -604,8 +639,10 @@ public sealed class WantedAcquisitionTests
         public IServiceProvider Services(
             IWantedRequestHandler handler,
             ICompletedDownloadImportAdapter adapter,
-            ICompletedDownloadLocationResolver resolver) =>
-            new ServiceCollection()
+            ICompletedDownloadLocationResolver resolver,
+            IMonitoredWantedHandler? monitored = null)
+        {
+            var services = new ServiceCollection()
                 .AddSingleton(Db)
                 .AddSingleton(new AcquisitionAccessStore(Db))
                 .AddSingleton<IWantedRequestHandler>(handler)
@@ -613,8 +650,15 @@ public sealed class WantedAcquisitionTests
                 .AddSingleton<ICompletedDownloadLocationResolver>(resolver)
                 .AddSingleton<CompletedDownloadDispatcher>()
                 .AddSingleton<CompletedDownloadImportService>()
-                .AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>))
-                .BuildServiceProvider();
+                .AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>));
+
+            if (monitored is not null)
+            {
+                services.AddSingleton<IMonitoredWantedHandler>(monitored);
+            }
+
+            return services.BuildServiceProvider();
+        }
 
         public async ValueTask DisposeAsync()
         {
