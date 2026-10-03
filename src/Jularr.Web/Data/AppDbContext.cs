@@ -49,6 +49,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GameRelease> GameReleases => Set<GameRelease>();
     public DbSet<GameReleaseHash> GameReleaseHashes => Set<GameReleaseHash>();
     public DbSet<GameReleaseFile> GameReleaseFiles => Set<GameReleaseFile>();
+    public DbSet<GameImport> GameImports => Set<GameImport>();
+    public DbSet<GameImportFileEvidence> GameImportFileEvidence => Set<GameImportFileEvidence>();
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
