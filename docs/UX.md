@@ -670,6 +670,19 @@ Boundaries:
 
 Overview may show small current resource values, but detailed charts/history live only in Resources. System must not become a second Storage/Downloader/Provider/AI configuration hub.
 
+## 27b. Admin Appearance
+
+Binding specification:
+- `docs/mockups/admin-appearance/SPEC.md`
+
+Admin Appearance owns the instance default visual style and whether profiles may override theme/accent. It also exposes the current admin's existing profile-scoped `Detailliert | Kompakt` preference as a shortcut; that preference remains separate from instance appearance settings.
+
+Visual contract:
+- **Original Jularr** uses the established Japanese ink/watercolor/cherry-blossom treatment with red/pink default accent and may use anime/Japanese decorative references.
+- **Clean** is neutral/minimal with the purple default accent and never uses decorative anime/Japanese artwork. Clean theme previews should use representative film/series or real configured library media rather than anime artwork purely for decoration.
+
+Both styles are skins over the same routes, components, permissions and information architecture.
+
 ## 28. Responsive profiles
 
 ### Mobile
