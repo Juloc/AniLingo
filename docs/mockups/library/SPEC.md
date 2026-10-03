@@ -67,7 +67,7 @@ Consumer Library only projects the canonical Request/availability state.
 
 Examples:
 - Requested;
-- Searching;
+- Looking for media;
 - Downloading;
 - Preparing;
 - Partially available;
