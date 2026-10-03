@@ -604,7 +604,7 @@ This is a shared Admin-shell preference, not a per-page setting and not an insta
 
 Compact mode is table/list-oriented and reduces repeated descriptions, card padding, row height and form spacing where safe. Detailed mode exposes more inline explanation and context. Both modes use the same data, permissions, validation and actions; business behavior may never depend on the selected density.
 
-The preference applies across Admin Dashboard, Instance, Storage, Downloader, Providers, AI, Users/Permissions, Activity/History, Wanted/Requests, Backup/Restore, Migration, Diagnostics and future Admin screens using the shared Admin shell.
+The preference applies across Admin Dashboard, Instance, Storage, Downloader, Providers, AI, Users/Permissions, Activity/To-Do/History, Wanted/Requests, Backup/Restore, Migration, System & Diagnostics and future Admin screens using the shared Admin shell.
 
 Compact mode must not hide errors, warnings, destructive-action context or required information. On touch/mobile layouts, minimum touch-target sizes remain intact even when Compact is selected.
 
