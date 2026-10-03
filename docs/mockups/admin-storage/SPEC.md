@@ -335,8 +335,43 @@ Allow:
 - scan/reconciliation policy
 - naming/organization policy reference
 - write/import capability
+- default-for-content-type assignment
+- import placement policy
 
-A content type may have a default LibraryRoot and future routing rules may select alternatives where configured.
+### Default destination / routing ownership
+
+Storage owns the default final destination for specialized managed media.
+
+For each enabled content/media type:
+- one LibraryRoot may be marked as the default destination;
+- a LibraryRoot may be default for multiple compatible content types;
+- a Work may explicitly override the default target root where the canonical library/monitoring contract supports it;
+- unidentified/generic content falls back only to a configured Generic Downloads Root.
+
+This is the routing contract for final physical placement. Do not create a separate permanent `Import & Routing` Admin page that asks the admin to select the same LibraryRoots again.
+
+Acquisition Profiles decide **which release to acquire**, not its filesystem destination.
+
+### Import placement policy
+
+The target LibraryRoot owns how an already completed, identified source file is placed into that root.
+
+Supported policy values:
+- **Hardlink wenn möglich, sonst Copy** — preferred safe default where applicable;
+- **Hardlink** — require same-filesystem hardlink support; fail clearly instead of silently copying;
+- **Copy** — keep the source and create a separate library copy;
+- **Move** — move into the library; cross-filesystem execution becomes copy + verify + delete internally where needed.
+
+The UI must show whether the selected source/target layout can actually hardlink.
+
+Rules:
+- never claim hardlink support across filesystems;
+- do not silently fall back from explicit `Hardlink` to Copy;
+- `HardlinkOrCopy` may fall back by definition;
+- destructive source deletion occurs only for explicit Move semantics after destination verification;
+- placement policy belongs to the final LibraryRoot/Storage contract, not Acquisition scoring.
+
+A global Storage default may exist for newly created LibraryRoots, but the effective policy must always be visible at the LibraryRoot.
 
 ## Native Download Workspace configuration
 
@@ -365,9 +400,16 @@ Generic Downloads is a final destination, not the native downloader's staging fo
 
 External download clients remain optional compatibility/migration adapters.
 
-Their own local/remote download paths and remote-path mappings belong to their client configuration.
+Their remote-path mappings belong to the external-client adapter configuration under Downloader because the mapping only exists when that external client and Jularr see the same storage under different paths.
 
-Storage may validate that a resolved external-client path maps to a permitted Jularr path, but external clients must not define the native Storage model.
+Storage:
+- owns the local permitted Mount/role target selected by that mapping;
+- validates that the resolved local side stays inside permitted Storage;
+- does not own or duplicate the external client's remote prefix.
+
+The native Jularr downloader normally needs no remote-path mapping because it already operates on Jularr-owned Storage roles.
+
+Migration/coexistence adapters such as Sonarr may use the same shared mapping semantics inside Migration when the external manager reports different paths.
 
 ## Safe Path Browser
 
