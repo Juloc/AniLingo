@@ -303,7 +303,7 @@ Setup Wizard uses the same canonical stores as normal Admin pages.
 
 It may not invent independent Instance switches for AI, Native Downloader, Games, Requests or Generic Downloads before complete runtime gates exist.
 
-The Setup module list now mirrors the canonical `InstanceModule` contract instead of maintaining an incomplete Setup-only list. The Downloader and AI setup steps are conditioned on real capability/configuration availability rather than fake module toggles. Final setup health tests run only for configured owners.
+The Setup module list now mirrors the canonical `InstanceModule` contract instead of maintaining an incomplete Setup-only list. The Downloader and AI setup steps are conditioned on real capability/configuration availability rather than fake module toggles. The native-downloader on/off setting is explicitly a Downloader service setting, not an InstanceModule. Final setup health tests run only for configured owners.
 
 ## 25. Sonarr migration / coexistence — aligned
 
