@@ -63,8 +63,11 @@ Supported **manager-style integrations** use one common three-mode ownership con
 
 3. **Jularr verwaltet**
    - Jularr owns acquisition/import/naming for the selected ownership scope;
-   - the external manager remains useful as migration/provenance/observation evidence where configured;
-   - adapters should detect conflicting external monitoring/activity and block unsafe Jularr mutations;
+   - the external integration may remain connected in **read-only observation mode** for that Work/scope;
+   - observation is used to detect conflicting external monitoring, queue activity, imports, renames or other mutations before they can cause library conflicts;
+   - observed external state is evidence/diagnostics only and does not regain ownership automatically;
+   - adapters should surface conflicting external activity as actionable Migration/To-Do diagnostics and block unsafe Jularr mutations where required;
+   - loss of external observation must not silently transfer authority back to the external manager;
    - supported handover may explicitly disable external monitoring, but never deletes source media or source library records.
 
 These labels are the user-facing contract. Source adapters map their native concepts into these modes only when they actually support management/coexistence capabilities.
@@ -81,6 +84,26 @@ Existing Sonarr state migrates directly:
 The existing Sonarr safety behavior remains the implementation baseline for the generalized contract.
 
 Changing modes is explicit, audited and reversible where the adapter can restore the previous external monitoring state.
+
+### Read-only observation after handover
+
+When a Work is **Jularr verwaltet**, a still-configured manager integration should continue observing that Work where the source API supports it.
+
+Purpose:
+- detect that the external manager became monitored again;
+- detect active external downloads/grabs;
+- detect external imports/renames after handover;
+- detect path ownership conflicts before Jularr mutates the same file;
+- provide a clear conflict reason in Migration/To-Do.
+
+Rules:
+- observation never changes the effective ownership mode by itself;
+- observation never gives the external manager permission to mutate Jularr-owned state;
+- the adapter may fail closed for a Jularr mutation when current external state is required to prove safety;
+- disabling/removing the integration ends observation, but does not rewrite Work ownership automatically;
+- the UI shows observation health separately from ownership mode, e.g. `Jularr verwaltet · Sonarr beobachtet`, `Jularr verwaltet · Sonarr nicht erreichbar`.
+
+This preserves the current Sonarr conflict-detection value after handover without keeping Sonarr as a second canonical authority.
 
 ### Default ownership by integration and media type
 
