@@ -3,6 +3,7 @@ using System;
 using Jularr.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Jularr.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002113129_AddReconciliationLogicalGroups")]
+    partial class AddReconciliationLogicalGroups
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3094,16 +3097,8 @@ namespace Jularr.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AudioLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
                     b.Property<DateTime>("CommittedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Language")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("LibraryRootId")
                         .HasColumnType("uuid");
@@ -3119,32 +3114,18 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<Guid>("PlanItemId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("QualitySource")
-                        .HasMaxLength(240)
-                        .HasColumnType("character varying(240)");
-
                     b.Property<string>("RelativePath")
                         .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
-                    b.Property<string>("SubtitleLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
                     b.Property<Guid?>("WorkChapterId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("WorkEditionId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("WorkEpisodeId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("WorkId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("WorkVersionId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("WorkVolumeId")
@@ -3159,13 +3140,9 @@ namespace Jularr.Web.Data.Migrations
 
                     b.HasIndex("WorkChapterId");
 
-                    b.HasIndex("WorkEditionId");
-
                     b.HasIndex("WorkEpisodeId");
 
                     b.HasIndex("WorkId");
-
-                    b.HasIndex("WorkVersionId");
 
                     b.HasIndex("WorkVolumeId");
 
@@ -3206,14 +3183,8 @@ namespace Jularr.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("AnalyzeFilenameEvidence")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ExecutionOperationId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("Failure")
                         .HasMaxLength(1000)
@@ -3230,9 +3201,6 @@ namespace Jularr.Web.Data.Migrations
 
                     b.Property<int>("OrganizationMode")
                         .HasColumnType("integer");
-
-                    b.Property<bool>("RemoveEmptySourceFolders")
-                        .HasColumnType("boolean");
 
                     b.Property<int>("Revision")
                         .HasColumnType("integer");
@@ -3269,24 +3237,14 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<Guid?>("AssignedWorkChapterId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("AssignedWorkEditionId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("AssignedWorkEpisodeId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("AssignedWorkId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("AssignedWorkVersionId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("AssignedWorkVolumeId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("AudioLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("Confidence")
                         .HasColumnType("integer");
@@ -3308,25 +3266,11 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<bool>("IsExplicitlyIgnored")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Language")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
                     b.Property<Guid?>("LogicalGroupId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ObservedLastWriteTimeUtc")
-                        .HasColumnType("text");
-
-                    b.Property<long?>("ObservedSizeBytes")
-                        .HasColumnType("bigint");
-
                     b.Property<Guid>("PlanId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("QualitySource")
-                        .HasMaxLength(240)
-                        .HasColumnType("character varying(240)");
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
@@ -3336,10 +3280,6 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<int>("State")
                         .HasColumnType("integer");
 
-                    b.Property<string>("SubtitleLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
                     b.Property<int>("UnresolvedCount")
                         .HasColumnType("integer");
 
@@ -3347,13 +3287,9 @@ namespace Jularr.Web.Data.Migrations
 
                     b.HasIndex("AssignedWorkChapterId");
 
-                    b.HasIndex("AssignedWorkEditionId");
-
                     b.HasIndex("AssignedWorkEpisodeId");
 
                     b.HasIndex("AssignedWorkId");
-
-                    b.HasIndex("AssignedWorkVersionId");
 
                     b.HasIndex("AssignedWorkVolumeId");
 
@@ -4153,11 +4089,6 @@ namespace Jularr.Web.Data.Migrations
                         .HasForeignKey("WorkChapterId")
                         .OnDelete(DeleteBehavior.NoAction);
 
-                    b.HasOne("Jularr.Web.Features.MediaCore.WorkEdition", null)
-                        .WithMany()
-                        .HasForeignKey("WorkEditionId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("Jularr.Web.Features.MediaCore.WorkEpisode", null)
                         .WithMany()
                         .HasForeignKey("WorkEpisodeId")
@@ -4168,11 +4099,6 @@ namespace Jularr.Web.Data.Migrations
                         .HasForeignKey("WorkId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
-
-                    b.HasOne("Jularr.Web.Features.MediaCore.WorkVersion", null)
-                        .WithMany()
-                        .HasForeignKey("WorkVersionId")
-                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Jularr.Web.Features.MediaCore.WorkVolume", null)
                         .WithMany()
@@ -4205,11 +4131,6 @@ namespace Jularr.Web.Data.Migrations
                         .HasForeignKey("AssignedWorkChapterId")
                         .OnDelete(DeleteBehavior.NoAction);
 
-                    b.HasOne("Jularr.Web.Features.MediaCore.WorkEdition", null)
-                        .WithMany()
-                        .HasForeignKey("AssignedWorkEditionId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("Jularr.Web.Features.MediaCore.WorkEpisode", null)
                         .WithMany()
                         .HasForeignKey("AssignedWorkEpisodeId")
@@ -4218,11 +4139,6 @@ namespace Jularr.Web.Data.Migrations
                     b.HasOne("Jularr.Web.Features.MediaCore.Work", null)
                         .WithMany()
                         .HasForeignKey("AssignedWorkId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("Jularr.Web.Features.MediaCore.WorkVersion", null)
-                        .WithMany()
-                        .HasForeignKey("AssignedWorkVersionId")
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Jularr.Web.Features.MediaCore.WorkVolume", null)

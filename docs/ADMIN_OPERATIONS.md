@@ -120,6 +120,12 @@ A folder scan run reconciles each of its folders through `LibraryScanner.ScanFol
 
 Each root has one **Periodic reconciliation** interval (`LibraryRoots.ReconciliationIntervalMinutes`, default 30, `0` turns it off, edited on `/Admin/System`). A full scan of the root is queued when the last completed full scan and the last periodic attempt are both older than the interval. An unavailable root is skipped without creating an operation and is not retried before the next interval, so an offline NAS does not fill the history.
 
+### Manual folder import mapping
+
+**Library reconciliation** on `/Admin/LibraryReconciliation/{planId}` is the owner-operated five-step review for an existing folder or subtree that cannot safely be associated during a scan. It is opened from the configured root on **Admin → System** and is permanently bound to that root; the optional start folder is selected through the safe path browser and persisted root-relative. The plan records the complete scanned hierarchy, explicit group/file decisions and visible inherited mapping defaults. Filenames and folder names remain evidence only, never canonical identity.
+
+The organization step is still non-destructive. The final preview re-checks observed file state, target writability, duplicate targets and pre-existing destinations before it allows execution. On execution, Jularr writes the resolved canonical file links and then performs only the reviewed moves/renames, with a rollback journal and an `Activity` operation for progress and failures. Unknown files stay untouched; optional source-folder cleanup removes only now-empty ancestors of successfully moved files and never removes the reviewed root or a directory containing an unknown entry.
+
 ## Per-anime repair tools
 
 `/Library/AnimeRepair/{animeId}` (owner-only) lets one problematic anime be repaired without a full library scan or direct database edits. It reuses the same canonical services every other path uses; it does not add a second scanner, prober or matcher:

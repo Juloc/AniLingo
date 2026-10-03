@@ -142,6 +142,7 @@
                                 </form>
 
                                 <a class="button" asp-page="/Admin/Scans" asp-route-rootId="@root.Id">@ui["admin.system.scanHistory"]</a>
+                                <a class="button" asp-page="/Admin/Reconciliation/Index" asp-route-LibraryRootId="@root.Id">@ui["admin.reconciliation.open"]</a>
 
                                 @if (root.CanWake)
                                 {

@@ -3,6 +3,7 @@ using System;
 using Jularr.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Jularr.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002153437_AddReconciliationExecutionOperation")]
+    partial class AddReconciliationExecutionOperation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3206,9 +3209,6 @@ namespace Jularr.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("AnalyzeFilenameEvidence")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -3230,9 +3230,6 @@ namespace Jularr.Web.Data.Migrations
 
                     b.Property<int>("OrganizationMode")
                         .HasColumnType("integer");
-
-                    b.Property<bool>("RemoveEmptySourceFolders")
-                        .HasColumnType("boolean");
 
                     b.Property<int>("Revision")
                         .HasColumnType("integer");
