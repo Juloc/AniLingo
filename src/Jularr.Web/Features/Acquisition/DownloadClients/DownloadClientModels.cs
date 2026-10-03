@@ -159,7 +159,8 @@ public sealed record DownloadOperationDetails(
     Guid ClientEntryId,
     MediaAcquisitionKind MediaKind,
     string? Category,
-    DownloadImportDetails? Import = null)
+    DownloadImportDetails? Import = null,
+    string? TargetKey = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -171,7 +172,8 @@ public sealed record DownloadOperationDetails(
             ClientEntryId,
             AcquisitionAccessNames.Kind(MediaKind),
             string.IsNullOrWhiteSpace(Category) ? null : Category.Trim(),
-            Import),
+            Import,
+            string.IsNullOrWhiteSpace(TargetKey) ? null : TargetKey.Trim()),
         JsonOptions);
 
     public static bool TryParse(string? json, out DownloadOperationDetails? details)
@@ -194,7 +196,8 @@ public sealed record DownloadOperationDetails(
                 persisted.ClientEntryId,
                 AcquisitionAccessNames.ParseKind(persisted.MediaKind),
                 string.IsNullOrWhiteSpace(persisted.Category) ? null : persisted.Category.Trim(),
-                persisted.Import);
+                persisted.Import,
+                string.IsNullOrWhiteSpace(persisted.TargetKey) ? null : persisted.TargetKey.Trim());
             return true;
         }
         catch (JsonException)
@@ -211,7 +214,8 @@ public sealed record DownloadOperationDetails(
         Guid ClientEntryId,
         string MediaKind,
         string? Category,
-        DownloadImportDetails? Import = null);
+        DownloadImportDetails? Import = null,
+        string? TargetKey = null);
 }
 
 public sealed record DownloadClientSubmitResult(

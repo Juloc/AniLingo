@@ -55,7 +55,9 @@ public sealed class DownloadClientSelectionTests
         var client = new FakeDownloadClient("sab", succeeds: entry => entry.Name == "second");
         var service = environment.NewSubmissionService(client);
 
-        var outcome = await service.SubmitAsync(Spec(), CancellationToken.None);
+        var outcome = await service.SubmitAsync(
+            Spec(mediaTargetKey: "book-work-123"),
+            CancellationToken.None);
 
         Assert.IsTrue(outcome.Accepted);
         Assert.AreEqual(second.Id, outcome.ClientEntryId);
@@ -65,6 +67,7 @@ public sealed class DownloadClientSelectionTests
         Assert.AreEqual(second.Id, details!.ClientEntryId);
         Assert.AreEqual(MediaAcquisitionKind.Anime, details.MediaKind);
         Assert.AreEqual("anime", details.Category);
+        Assert.AreEqual("book-work-123", details.TargetKey);
     }
 
     [TestMethod]
@@ -100,7 +103,7 @@ public sealed class DownloadClientSelectionTests
         StringAssert.Contains(outcome.Message, "No enabled, healthy download client is configured");
     }
 
-    private static DownloadSubmissionSpec Spec() =>
+    private static DownloadSubmissionSpec Spec(string? mediaTargetKey = null) =>
         new(
             "test-download",
             "Test download",
@@ -108,7 +111,8 @@ public sealed class DownloadClientSelectionTests
             null,
             new Uri("https://indexer.example/a.nzb"),
             "release-name",
-            MediaAcquisitionKind.Anime);
+            MediaAcquisitionKind.Anime,
+            MediaTargetKey: mediaTargetKey);
 
     private static DownloadClientEntry Entry(
         string name,
