@@ -45,7 +45,7 @@ User state is separate:
 - Bookmark
 - Highlight/annotation where applicable
 - ReaderPreference
-- Favorite/My List/Collection membership
+- personal Watchlist/Reading List/Favorite/Collection membership
 
 No Book-, LightNovel- or Manga-specific parallel core may become the permanent source of truth.
 
@@ -79,8 +79,8 @@ Shared content:
 - year/range
 - small genre/theme set
 - short synopsis
-- primary `Read` / `Continue Reading`
-- `My List`
+- primary action is state-dependent: `Read` / `Continue Reading` when a readable Edition is available; `Request` when unavailable and requestable; otherwise show the existing live Request state
+- personal Reading List/Favorite action where supported
 - optional Collection action
 - overflow for secondary consumer actions
 
@@ -324,7 +324,7 @@ All variants support:
 - Available
 - Partial
 - Requested
-- Downloading/Importing
+- Downloading/Preparing
 - Translating
 - Unavailable
 - Storage offline
@@ -394,7 +394,7 @@ Reading should hand off to phone/tablet unless a TV Reader is separately approve
 Skeletons preserve Hero, progress, structural rail and list geometry.
 
 ### No local edition
-Keep metadata and relations visible; show Request/Add when permitted.
+Keep metadata and relations visible; show `Request` when permitted. Never show a separate consumer Add acquisition action.
 
 ### No structure
 Do not invent Parts/Volumes. Go directly to Reader/action state.
