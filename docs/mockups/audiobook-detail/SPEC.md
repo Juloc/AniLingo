@@ -401,7 +401,7 @@ Consumer states may include:
 - Available
 - Partial
 - Requested
-- Searching
+- Looking for media
 - Downloading
 - Preparing
 - Unavailable
@@ -558,7 +558,7 @@ Must support independently:
 - audio available while chapter metadata is incomplete
 - some chapters/files missing
 - preferred language unavailable but another edition exists
-- requested/downloading/importing alternate narration
+- requested/downloading/preparing alternate narration
 - storage offline while cached metadata/artwork/progress remains visible
 - recommendation provider unavailable
 - external/provider progress unavailable while local resume remains valid
