@@ -7,8 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Jularr.Web.Features.Books;
 
 /// <summary>
-/// What a book request knows about the book a download belongs to. It names PDFs (which rarely
-/// carry usable metadata) and links the imported work to the catalog entry that was requested.
+/// What a Books acquisition knows about the book a download belongs to. It names PDFs (which
+/// rarely carry usable metadata), links request imports to their catalog entry, and can target an
+/// existing local work so a monitored replacement/upgrade adds a new edition instead of a duplicate work.
 /// </summary>
 public sealed record BookImportHint(
     string CatalogId,
@@ -58,7 +59,7 @@ public sealed partial class BookCatalogService
     /// Imports every supported book file at <paramref name="path"/>: the file itself, or the EPUB
     /// and PDF files below the folder including subfolders (SABnzbd puts each job in its own
     /// folder). Damaged or unreadable files are skipped, so one bad file never blocks the rest.
-    /// <paramref name="hint"/> names a PDF when it is the only file imported. Files below
+    /// <paramref name="hint"/> names a single imported book and can target an existing work. Files below
     /// <paramref name="excludedFolders"/> (another media type's inbox nested in this folder) are
     /// left alone.
     /// </summary>
