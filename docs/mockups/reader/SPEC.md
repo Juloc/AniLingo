@@ -57,17 +57,27 @@ All supported content types use the same conceptual frame.
 
 ### Top bar
 
-Contains:
-- context-aware Back/Close;
+Desktop/Tablet baseline:
+- context-aware Back/Close on the far left;
+- compact Work thumbnail/cover where useful;
 - Work title;
-- current chapter/section title when useful;
-- Contents;
-- Search where supported;
-- Language/Edition when more than one readable view exists;
-- Appearance;
-- More.
+- current volume/chapter/section context below or beside the title;
+- **Contents**;
+- **Search** where supported;
+- **Language/Edition** when more than one readable view exists;
+- **Appearance**;
+- **More**.
 
-On Mobile, only the highest-frequency actions stay directly visible. Secondary actions move into More.
+The top bar is a compact Reader control strip, not a second application header. It may disappear completely in clean-reading mode.
+
+Mobile:
+- Back;
+- compact Work/Chapter context;
+- Search where supported;
+- Bookmark/More as space permits;
+- lower-frequency controls move into sheets/More.
+
+Do not squeeze the full Desktop action row into Mobile.
 
 ### Content surface
 
@@ -81,18 +91,28 @@ The shell must not force every source into the same rendering model:
 
 ### Bottom frame / progress
 
-Desktop/Tablet:
-- slim progress indicator/slider;
-- page/chapter position text;
-- optional previous/next section transport;
-- TTS transport only while relevant.
+Desktop:
+- slim progress slider across the lower frame;
+- current overall/section progress such as `42%`;
+- **Previous Chapter** on the left when a canonical previous target exists;
+- **Next Chapter** on the right when a canonical next target exists;
+- page/chapter position text where meaningful;
+- no manual Save button.
+
+Tablet:
+- same progress semantics;
+- page/position indicator may sit centered between previous/next navigation;
+- in paged/two-page mode the visible page/spread indicator is derived from the rendered document state.
 
 Mobile:
-- compact page/progress row;
-- previous/next when applicable;
-- direct tool row for Contents, Language, Appearance and TTS when supported.
+- compact progress slider;
+- current percentage/page position;
+- Previous / Next below or beside the slider with large touch targets;
+- lower-frequency Reader tools stay in top actions or sheets rather than forming a dense permanent bottom toolbar.
 
-The progress indicator remains readable even when transient chrome hides.
+TTS transport appears only while TTS is active/relevant.
+
+When Reader chrome hides, the full control frame disappears. A minimal non-interactive progress affordance may remain only if the selected Reader preference asks for it.
 
 ## 4. Content capability model
 
@@ -206,15 +226,34 @@ Desktop is reading-first, pointer/keyboard friendly.
 
 ### Layout
 
-Default:
-- app sidebar may remain part of the application shell;
-- Reader top/bottom chrome stays compact;
-- centered readable content column;
-- generous margins;
-- Contents can become a collapsible side panel on wide layouts;
-- opening a panel must not unnecessarily shrink text below a comfortable reading width.
+Approved Desktop Light baseline:
+- Reader occupies the main content surface without a heavy surrounding dashboard;
+- compact top Reader bar;
+- centered readable text column on a light/neutral paper surface;
+- generous horizontal margins;
+- chapter number/eyebrow above a clear chapter title;
+- illustrations may appear inline where the document provides them;
+- slim bottom progress/navigation frame;
+- Contents can open as a left side panel on wide layouts;
+- Learning/annotation details can open as a right side panel without destroying the readable text width;
+- side panels and document content may coexist only while the remaining text column stays comfortable.
 
 Wide-screen reflowable text may use one or two pages depending on Reader preferences and document capability.
+
+### Clean-reading / UI-hidden state
+
+While actively reading:
+- top and bottom Reader chrome can disappear entirely;
+- application navigation must not remain visually dominant;
+- content stays at the same logical reading position when chrome hides/shows;
+- moving pointer toward the top edge, scrolling upward or using the approved reveal action restores chrome;
+- text selection never accidentally toggles chrome.
+
+The approved visual mockup may use chapter artwork/scenery as an illustrative backdrop. This is **not permission to reduce text readability**:
+- default Clean Design reading uses an opaque/controlled paper surface;
+- optional illustration/immersive presentation may exist only where the document/theme explicitly supports it;
+- readable text must retain sufficient contrast through an opaque/translucent reading surface;
+- decorative artwork never becomes required for normal Reader operation.
 
 ### Desktop interactions
 
@@ -227,13 +266,14 @@ Wide-screen reflowable text may use one or two pages depending on Reader prefere
 
 ### Required Desktop mockup states
 
-1. reflowable Book/LN reading;
-2. Contents side panel open;
-3. Appearance/settings sheet;
-4. language/edition menu;
-5. annotation selection state;
-6. translation/preparing state;
-7. offline/degraded state.
+1. **Light reflowable Book/LN reading — chrome visible**;
+2. **Clean reading — chrome hidden**;
+3. Contents side panel open;
+4. Appearance/settings panel;
+5. language/edition menu;
+6. Learning/annotation detail side panel;
+7. translation/preparing state;
+8. offline/degraded state.
 
 ## 7. Mobile composition
 
@@ -241,13 +281,17 @@ Mobile is touch-first and content-dominant.
 
 ### Chrome
 
-- top bar stays minimal;
+Approved Mobile baseline:
+- compact top row with Back, Work/Chapter context and only high-frequency actions;
+- slim progress + Previous/Next at the bottom while chrome is visible;
 - chrome hides while reading when appropriate;
-- center tap reveals/hides chrome;
+- center tap reveals/hides chrome when it cannot conflict with selection;
 - downward scroll may hide chrome;
 - upward scroll reveals it;
 - open menus/sheets prevent auto-hide;
-- bottom tool row uses large touch targets.
+- no desktop action strip squeezed onto phone.
+
+The content column uses comfortable side margins and remains visually primary.
 
 ### Paged mode
 
@@ -270,10 +314,19 @@ Use bottom sheets/fullscreen sheets for:
 - Appearance;
 - Language/Edition;
 - Bookmarks/Highlights;
-- Learning details;
+- **word/sentence Learning details**;
 - TTS settings.
 
-Avoid tiny desktop popovers on phones.
+Approved Learning-detail sheet behavior:
+- opens from selected text only when Reader Learning mode is On;
+- starts as a compact/medium bottom sheet;
+- can expand for more examples/details;
+- shows term/reading/meaning as available;
+- actions may include **Save, Learn, Known, Ignore, Listen** according to resolved capabilities;
+- closing the sheet restores the exact reading position;
+- the sheet must not turn normal scrolling/tap gestures into Learning interactions outside the selected text.
+
+Avoid tiny Desktop popovers on phones.
 
 ### Required Mobile mockup states
 
@@ -296,10 +349,19 @@ Portrait:
 - larger sheets.
 
 Landscape:
-- optional two-page/spread view;
-- Contents can use a side panel;
-- annotation/Learning details may use a side sheet;
+- optional **two-page/spread** view for reflowable content where layout supports it;
+- Contents can use a persistent/collapsible **left side panel**;
+- the current chapter is clearly highlighted in Contents;
+- page/spread position remains visible in the lower progress frame;
+- document illustrations may occupy a dedicated page/column when the source layout contains them;
+- Appearance, Translation and Learning settings may open as a right side sheet;
+- annotation/Learning details may use a right side sheet;
 - do not adopt hover-only Desktop behavior.
+
+The approved Tablet composition is:
+`Contents side panel | two-page/spread Reader | optional right settings/detail sheet`.
+
+Panels must never reduce the actual reading area below a comfortable width; when space becomes insufficient, fall back to modal/sheet behavior.
 
 iPadOS/WebKit follows the same Reader semantics and uses platform-safe selection, fullscreen and storage behavior.
 
@@ -378,11 +440,17 @@ For Manga/image-only content, Search appears only if OCR/text capability actuall
 
 Language and Edition selection are user-facing reading concepts, not provider/debug data.
 
-The menu may show:
-- Original;
-- official localized edition(s);
-- generated/machine-translated derivative(s);
-- side-by-side/Both only where the renderer explicitly supports it.
+Approved control model:
+- compact language/edition selector in Reader chrome where multiple readable variants exist;
+- Appearance/Reader Settings may expose the current reading source more explicitly.
+
+The selector/settings may show:
+- **Original**;
+- official localized edition(s), clearly labeled as translated/official;
+- generated/machine-translated derivative(s), clearly labeled as generated;
+- **Both / side-by-side** only where the renderer explicitly supports it.
+
+Switching between these views preserves the closest stable logical reading position rather than restarting at the chapter beginning.
 
 The UI must clearly distinguish:
 - **Official translation**
@@ -416,12 +484,13 @@ The UI may allow the user to choose where a change is saved.
 
 ### Reflowable settings
 
-May include:
-- Scroll / Pages;
-- one/two pages;
-- font;
-- font size;
-- line height;
+Approved Appearance/Reader Settings layout groups:
+- text size controls;
+- supported font family;
+- paper/background surface;
+- line spacing;
+- reading mode: **Scroll / Pages**;
+- one/two pages where supported;
 - text width;
 - paragraph spacing/indent;
 - hyphenation;
@@ -429,6 +498,10 @@ May include:
 - illustration visibility;
 - page number visibility;
 - auto-continue chapter.
+
+Translation/Edition controls may appear in the same Reader Settings sheet as a separate group when this keeps the flow compact.
+
+Learning controls may also appear as a separate capability-gated group; they are not part of typography itself.
 
 ### Manga settings
 
@@ -505,13 +578,47 @@ Do not require annotations to mutate source HTML/content.
 
 ## 17. Learning interaction
 
-Learning is optional and capability-gated.
+Learning is an **optional Reader mode**, not a permanent change to normal reading.
+
+The Reader Learning control exists only when:
+- the instance Learning module is enabled;
+- the current profile has Learning enabled for itself;
+- authorization/capabilities permit Reader learning tools;
+- the current document exposes selectable/OCR-backed Learning content.
+
+### Learning Off
+
+This is normal reading:
+- no Learning-specific word highlights/hit targets;
+- normal text selection remains normal selection;
+- scrolling, page turns and tap zones behave exactly as ordinary Reader interaction;
+- no Learning sheet/panel is reserved or shown;
+- Learning must not change typography, page layout or resume behavior.
+
+### Learning On
 
 For readable/selectable text:
 - tap/select term;
 - show reading/meaning/explanation;
 - Save / Learn / Known / Ignore where authorized;
-- preserve Reader position when the Learning sheet opens/closes.
+- Listen where TTS/speech capability exists;
+- optional known-word highlighting can be enabled separately;
+- preserve Reader position when the Learning sheet/panel opens/closes.
+
+The mode can be switched On/Off **without reloading the document or changing the canonical Reader position**.
+
+Turning Learning Off:
+- closes open Learning details;
+- removes Learning-specific hit targets/highlights;
+- returns immediately to normal Reader interaction.
+
+### Placement
+
+- Desktop: Learning toggle/action may live in Reader Settings/More; active term details can use a right side panel.
+- Tablet: Learning toggle in the right settings sheet; details may use a right side sheet.
+- Mobile: Learning toggle in Reader Settings/More; term details use a bottom sheet.
+
+The toggle is shown only after instance + profile + permission/capability + content eligibility all resolve true.
 
 Learning interaction must not create another copy of chapter identity or reading progress.
 
@@ -671,37 +778,43 @@ Required:
 
 Create in this order:
 
-1. **Desktop Light — reflowable Book/LN primary reading state**  
-   Establish content width, top/bottom frame and calm reading hierarchy.
+1. **Desktop Light — reflowable Book/LN reading, chrome visible**  
+   Approved baseline: compact top actions, centered paper/text, bottom progress + Previous/Next.
 
-2. **Desktop Light — Contents side panel + progress**  
-   Establish large-work navigation.
+2. **Desktop Light — clean reading / chrome hidden**  
+   Content-first reference; no permanent application chrome.
 
-3. **Mobile Light — clean reading with chrome visible**  
-   Establish touch targets and bottom tool row.
+3. **Desktop Light — Learning detail side panel**  
+   Word/sentence detail while exact reading position remains stable.
 
-4. **Mobile Light — chrome hidden reading state**  
-   Validate content-first behavior.
+4. **Mobile Light — reading with chrome visible**  
+   Compact top row + bottom progress/Previous/Next.
 
-5. **Mobile Light — Appearance bottom sheet**  
-   Validate Reader settings density.
+5. **Mobile Light — Learning word-detail bottom sheet**  
+   Approved compact/expandable sheet.
 
-6. **Mobile Light — annotation/text selection state**  
-   Highlight / Bookmark / Learning interaction.
+6. **Tablet Light — landscape two-page + Contents side panel**  
+   Approved wide-layout reference.
 
-7. **Desktop/Mobile — language & translation state**  
-   Clearly distinguish Original / Official / Generated.
+7. **Tablet Light — Reader Settings side sheet**  
+   Appearance + Translation/Edition + capability-gated Learning controls.
 
-8. **Manga Mobile — primary single-page state**  
-   Validate shared Reader frame with image-specific controls.
+8. **Mobile Light — Appearance/Reader Settings sheet**  
+   Validate touch settings density.
 
-9. **Tablet — landscape two-page / side-panel state**  
-   Only after Desktop/Mobile hierarchy is approved.
+9. **Mobile Light — annotation/text selection state**  
+   Highlight / Bookmark / optional Learning action.
 
-10. **Dark validation**  
+10. **Desktop/Mobile — language & translation state**  
+    Clearly distinguish Original / Official / Generated.
+
+11. **Manga Mobile — primary single-page state**  
+    Validate shared Reader frame with image-specific controls.
+
+12. **Dark validation**  
     At minimum Desktop reflowable + Mobile Manga/reading.
 
-11. **Offline/Preparing/Error reference**  
+13. **Offline/Preparing/Error reference**  
     One shared state reference plus responsive notes.
 
 TV Reader mockup is not required in this phase.
@@ -740,6 +853,9 @@ The new Reader UI must not permanently query legacy `NovelWork`, `NovelProgress`
 - No whole-work chapter list embedded into every Reader page for large works.
 - No typography controls on Manga/PDF when they are meaningless.
 - No giant persistent toolbar around the reading surface.
+- No Learning-specific hit targets/highlights while Reader Learning mode is Off.
+- No document reload or position reset merely to toggle Reader Learning On/Off.
+- No Reader Learning control when instance/profile/policy/content eligibility does not allow it.
 - No TV text Reader purely for parity.
 - No unsanitized imported HTML.
 - No annotation implementation that mutates canonical source text.
@@ -755,7 +871,10 @@ A Reader mockup is acceptable only when:
 - content is visually dominant;
 - Book/LN/Manga can share the frame without sharing inappropriate controls;
 - exact resume/progress semantics are representable;
-- Desktop, Mobile and Tablet behaviors are intentional;
+- Desktop, Mobile and Tablet behaviors match the approved Reader hierarchy;
+- clean-reading chrome can hide without changing the logical reading position;
+- Tablet two-page + Contents composition degrades safely when width is insufficient;
+- Learning Off remains ordinary reading and Learning can be toggled without document/session reset;
 - Light/Dark reading surfaces are deliberate;
 - Contents works for very large structures;
 - language/edition clearly distinguishes official and generated content;
