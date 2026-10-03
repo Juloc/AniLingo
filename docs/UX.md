@@ -701,6 +701,17 @@ Visual contract:
 
 Both styles are skins over the same routes, components, permissions and information architecture.
 
+## 27c. Admin General Instance Settings
+
+Binding specification:
+- `docs/mockups/admin-general-settings/SPEC.md`
+
+General Instance Settings owns only instance-wide identity and regional/default presentation values such as instance name, default UI language, locale, timezone, time/date/number formatting and normalized metadata/title-language defaults.
+
+This is a normal settings page, **not a Setup Wizard continuation**. It must not show numbered setup steps. Setup status may appear only as a compact read-only instance-information block with a link to reopen Setup.
+
+The Setup Wizard and this page must use the same canonical settings store. Appearance, Modules, Storage, Providers, Acquisition, AI, Backup and Runtime remain in their owning Admin areas.
+
 ## 28. Responsive profiles
 
 ### Mobile
