@@ -252,7 +252,7 @@ Choose exactly one primary path role:
 - **Generic Downloads**
   - final destination for generic/unclassified downloads
 - **Other**
-  - explicit managed role such as backup/cache/transcode where supported
+  - explicit managed role such as backup/cache/transcode or restricted Games BIOS/Firmware storage where supported
 
 The role determines which settings appear in Step 3.
 
