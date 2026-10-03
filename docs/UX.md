@@ -386,6 +386,13 @@ Progress / Achievements:
 - Course progress, Review/FSRS state, Vocabulary state and gamification remain separate
 - unavailable XP/time/Streak/Achievement metrics are omitted until their canonical contracts exist
 
+Script Trainer / Kana:
+- binding specification: `docs/mockups/script-trainer/SPEC.md`
+- one trainer flow with sequential Overview -> Practice -> Feedback -> Summary states
+- Japanese currently provides Hiragana/Katakana via the ScriptTrainer toolkit
+- Kana uses canonical LearningUnit/LearningCard/Review state; no second Kana scheduler
+- handwriting Writing mode stays hidden until real stroke/evaluation capability exists
+
 Course detail:
 - binding specification: `docs/mockups/course-detail/SPEC.md`
 - canonical Curriculum -> Level -> Chapter -> Lesson structure
