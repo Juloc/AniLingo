@@ -28,9 +28,10 @@ public sealed class AcquisitionRequestService(
         MediaAcquisitionKind kind,
         CancellationToken cancellationToken)
     {
-        var capability = await mediaCapabilities.GetEffectiveCapabilityAsync(
+        var capability = await AcquisitionCapabilityResolver.ResolveAsync(
+            kind,
             account.User,
-            AcquisitionAccessNames.WorkType(kind),
+            mediaCapabilities,
             cancellationToken);
 
         if (instanceModules is not null)
