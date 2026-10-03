@@ -196,16 +196,21 @@ Retry must not blindly repeat a non-idempotent write that may already have succe
 
 Approved visual direction:
 
+Canonical mascot reference:
+`docs/assets/original-j/jularr-mascot-reference.png`
+
 - Original Jularr black/red brand mark;
 - warm cream base;
 - Japanese ink/watercolor scenery;
 - cherry blossoms;
-- **dark-haired anime character consistently used as the main character**;
+- **the canonical Jularr mascot consistently used as the main character when a character is present**;
 - state-specific emotion/action;
 - red/pink default accent;
 - accent/decorative elements use global theme tokens and remain compatible with hue shifting.
 
-The dark-haired character identity should not itself be recolored by accent hue shifting.
+The mascot identity is fixed by the canonical reference: face, long black hair, red/pink eyes, floral hair ornaments and black/red/white kimono-inspired outfit family remain recognizably the same character. Pose, expression and state-specific props may vary.
+
+The mascot identity should not itself be recolored by accent hue shifting.
 
 Each state must be visually understandable before reading the explanatory copy.
 
