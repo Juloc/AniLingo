@@ -1691,6 +1691,9 @@ namespace Jularr.Web.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
+                    b.Property<int>("PlacementPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ReconciliationIntervalMinutes")
                         .HasColumnType("integer");
 
@@ -1711,6 +1714,32 @@ namespace Jularr.Web.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("LibraryRoots");
+                });
+
+
+            modelBuilder.Entity("Jularr.Web.Features.Library.LibraryRootContentAssignment", b =>
+                {
+                    b.Property<Guid>("LibraryRootId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ContentType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("LibraryRootId", "ContentType");
+
+                    b.HasIndex("ContentType")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = TRUE");
+
+                    b.HasIndex("ContentType", "IsDefault");
+
+                    b.ToTable("LibraryRootContentAssignments");
                 });
 
             modelBuilder.Entity("Jularr.Web.Features.Library.MediaAnalysis", b =>
@@ -4210,6 +4239,16 @@ namespace Jularr.Web.Data.Migrations
                         .WithMany()
                         .HasForeignKey("AnimeId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+
+            modelBuilder.Entity("Jularr.Web.Features.Library.LibraryRootContentAssignment", b =>
+                {
+                    b.HasOne("Jularr.Web.Features.Library.LibraryRoot", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryRootId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 
