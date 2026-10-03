@@ -652,6 +652,19 @@ Automatic acquisition, Manual Search and Score-Test must use the same scorer/dec
 
 Provider credentials remain in Providers, downloader transport in Downloader and paths in Storage.
 
+### Import/routing ownership
+
+There is no standalone permanent **Import & Routing** Admin destination.
+
+Ownership is split by why the setting exists:
+- **Storage → LibraryRoot** owns the default final destination per media/content type and the effective import placement policy: `HardlinkOrCopy`, `Hardlink`, `Copy`, or `Move`.
+- **Downloader → Externe Clients** owns remote-path mappings needed because an external downloader reports a different path than Jularr sees.
+- **Migration / coexistence adapter** owns source-path mappings needed by Sonarr/Radarr/legacy integrations.
+- **Acquisition Profile** owns release selection, scoring, language, wait/delay and source/provider preference, never filesystem paths.
+- the native Jularr downloader normally requires no remote-path mapping.
+
+All local mapping targets resolve into permitted Storage. A Work-level target-root override may supersede the content-type default through the canonical library/monitoring contract.
+
 ## 24. Provider settings
 
 All provider types use a common configuration pattern:
