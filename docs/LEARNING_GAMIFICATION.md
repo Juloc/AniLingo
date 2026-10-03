@@ -150,3 +150,165 @@ When Off:
 - historical XP/unlocks are preserved.
 
 Re-enabling does not award retroactive XP.
+
+
+## 8. Daily Goal snapshot
+
+Snapshot the active targets into one row per profile/local date:
+
+```text
+LearningDailyGoal
+- Id                    BIGINT identity
+- ProfileId             VARCHAR(80)
+- LocalDate             DATE
+- XpTarget              INTEGER, nullable
+- ActiveSecondsTarget   INTEGER, nullable
+- SessionsTarget        INTEGER, nullable
+- CompletedAt           TIMESTAMPTZ, nullable
+UNIQUE (ProfileId, LocalDate)
+```
+
+The row is created from current preferences when that gamified day first becomes active. Later preference changes do not rewrite today's existing goal; they apply to future days.
+
+For every enabled component:
+
+`component progress = min(actual / target, 1)`.
+
+Combined Daily Goal progress is the **minimum** enabled component ratio. Therefore 100% means every configured target is satisfied.
+
+A session counts toward `SessionsTarget` only after meaningful work. Opening/closing a screen is not enough.
+
+## 9. Streak
+
+Streak is derived from completed Daily Goal rows.
+
+Rules:
+- if today is complete, count the consecutive chain ending today;
+- while today is incomplete, keep the chain ending yesterday until the local day ends;
+- a missed prior enabled day breaks the chain;
+- no midnight decrement job is needed.
+
+Disabling gamification ends the active streak. Re-enabling starts a new active streak while historical completed days remain historical data.
+
+No Streak Freeze/currency in V1.
+
+## 10. XP levels
+
+Global and optional per-language XP levels are deterministic projections from awarded XP.
+
+Per-language projection uses the session LanguageTag.
+
+Levels are motivational only:
+- never CEFR/JLPT;
+- never mastery truth;
+- never curriculum prerequisites.
+
+No separate level persistence is required in V1.
+
+## 11. Achievements
+
+V1 achievement definitions live in deterministic code/domain policy rather than an editable database catalog.
+
+Each definition has:
+- stable Key;
+- Version;
+- category;
+- deterministic criterion/threshold;
+- localization/icon references.
+
+Keep the launch set small and meaningful.
+
+Persist unlocks only:
+
+```text
+LearningAchievementUnlock
+- Id                BIGINT identity
+- ProfileId         VARCHAR(80)
+- DefinitionKey     VARCHAR(120)
+- DefinitionVersion INTEGER
+- UnlockedAt        TIMESTAMPTZ
+UNIQUE (ProfileId, DefinitionKey, DefinitionVersion)
+```
+
+Achievement progress is derived from canonical Learning state/activity. Do not add a mutable badge-progress table.
+
+Achievements never unlock curriculum.
+
+## 12. Failure isolation
+
+Course progress and Review state remain valid if derived Achievement evaluation fails.
+
+Activity/XP writes belonging to the base learner action should be transactionally consistent with that action. Derived Achievement evaluation may retry later, but failures must be logged/observable rather than silently swallowed.
+
+## 13. Canonical statistic sources
+
+Use:
+- XP -> `LearningActivityEvent`;
+- learning time -> activity sessions/time slices;
+- Lessons -> `LearnerCourseProgress` / completion activity;
+- Reviews -> `LearningCardReview`;
+- Vocabulary -> Recognition/card lifecycle semantics;
+- Achievements -> `LearningAchievementUnlock`.
+
+Do not add copied dashboard counters as competing truth.
+
+## 14. Persistence/performance
+
+New internal IDs use BIGINT identity.
+
+Use PostgreSQL DATE, TIMESTAMPTZ and BOOLEAN plus FK/UNIQUE/CHECK constraints. New lifecycle relationships use NO ACTION/RESTRICT; backend operations own business mutation.
+
+Useful access paths:
+- activity by `ProfileId, OccurredAt`;
+- sessions by `ProfileId, StartedAt`;
+- unique session/day slice;
+- unique profile/day goal;
+- unique achievement unlock.
+
+Do not add a daily aggregate/cache table until measurement proves it necessary.
+
+## 15. Required tests
+
+Active time:
+- duplicate activity report adds zero;
+- idle/background adds no time;
+- impossible time inflation is capped;
+- profile-local day attribution works.
+
+XP:
+- same SourceEventId cannot award twice;
+- gamification Off awards zero;
+- Extra Practice cap applies;
+- policy version is stored.
+
+Daily Goal/Streak:
+- today's target snapshot stays stable after preference edit;
+- combined progress uses the minimum enabled component;
+- completion is idempotent;
+- incomplete today does not prematurely break yesterday's streak;
+- missed enabled day breaks;
+- disable/re-enable starts a new active streak.
+
+Achievements:
+- deterministic/idempotent unlock;
+- no curriculum effect.
+
+Database-specific invariants use PostgreSQL integration tests.
+
+## 16. Must not implement
+
+- No high-volume Learning actions in the global notification event log.
+- No page-open learning time.
+- No automatic Player/Reader consumption time.
+- No heartbeat-event table.
+- No duplicate XP counter/store.
+- No XP while gamification is Off.
+- No retroactive XP.
+- No XP/level curriculum locks.
+- No CEFR/JLPT from XP.
+- No mutable Achievement progress store.
+- No virtual currency/shop/required leaderboard.
+
+## 17. Acceptance
+
+Learning has one bounded session/activity model, truthful active time, idempotent/versioned XP, stable Daily Goal/Streak semantics and deterministic Achievements. Gamification can disappear without changing core Learning behavior or corrupting statistics.
