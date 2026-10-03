@@ -97,6 +97,7 @@ public sealed class MediaInboxImportService(
         MediaAcquisitionKind.Movie => "Movies",
         MediaAcquisitionKind.Tv => "TV",
         MediaAcquisitionKind.Audiobook => "Audiobooks",
+        MediaAcquisitionKind.Game => "Games",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
