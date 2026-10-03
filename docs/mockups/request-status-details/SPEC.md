@@ -1,326 +1,452 @@
 # Request Status / Details — Consumer Surface
 
-Status: **binding planning specification; no dedicated mockup required before first implementation**.
+Status: **approved UX direction; binding planning specification**.
 
 This is the normal-user surface for understanding a previously submitted Request.
 
 It is not an Admin Requests page, not Wanted, and not an acquisition diagnostics view.
+
+The approved visual direction is a compact status dialog/sheet centered on the **current user-relevant state**, with Request details and technical-history milestones collapsed behind optional disclosure.
 
 ## 1. Purpose
 
 The surface answers:
 
 - What did I request?
+- What is happening now?
 - What scope/language/Edition did I request?
-- Is approval still pending?
-- If approved, what simple acquisition state is it in?
-- Is it available now?
-- Can I cancel my own Request?
+- Is Jularr waiting for approval, looking, downloading, preparing, monitoring or finished?
+- What is the next useful thing I need to know?
+- Can I edit or cancel my Request?
 
-The user should understand the outcome without learning Jularr's technical acquisition pipeline.
+The page must not feel like a mini Admin job tracker.
 
 ## 2. Entry points
 
-Open Request Status / Details from:
+Open from:
 
-- the `Requested` / request-state action on a media Detail page;
+- the Request/status action on a media Detail page;
+- Library/Calendar/other media cards when a Request state is shown;
 - Request Success -> `View request status`;
-- a future compact `My Requests` list if one is added;
-- notifications related to that Request;
-- deep link to the user's own Request.
+- a notification linked to that Request;
+- a future `My Requests` list if one is added;
+- a deep link to the current profile's Request.
 
-Do not add a new permanent main-navigation destination only for Requests.
+Do not add a permanent main-navigation destination solely for Requests.
 
 ## 3. Surface type
 
 Desktop:
-- compact side sheet or medium dialog for normal status/detail;
-- full page only if a future `My Requests` management surface needs it.
+- compact medium modal/dialog.
 
 Mobile:
-- bottom/full-height sheet depending on content length.
+- bottom/full-height sheet depending on available content.
 
 Tablet:
 - adaptive dialog/sheet.
 
 TV:
-- simplified read-only status view where useful.
+- simplified read-only status surface where useful.
+
+The default surface should remain compact. Optional details expand in place.
 
 ## 4. Header
 
 Show:
 
 - small media artwork;
-- Work title;
-- requested structural scope where relevant;
-- concise media type only when useful;
-- current human-readable state;
+- canonical Work title;
+- concise year/type only when useful;
 - Close/Back.
 
-Do not show provider IDs, Wanted IDs, job IDs or download-client identifiers.
+Do not repeat a large media hero.
 
-## 5. Requested configuration
+Do not show:
+- provider IDs;
+- Wanted IDs;
+- job IDs;
+- downloader identifiers;
+- indexer information.
 
-Show exactly what the profile requested:
+## 5. Primary current-state block
 
-- Scope;
-- selected seasons/episodes/volumes/chapters when Custom;
-- language;
-- Edition intent;
-- future-release monitoring intent where applicable;
-- request date/time.
+The current state is the visual focus.
 
-Use the same labels/components as the Request flow.
+Show:
 
-Do not reinterpret the saved Request using current UI defaults.
+- one clear state icon;
+- one state label;
+- one concise explanation;
+- optional progress only when meaningful and reliable;
+- optional next-release information when monitoring future content.
 
-## 6. Consumer request states
-
-Use one coherent user-facing state projection.
+Examples:
 
 ### Waiting for approval
-The Request exists but requires moderation.
+`Waiting for approval`
 
-Show:
-- `Waiting for approval`;
-- submitted time;
-- Cancel when still allowed.
+`Your request has been submitted and is waiting for approval.`
 
-### Approved
-Approval happened but acquisition may not have started yet.
+### Looking for media
+`Looking for media`
 
-Show:
-- `Approved`;
-- concise text such as `Jularr will look for this media`.
+`Jularr is looking for a suitable release.`
 
-### Searching
-Jularr is looking for an eligible acquisition result.
-
-Show only:
-- `Searching`.
-
-Do not show indexers, queries or candidate scores.
+This replaces exposing separate Approved/Search internals as dominant user-facing stages.
 
 ### Downloading
-Show:
-- `Downloading`;
-- optional coarse progress percentage only when reliable.
+`Downloading · 32%`
 
-Do not show NZB/client technical fields.
+Optional secondary context:
+`4 of 12 episodes downloaded`
 
-### Importing / Preparing
-Show:
-- `Preparing` or `Importing`;
-- concise explanation that the media is being added to Jularr.
+Only show percentage/count when trustworthy.
 
-### Monitoring
-For Future-only or future portions:
-- `Monitoring future releases`.
+### Preparing
+`Preparing`
 
-This may coexist with already completed current acquisition scope.
+`Processing downloaded media and adding it to Jularr.`
+
+Do not expose extraction/import substeps.
+
+### Monitoring future releases
+`Monitoring future releases`
+
+If known, show a compact next-release card:
+`Next release · 8 Oct 2026`
+
+If unknown:
+`No upcoming release announced`
 
 ### Available
-Show:
-- `Available`;
-- primary action Play / Read / Listen / Open details.
+`Available`
+
+Primary action:
+- Play
+- Read
+- Listen
+- Open details
+
+depending on media type/state.
 
 ### Rejected
-Show:
-- `Request rejected`;
-- optional short moderator/user-readable reason when one was supplied.
+`Request rejected`
 
-Never expose private Admin notes unless explicitly marked user-visible.
+Optional short **user-visible** reason only.
 
-### Failed / Needs attention
-Show:
-- `Could not complete request`;
-- user-readable failure category where available;
-- Retry Request only when policy/state genuinely allows it.
+### Needs attention / Failed
+`Could not complete request`
 
-Do not expose raw stack traces or technical importer/indexer errors.
+Show one concise user-readable reason category when available.
 
 ### Cancelled
-Show:
-- `Request cancelled`.
+`Request cancelled`
 
-If shared acquisition continues because another Request/monitoring rule still requires it, do not misleadingly say the underlying acquisition was cancelled.
+Never imply that a shared technical acquisition was cancelled unless it actually was.
 
-## 7. Timeline
+## 6. User-facing state model
 
-Use a compact, consumer-readable timeline when multiple transitions exist.
-
-Example:
+The normal consumer progression is intentionally simplified:
 
 ```text
-Requested          2 Oct 18:42
-Approved           2 Oct 18:43
-Downloading        2 Oct 18:47
-Available          2 Oct 19:12
+Waiting approval
+→ Looking for media
+→ Downloading
+→ Preparing
+→ Available
 ```
 
-Only show meaningful milestones.
+`Monitoring future releases` is a separate ongoing state for future content and can remain active after currently requested content becomes available.
 
-Do not expose every search attempt, release rejection, import sub-job or retry.
+Exceptional terminal/interruption states:
+- Rejected
+- Needs attention
+- Cancelled
 
-The technical event timeline remains in Admin.
+Backend/Admin can retain more granular technical states, but they must project into these simpler consumer states.
 
-## 8. Request vs acquisition identity
+## 7. Request details block
 
-The user-facing Request remains attributable to the requesting profile.
+Below the current state, show a compact **Request details** disclosure/card.
 
-After approval, one Request may share canonical Wanted/acquisition state with:
-- another user's compatible Request;
-- owner monitoring;
-- an existing Wanted target.
+It contains the exact saved Request intent:
 
-The Details surface displays the result relevant to this Request without pretending that the technical acquisition belongs exclusively to this user.
+- Scope;
+- selected units when Custom;
+- language;
+- Edition intent;
+- requested date/time;
+- future-release intent where relevant.
 
-## 9. Cancel behavior
+Use the same wording as the Request flow.
 
-Allow `Cancel request` only when state/policy permits.
+Examples:
+- `Whole series · Current + future`
+- `German`
+- `Official`
 
-Cancellation requires confirmation when it may affect an active request intent.
+Do not derive the display from current profile defaults after the fact.
+
+On Mobile this block may default collapsed when the current-state section already communicates enough.
+
+## 8. Timeline
+
+Timeline is **secondary** and collapsed by default.
+
+Trigger examples:
+- `Show timeline · 4 events`
+- `History`
+
+Expanded timeline contains only meaningful consumer milestones, for example:
+
+```text
+Requested      2 Oct 18:42
+Approved       2 Oct 18:43
+Downloading    2 Oct 18:47
+Available      2 Oct 19:12
+```
+
+Approved may appear here as historical context even though it is not a dominant current state.
+
+Do not show:
+- every search attempt;
+- rejected release candidates;
+- grab scoring;
+- downloader retry details;
+- extraction steps;
+- import sub-jobs;
+- raw acquisition events.
+
+Those belong to Admin.
+
+## 9. Edit Request
+
+Where editing is still permitted, show `Edit request`.
+
+This **reopens the same shared Request dialog** with saved values prefilled.
+
+There is no separate Edit Request form implementation.
+
+Editable fields follow the Request spec:
+- Scope;
+- Included content;
+- Language/Edition;
+- allowed privileged options.
+
+If changing the Request would invalidate an already-running acquisition target, backend policy decides whether editing is allowed, requires cancellation/new Request, or can safely retarget.
+
+The UI must not silently mutate incompatible in-progress acquisition.
+
+## 10. Cancel Request
+
+Show `Cancel request` only when allowed.
+
+Use a confirmation dialog.
 
 Cancellation removes this profile's Request intent.
 
-It does **not automatically**:
-- stop a shared download;
-- unmonitor media required elsewhere;
-- delete imported media;
+It does not automatically:
+- stop acquisition needed by another profile;
+- stop owner monitoring;
+- delete downloaded/imported media;
+- delete canonical Work data;
+- reset progress;
 - cancel another user's Request.
 
 After cancellation, show the actual resulting Request state.
 
-## 10. Retry behavior
+## 11. Retry / failure behavior
 
-A normal user does not manually choose another release.
+Normal users do not choose another release candidate.
 
-When Retry is allowed:
-- it means retry the same Request intent through normal policy;
-- it never opens Manual Search;
-- it never exposes indexer candidates.
+If Retry is allowed:
+- retry the same Request intent through normal policy;
+- use a simple action such as `Retry request`.
 
-If admin action is required, show a concise waiting/needs-attention state instead.
+Do not open Manual Search.
 
-## 11. Edit behavior
+If Admin intervention is required:
+- show `Needs attention`;
+- optionally explain that an administrator needs to resolve it.
 
-Pending Requests may optionally expose `Edit request` when policy allows changing:
-- Scope;
-- language;
-- Edition intent.
+## 12. Monitoring behavior
 
-Editing reuses the shared Request controls.
+For Requests containing future content, monitoring is represented as a user-relevant ongoing result, not as a technical Wanted dashboard.
 
-Do not create a second request-edit implementation.
+Show:
+- `Monitoring future releases`;
+- next known release/date when available;
+- otherwise a quiet unknown/no-announcement state.
 
-Once acquisition is materially underway, changes that would alter target identity may require:
-- cancel + new Request; or
-- explicit backend-supported retargeting.
+Do not show scheduled search jobs or polling intervals.
 
-Do not silently mutate an in-progress acquisition target.
+## 13. Available behavior
 
-## 12. Notifications
+When all immediately requested content is available:
 
-Request state changes may generate notifications through the normal Notifications system:
+Show:
+- `Available`;
+- primary media action;
+- optional `View in Library` / `Open details`.
+
+If future monitoring is also active, the surface may show:
+
+`Available now`
+and below:
+`Monitoring future releases`
+
+These are not contradictory states.
+
+## 14. Request vs acquisition identity
+
+The Request belongs to the requesting profile.
+
+Approved Requests may converge on shared canonical Wanted/acquisition state.
+
+The consumer surface must not pretend a shared download belongs exclusively to one user.
+
+If this user cancels but acquisition continues because another Request/monitoring rule still needs it, show the user's Request as Cancelled without falsely reporting that the shared acquisition stopped.
+
+## 15. Notifications
+
+Request transitions may produce normal notifications for:
 
 - approved;
 - rejected;
 - available;
 - failed/needs attention.
 
-This surface does not own notification delivery configuration.
+Notification delivery settings remain under User Settings.
 
-## 13. Desktop layout
+## 16. Desktop layout
 
-Recommended layout:
+Approved structure:
 
-- media/request header;
-- prominent current state;
-- requested configuration summary;
-- compact milestone timeline;
-- available actions at bottom.
+1. compact media identity header;
+2. prominent current-state block;
+3. optional progress / next-release card;
+4. Request details block;
+5. collapsed Timeline disclosure;
+6. bottom actions.
 
-No dense table.
+Actions depend on state:
+- Edit request;
+- Cancel request;
+- Retry request;
+- Play/Read/Listen;
+- View media;
+- Close.
 
-No Admin sidebar.
+Do not draw a permanent multi-step pipeline across the main content.
 
-## 14. Mobile layout
+## 17. Mobile layout
 
-One vertical sheet/page:
+Approved structure mirrors Desktop vertically:
 
-- artwork + title;
-- state;
-- requested configuration;
-- timeline;
-- primary action;
-- overflow/destructive Cancel where applicable.
+1. compact media header;
+2. prominent current state;
+3. optional progress / next release;
+4. collapsible Request details;
+5. collapsible Timeline;
+6. touch-sized bottom actions.
 
-Use touch-sized actions.
+Keep the current state visible without requiring expansion.
 
-## 15. Loading / errors
+Do not squeeze desktop horizontal process diagrams onto Mobile.
+
+## 18. Tablet / TV
+
+Tablet:
+- same dialog/sheet grammar;
+- no additional complexity.
+
+TV:
+- read-only/simplified state;
+- primary available-media action;
+- no complex editing/cancellation if remote UX would become cumbersome.
+
+## 19. Loading / partial / errors
 
 Support:
 
-- Request metadata loading;
-- linked acquisition state temporarily unavailable;
-- Work unavailable/removed;
-- stale request projection;
+- Request data loading;
+- acquisition projection temporarily unavailable;
+- Work metadata partial;
+- stale local status;
 - permission changed.
 
-If technical acquisition state cannot be loaded, still show the user's saved Request and a concise `Status temporarily unavailable`.
+If acquisition projection fails, still show the saved Request intent and:
+`Status temporarily unavailable`
 
-## 16. Privacy / permissions
+Do not replace saved Request data with a generic error page.
 
-A normal profile can only view its own Requests unless explicitly granted broader capability.
+## 20. Privacy / permissions
 
-User-visible rejection reason must be stored separately from private Admin notes where both exist.
+A normal profile sees only its own Requests unless explicitly granted broader capability.
+
+Moderator/Admin notes are private by default.
+
+A rejection reason must be explicitly marked user-visible before it appears here.
 
 Server authorization is authoritative.
 
-## 17. Accessibility
+## 21. Accessibility
 
-- current state announced textually;
-- timeline uses semantic ordered structure;
-- dates have accessible full timestamps;
-- progress is not color-only;
-- destructive Cancel is clearly labeled;
-- focus returns to source context after close.
+- current state has textual label;
+- progress has semantic percentage/value;
+- timeline is an ordered semantic list;
+- full timestamps are accessible;
+- collapse/expand controls expose state;
+- destructive Cancel is clearly named;
+- focus returns to source after close;
+- status is not conveyed by color alone.
 
-## 18. Shared components
+## 22. Shared components
 
 Reuse:
 
-- `MediaIdentityHeader`;
-- `RequestStatus`;
-- `RequestSummary`;
-- `RequestTimeline`;
-- shared Scope/Language/Edition display;
-- ConfirmDialog;
-- Dialog/Sheet shell.
+- `MediaIdentityHeader`
+- `RequestStatus`
+- `RequestSummary`
+- `RequestTimeline`
+- `ProgressIndicator`
+- `NextReleaseCard`
+- ConfirmDialog
+- shared Request Dialog/Sheet shell where appropriate
 
-The Request flow and Request Details must share the same Request DTO/state projection.
+Request creation, editing and status must use one canonical Request DTO/state projection.
 
-## 19. Must not implement
+## 23. Must not implement
 
+- no permanent technical process pipeline as main content;
 - no Admin moderation controls;
 - no Wanted/profile scoring;
-- no indexer candidates;
-- no download-client technical details;
+- no release/indexer candidate details;
+- no downloader/client technical fields;
 - no provider IDs/job IDs;
 - no raw logs/errors;
-- no separate release-retry picker;
+- no manual release picker;
+- no separate Edit Request form;
+- no duplicated Request state machine;
 - no cancellation of shared acquisition merely because one profile cancels;
-- no duplicate Request editing model;
-- no new permanent top-level Requests navigation.
+- no permanent top-level Requests navigation.
 
-## 20. Mockup policy
+## 24. Approved visual reference
 
-A dedicated mockup is not required for the first implementation because this is intentionally a standard status/detail sheet.
+The approved mockup direction is:
 
-Create a mockup later if:
-- the consumer timeline becomes visually noisy;
-- editing pending Requests is added;
-- Mobile state hierarchy is unclear;
-- owner review requests a visual revision.
+- compact Desktop modal and Mobile sheet;
+- strong current-state block;
+- Downloading progress only when useful;
+- Monitoring state with next-release information;
+- Request details below;
+- Timeline collapsed by default;
+- Edit/Cancel as secondary actions;
+- Available state with direct media action;
+- no Admin-like technical workflow presentation.
 
-Text specification is authoritative.
+The owner will upload the approved image into this folder.
+
+Implementation may not materially redesign this interaction without updating this SPEC and receiving UX approval.
+
+Text specification wins over imagery on conflict.
