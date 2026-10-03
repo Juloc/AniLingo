@@ -136,6 +136,8 @@ Collections is not a media type and not top-level navigation.
 
 Consumer Library has no generic Add/import menu. New media is found through Discover and requested through the shared Request flow. Manual file/folder import and reconciliation belong to Admin.
 
+Watchlist/Reading List is represented as profile-state filtering/deep-linking inside Library rather than another top-level destination or a fake Collection.
+
 ## 2. Media model
 
 Four layers per #510. Mapped to what exists in `src/Jularr.Web/Data` and `Features/` today:
@@ -412,7 +414,7 @@ policy checks below; the table states the target state, not today's binary Owner
 
 | Area / action | Owner | Media manager | User |
 | --- | --- | --- | --- |
-| Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
+| Consumer pages (Home, Library including Watchlist/Reading List filtered views, Calendar, Discover, playback, reading) | Full | Full | Full |
 | Own account settings, own sessions/history | Full | Full | Full |
 | Request media | Full | Full | Allowed per the media-type capability; the consumer action is always `Request`, while Instant capability means the Request may be auto-approved immediately |
 | Per-media-type capability: Hidden/Browse/Request/Instant (`/Admin/Capabilities`, #436) | Unrestricted (always Instant) | Configurable (default Instant) | Configurable (default Request), with per-user overrides |
